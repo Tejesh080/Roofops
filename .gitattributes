@@ -1,3 +1,5 @@
 * text=auto eol=lf
+# Source data is stored byte-for-byte (the manifest hashes the exact bytes)
+data/** -text
 *.xlsx binary
 *.zip binary

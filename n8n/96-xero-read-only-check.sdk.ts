@@ -69,5 +69,37 @@ return [{ json: {
   sales_account: { status: a.statusCode, code: acc.Code, name: acc.Name, tax_type: acc.TaxType, type: acc.Type, error: a.statusCode === 200 ? null : JSON.stringify(a.body).slice(0, 200) },
 } }];` } }, output: [{ tenant_id: 't' }] });
 
+// Read-only inventory of everything RoofOps owns in the Demo org: ACCREC invoices whose Reference is a project number
+// (any status, so a VOIDED/DELETED duplicate would still show) and contacts whose ContactNumber is RoofOps-issued.
+// (Xero: StartsWith needs a null guard, and /Invoices refuses it together with summaryOnly.)
+// This is the independent Xero-side evidence for "no approval = no invoice" and "exactly one invoice per project".
+const findInvoices = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Find RoofOps Invoices',
+  parameters: { method: 'GET', url: API + '/Invoices', authentication: 'predefinedCredentialType', nodeCredentialType: 'xeroOAuth2Api', sendHeaders: true, headerParameters: HDR,
+    sendQuery: true, queryParameters: { parameters: [{ name: 'where', value: 'Type=="ACCREC" AND Reference!=null AND Reference.StartsWith("PRJ-")' },
+      { name: 'Statuses', value: 'DRAFT,SUBMITTED,AUTHORISED,PAID,VOIDED,DELETED' }] }, options: RAW },
+  credentials: XERO }, output: [{ statusCode: 200, body: {} }] });
+
+const findContacts = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Find RoofOps Contacts',
+  parameters: { method: 'GET', url: API + '/Contacts', authentication: 'predefinedCredentialType', nodeCredentialType: 'xeroOAuth2Api', sendHeaders: true, headerParameters: HDR,
+    sendQuery: true, queryParameters: { parameters: [{ name: 'where', value: 'ContactNumber!=null AND ContactNumber.StartsWith("RO-")' },
+      { name: 'includeArchived', value: 'true' }, { name: 'summaryOnly', value: 'true' }] }, options: RAW },
+  credentials: XERO }, output: [{ statusCode: 200, body: {} }] });
+
+const inventory = node({ type: 'n8n-nodes-base.code', version: 2, config: { name: 'RoofOps Inventory (No Secrets)',
+  parameters: { mode: 'runOnceForAllItems', jsCode: `
+const s = $('Summarise (No Secrets)').first().json;
+const i = $('Find RoofOps Invoices').first().json;
+const c = $input.first().json;
+function err(r) { return r.statusCode === 200 ? null : String(JSON.stringify(r.body === undefined ? r : r.body)).slice(0, 200); }
+const invs = ((i.body || {}).Invoices || []).map(function (x) { return { invoice_id: x.InvoiceID, number: x.InvoiceNumber, reference: x.Reference, status: x.Status,
+  total: x.Total, total_tax: x.TotalTax, amount_paid: x.AmountPaid, sent_to_contact: x.SentToContact === true, contact_id: (x.Contact || {}).ContactID, contact: (x.Contact || {}).Name }; });
+const byRef = {};
+invs.forEach(function (x) { byRef[x.reference] = (byRef[x.reference] || 0) + 1; });
+return [{ json: Object.assign({}, s, { roofops: {
+  invoices_status: i.statusCode, invoices_error: err(i), invoices: invs, invoices_per_reference: byRef,
+  contacts_status: c.statusCode, contacts_error: err(c),
+  contacts: ((c.body || {}).Contacts || []).map(function (x) { return { contact_id: x.ContactID, number: x.ContactNumber, name: x.Name, status: x.ContactStatus }; }) } }) }];` } },
+  output: [{ tenant_id: 't' }] });
+
 export default workflow('roofops-xero-read-only-check', '[RoofOps] 96 Xero Read-Only Check')
-  .add(start).to(connections).to(pick).to(org).to(isDemo.onTrue(contacts.to(invoices).to(account).to(summary)).onFalse(notDemo));
+  .add(start).to(connections).to(pick).to(org).to(isDemo.onTrue(contacts.to(invoices).to(account).to(summary).to(findInvoices).to(findContacts).to(inventory)).onFalse(notDemo));

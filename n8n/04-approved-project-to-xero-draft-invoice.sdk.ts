@@ -123,6 +123,15 @@ const lines = function () {
   ].join('\\n');
 };
 let status; let text; const f = { fldYnINTdtOckOzK4: null };
+// A duplicate for a project whose draft already exists keeps reporting the real (verified) invoice state.
+const xs = r.xero_state || {};
+const synced = function (why) {
+  status = 'Xero draft created';
+  text = 'XERO DRAFT ' + xs.xero_invoice_number + ' (InvoiceID ' + xs.xero_invoice_id + ') in ' + xs.xero_tenant_name + '\\nDuplicate ignored: ' + why
+    + '. Nothing was created twice.\\n' + lines();
+  f.fld3sDI9LIX8Voo4u = xs.xero_invoice_id; f.fldgkN0Vm6k1MZLJp = xs.xero_invoice_number; f.fld5JDnWI3RFehQxA = Number(xs.total_inc_gst);
+};
+const isSynced = xs.sync_status === 'SYNCED' && !!xs.xero_invoice_id;
 switch (j.outcome) {
   case 'PREVIEW_READY': case 'ALREADY_PENDING':
     status = 'Awaiting approval';
@@ -137,6 +146,8 @@ switch (j.outcome) {
     } else if (j.needs_xero) {
       status = x.status === 'FAILED' ? 'Failed' : 'Approved - creating in Xero';
       text = r.invoice_number + ' approved; Xero draft ' + x.status + (x.exception_number ? ' (exception ' + x.exception_number + ')' : '') + (x.message ? ': ' + x.message : '') + '. It will not be created twice.';
+    } else if (isSynced) {
+      synced(r.approval_number + ' was already ' + (r.first_outcome || 'processed') + ' (' + (r.delivery_count || 2) + ' deliveries)');
     } else {
       status = 'Duplicate ignored';
       text = 'Already decided: ' + r.approval_number + ' was ' + (r.first_outcome || 'processed') + (r.invoice_number ? ' as ' + r.invoice_number + ' (Xero RO-' + r.invoice_number + ')' : '')
@@ -144,6 +155,7 @@ switch (j.outcome) {
     }
     break;
   case 'ALREADY_INVOICED':
+    if (isSynced) { synced(r.message || 'already invoiced'); break; }
     status = 'Duplicate ignored'; text = (r.message || 'Already invoiced') + '. No second invoice.'; break;
   case 'REJECTED_BY_APPROVER':
     status = 'Rejected by approver'; text = r.approval_number + ' rejected by ' + r.decided_by + '. Nothing was sent to Xero.'; break;

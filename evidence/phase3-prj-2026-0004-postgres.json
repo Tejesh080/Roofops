@@ -1,0 +1,234 @@
+{
+  "project": {
+    "number": "PRJ-2026-0004",
+    "id": "e749a799-5cdf-8a22-881d-08365a78242a",
+    "status": "COMPLETED"
+  },
+  "pinned_tenant": {
+    "tenant_id": "96643bb0-3a0a-406e-96fb-ab8a933ee6b8",
+    "tenant_name": "Demo Company (AU)"
+  },
+  "invoices": [
+    {
+      "id": "c110d7e3-ed87-8ba5-99a4-97e9a5ef2efb",
+      "invoice_number": "INV-2026-0004",
+      "invoice_type": null,
+      "status": "PAID",
+      "sync_status": "NOT_SYNCED",
+      "total": "4189.85",
+      "gst": "380.90",
+      "ex_gst": "3808.95",
+      "issue_date": "2026-06-17",
+      "due_date": "2026-07-01",
+      "idempotency_key": null,
+      "approved": false
+    },
+    {
+      "id": "9506fcb3-4b4c-820a-bffe-a3a60f0b9eb2",
+      "invoice_number": "INV-2026-0034",
+      "invoice_type": null,
+      "status": "PAID",
+      "sync_status": "NOT_SYNCED",
+      "total": "2094.93",
+      "gst": "190.45",
+      "ex_gst": "1904.48",
+      "issue_date": "2026-08-14",
+      "due_date": "2026-08-28",
+      "idempotency_key": null,
+      "approved": false
+    },
+    {
+      "id": "f4e519c4-ee4f-4d73-ae5a-0f5e3118b363",
+      "invoice_number": "INV-2026-0039",
+      "invoice_type": "FINAL",
+      "status": "APPROVED",
+      "sync_status": "SYNCED",
+      "total": "14664.49",
+      "gst": "1333.14",
+      "ex_gst": "13331.35",
+      "issue_date": "2026-09-29",
+      "due_date": "2026-10-13",
+      "idempotency_key": "invoice:final:e749a799-5cdf-8a22-881d-08365a78242a",
+      "approved": true
+    }
+  ],
+  "final_invoice_lines": [
+    {
+      "description": "Final invoice PRJ-2026-0004: Roof Restoration roofing works at 32 Paperbark Lane, Ashfield (quote Q-2026-0004 v1, total 20949.27 inc GST, less 6284.78 already invoiced)",
+      "quantity": "1.000",
+      "line_kind": "ITEM",
+      "unit_price": "14664.49",
+      "account_code": "200",
+      "line_amount": "14664.49"
+    }
+  ],
+  "approvals": [
+    {
+      "approval_number": "APR-2026-0001",
+      "action_type": "CREATE_INVOICE",
+      "status": "EXECUTED",
+      "payload_hash": "39f990363bde579f280a9ca493e58a24d2f6323265c5240c7dbed2fc9103f724",
+      "decided": true,
+      "executed": true,
+      "amount": "14664.49",
+      "gst": "1333.14",
+      "reference": "PRJ-2026-0004",
+      "customer": "Ella Thompson [CUST-0004]",
+      "due_date": "2026-10-13",
+      "xero_org": "Demo Company (AU)",
+      "decision_reason": null
+    }
+  ],
+  "outbox": [
+    {
+      "topic": "xero.create_draft_invoice",
+      "idempotency_key": "xero:invoice:f4e519c4-ee4f-4d73-ae5a-0f5e3118b363",
+      "status": "DONE",
+      "attempts": 1,
+      "last_error": null
+    }
+  ],
+  "xero_links": [
+    {
+      "entity_type": "customer",
+      "external_type": "Contact",
+      "external_id": "fb5fe56b-ab42-41eb-a3ea-161fb504eeef",
+      "verified": true
+    },
+    {
+      "entity_type": "invoice",
+      "external_type": "Invoice",
+      "external_id": "7b74973c-a487-48f0-85b9-91ca8c5b2909",
+      "verified": true
+    }
+  ],
+  "workflow_runs": [
+    {
+      "workflow_key": "project_to_invoice",
+      "status": "SUCCEEDED",
+      "attempt_count": 1,
+      "last_error_class": null
+    }
+  ],
+  "processed_events": [
+    {
+      "idempotency_key": "EVT-00034",
+      "status": "COMPLETED",
+      "delivery_count": 1
+    },
+    {
+      "idempotency_key": "EVT-00064",
+      "status": "COMPLETED",
+      "delivery_count": 1
+    },
+    {
+      "idempotency_key": "invoice.prepare:3a66c14a-02ad-8679-8ce8-072f581a5444",
+      "status": "COMPLETED",
+      "delivery_count": 2
+    },
+    {
+      "idempotency_key": "invoice.decision:APR-2026-0001",
+      "status": "COMPLETED",
+      "delivery_count": 3
+    },
+    {
+      "idempotency_key": "invoice.prepare:c9e070a5-8eab-876c-b7a0-c43031119509",
+      "status": "COMPLETED",
+      "delivery_count": 1
+    }
+  ],
+  "automation_events": [
+    {
+      "event_key": "EVT-00034",
+      "event_type": "invoice.paid",
+      "status": "SUCCEEDED",
+      "error_class": null,
+      "reason": null
+    },
+    {
+      "event_key": "airtable:achAHQLGW3ueCycSt:txn51:reczturPjx3N6PGoY",
+      "event_type": "invoice.prepare_requested",
+      "status": "SUCCEEDED",
+      "error_class": null,
+      "reason": null
+    },
+    {
+      "event_key": "airtable:achAHQLGW3ueCycSt:txn51:reczturPjx3N6PGoY:invoice.preview_prepared",
+      "event_type": "invoice.preview_prepared",
+      "status": "SUCCEEDED",
+      "error_class": null,
+      "reason": null
+    },
+    {
+      "event_key": "airtable:achAHQLGW3ueCycSt:txn53:reczturPjx3N6PGoY",
+      "event_type": "invoice.approved",
+      "status": "SUCCEEDED",
+      "error_class": null,
+      "reason": null
+    },
+    {
+      "event_key": "airtable:achAHQLGW3ueCycSt:txn51:reczturPjx3N6PGoY:redelivery:1",
+      "event_type": "invoice.prepare_requested",
+      "status": "DUPLICATE_IGNORED",
+      "error_class": "DUPLICATE_EVENT",
+      "reason": "transport redelivery of the same event_id"
+    },
+    {
+      "event_key": "airtable:achAHQLGW3ueCycSt:txn53:reczturPjx3N6PGoY:redelivery:1",
+      "event_type": "invoice.approved",
+      "status": "DUPLICATE_IGNORED",
+      "error_class": "DUPLICATE_EVENT",
+      "reason": "transport redelivery of the same event_id"
+    },
+    {
+      "event_key": "airtable:achAHQLGW3ueCycSt:txn57:reczturPjx3N6PGoY",
+      "event_type": "invoice.approved",
+      "status": "DUPLICATE_IGNORED",
+      "error_class": "DUPLICATE_EVENT",
+      "reason": "semantic duplicate: APR-2026-0001 was already decided"
+    },
+    {
+      "event_key": "airtable:achAHQLGW3ueCycSt:txn59:reczturPjx3N6PGoY",
+      "event_type": "invoice.prepare_requested",
+      "status": "SUCCEEDED",
+      "error_class": null,
+      "reason": null
+    }
+  ],
+  "exceptions": [],
+  "audit": [
+    {
+      "seq": "45",
+      "action": "invoice.preview_prepared",
+      "actor_type": "USER",
+      "actor_id": "usr7uCnNO15fCefbH",
+      "external_reference": null,
+      "reason": "Final invoice preview awaiting approval"
+    },
+    {
+      "seq": "46",
+      "action": "approval.approve",
+      "actor_type": "USER",
+      "actor_id": "EMP-900",
+      "external_reference": null,
+      "reason": "Final invoice approved by Demo Finance Approver"
+    },
+    {
+      "seq": "47",
+      "action": "invoice.create",
+      "actor_type": "WORKFLOW",
+      "actor_id": "project_to_invoice@1",
+      "external_reference": null,
+      "reason": "Created from approved preview APR-2026-0001"
+    },
+    {
+      "seq": "48",
+      "action": "xero.invoice.draft_created",
+      "actor_type": "INTEGRATION",
+      "actor_id": "xero",
+      "external_reference": "7b74973c-a487-48f0-85b9-91ca8c5b2909",
+      "reason": "DRAFT invoice RO-INV-2026-0039 created in the Xero Demo Company and read back"
+    }
+  ],
+  "audit_chain": "intact"
+}

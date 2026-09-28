@@ -1,0 +1,32 @@
+{
+  "source": "[RoofOps] 96 Xero Read-Only Check (n8n aNl2HF1f8TwZgTUq), node 'RoofOps Inventory (No Secrets)'. IDs and amounts only; no tokens.",
+  "tenant": { "tenant_id": "96643bb0-3a0a-406e-96fb-ab8a933ee6b8", "name": "Demo Company (AU)", "class": "DEMO", "is_demo_company": true, "connections": 1, "country": "AU", "currency": "AUD" },
+  "before_any_write": {
+    "execution": "1788 (after tenant pin, before Prepare)",
+    "roofops_invoices": [],
+    "roofops_contacts": []
+  },
+  "after_prepare_without_approval": {
+    "execution": "1791",
+    "roofops_invoices": [],
+    "roofops_contacts": []
+  },
+  "after_approval": {
+    "execution": "1795",
+    "roofops_invoices": [
+      { "invoice_id": "7b74973c-a487-48f0-85b9-91ca8c5b2909", "number": "RO-INV-2026-0039", "reference": "PRJ-2026-0004", "status": "DRAFT",
+        "type": "ACCREC", "line_amount_types": "Inclusive", "total": 14664.49, "total_tax": 1333.14, "sub_total": 13331.35, "amount_paid": 0,
+        "sent_to_contact": false, "date": "2026-09-29", "due_date": "2026-10-13", "account_code": "200", "tax_type": "OUTPUT",
+        "contact_id": "fb5fe56b-ab42-41eb-a3ea-161fb504eeef", "contact": "Ella Thompson [CUST-0004]" }
+    ],
+    "invoices_per_reference": { "PRJ-2026-0004": 1 },
+    "roofops_contacts": [ { "contact_id": "fb5fe56b-ab42-41eb-a3ea-161fb504eeef", "number": "RO-CUST-0004", "name": "Ella Thompson [CUST-0004]", "status": "ACTIVE" } ]
+  },
+  "after_replay_new_approve_and_new_prepare": {
+    "execution": "1801",
+    "invoices_per_reference": { "PRJ-2026-0004": 1 },
+    "roofops_invoices": ["7b74973c-a487-48f0-85b9-91ca8c5b2909 RO-INV-2026-0039 DRAFT 14664.49 paid 0 unsent"],
+    "roofops_contacts": ["fb5fe56b-ab42-41eb-a3ea-161fb504eeef RO-CUST-0004"]
+  },
+  "xero_writes_ever": "one run of [RoofOps] 05 (execution 1793): Demo guard ok, contact search 0 -> create RO-CUST-0004, search by number 0 and by reference 0 -> PUT one DRAFT -> read back -> recount 1"
+}

@@ -1,0 +1,14 @@
+{
+  "source": "Independent Airtable connection (not n8n), base appMc8V0Wm29tEeHQ, Projects tblvUPIoebC3zoacv, record reczturPjx3N6PGoY",
+  "after_prepare": {
+    "Project Number": "PRJ-2026-0004", "Status": "Completed", "Invoice Action": null, "Invoice Status": "Awaiting approval", "Invoice Amount": 14664.49,
+    "Invoice Preview": "PREVIEW APR-2026-0001 ... Project PRJ-2026-0004, Customer Ella Thompson (CUST-0004), $14,664.49 inc GST (GST $1,333.14, ex GST $13,331.35), quote Q-2026-0004 v1 $20,949.27 - already invoiced $6,284.78, reference PRJ-2026-0004, Xero organisation: Demo Company (AU) [event ...txn51...]"
+  },
+  "after_approve": {
+    "Invoice Action": null, "Invoice Status": "Xero draft created", "Invoice Amount": 14664.49,
+    "Xero Invoice Number": "RO-INV-2026-0039", "Xero Invoice ID": "7b74973c-a487-48f0-85b9-91ca8c5b2909",
+    "Invoice Preview": "XERO DRAFT RO-INV-2026-0039 (InvoiceID 7b74973c-...) in Demo Company (AU); Approved by Demo Finance Approver under APR-2026-0001 [event ...txn53...]"
+  },
+  "after_replay_of_txn53": { "Invoice Status": "Xero draft created", "Xero Invoice ID": "7b74973c-a487-48f0-85b9-91ca8c5b2909", "Invoice Preview": "... Duplicate ignored: APR-2026-0001 was already APPROVED (2 deliveries). Nothing was created twice. [event ...txn53...]" },
+  "after_new_prepare_txn59": { "Invoice Status": "Xero draft created", "Xero Invoice Number": "RO-INV-2026-0039", "Invoice Preview": "... Duplicate ignored: PRJ-2026-0004 was already approved for invoicing under APR-2026-0001. Nothing was created twice. [event ...txn59...]" }
+}

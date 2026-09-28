@@ -195,6 +195,24 @@ describe.each(TARGETS)('Approved project -> Xero draft invoice control layer [%s
       expect(await call(db, 'wf_complete_side_effect', await key(), xeroProof(await payload(), { invoice_id: '99999999-9999-9999-9999-999999999999' })))
         .toMatchObject({ status: 'ALREADY_DONE' });
     });
+
+    // Live regression (PRJ-2026-0004): a replayed/new Approve or Prepare after the draft exists must still let Airtable show
+    // "Xero draft created" with the real IDs, not overwrite the project's invoice state with a bare "Duplicate ignored".
+    it('duplicates after the draft exists report the verified Xero state (and still create nothing)', async () => {
+      const state = { sync_status: 'SYNCED', xero_invoice_id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', xero_contact_id: 'ffffffff-1111-2222-3333-444444444444',
+                      total_inc_gst: 14664.49, status: 'APPROVED' };
+      const replay = await call(db, 'wf_invoice_decide', ev('EVT-I-APR-1', 'invoice.approved', 'PRJ-2026-0004'));
+      const fresh = await call(db, 'wf_invoice_decide', ev('EVT-I-APR-9', 'invoice.approved', 'PRJ-2026-0004'));
+      const prep = await call(db, 'wf_invoice_prepare', ev('EVT-I-PREP-9', 'invoice.prepare_requested', 'PRJ-2026-0004'));
+      for (const r of [replay, fresh]) {
+        expect(r).toMatchObject({ outcome: 'ALREADY_PROCESSED', first_outcome: 'APPROVED', pending_side_effects: [], xero_state: state });
+        expect((r.xero_state as { xero_invoice_number: string }).xero_invoice_number).toBe(`RO-${r.invoice_number as string}`);
+      }
+      expect(prep).toMatchObject({ outcome: 'ALREADY_INVOICED', xero_state: state });
+      expect(await n(db, `select count(*) v from invoices where invoice_type = 'FINAL' and project_id = (select id from projects where project_number = 'PRJ-2026-0004')`)).toBe(1);
+      expect(await n(db, `select count(*) v from outbox where topic = 'xero.create_draft_invoice'`)).toBe(1);
+      expect(await n(db, `select count(*) v from external_links where provider = 'XERO'`)).toBe(2);
+    });
   });
 
   it('least privilege: n8n may call the invoice entry points but not the preview internals', async () => {
@@ -203,6 +221,12 @@ describe.each(TARGETS)('Approved project -> Xero draft invoice control layer [%s
       expect(await call(db, 'wf_invoice_prepare', ev('EVT-I-PRIV', 'invoice.prepare_requested', 'PRJ-2026-0004'))).toMatchObject({ outcome: 'ALREADY_INVOICED' });
       await db.exec('savepoint s');
       await expect(db.query(`select invoice_final_preview(id) from projects limit 1`)).rejects.toThrow(/permission denied/);
+      await db.exec('rollback to savepoint s');
+      for (const internal of ['wf_invoice_decide_core', 'wf_invoice_prepare_core']) {
+        await expect(db.query(`select ${internal}('{}'::jsonb, 'x')`)).rejects.toThrow(/permission denied/);
+        await db.exec('rollback to savepoint s');
+      }
+      await expect(db.query(`select invoice_xero_state(id) from invoices limit 1`)).rejects.toThrow(/permission denied/);
       await db.exec('rollback to savepoint s');
       await expect(db.query(`select * from approvals`)).rejects.toThrow(/permission denied/);
     } finally {

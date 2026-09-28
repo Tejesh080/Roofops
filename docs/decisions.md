@@ -135,3 +135,18 @@ I recommend (a) for Phase 2, since it matches your flow ("Postgres idempotency c
 ### ADR-028: Real, reversible fault injection for retry tests
 **Status:** Accepted (test tooling)
 **Decision:** transient failures are produced by moving the real Drive root to trash (`[RoofOps] 97`, manual only, never published) rather than by mocks, flags in production code, or breaking credentials. The Drive step gets a genuine "not available" answer and the system's real retry path runs. `00 Setup` never re-creates a root that is only in the trash.
+
+### ADR-029: Xero draft invoices need an approved, hashed preview and are idempotent in Postgres
+**Status:** Accepted (migration 800)
+**Decision:** invoicing is two events. *Prepare* computes the amount in SQL (quote inc GST + approved variations − already billed, GST = amount/11, INCLUSIVE) and stores the preview with a hash in `approvals`. *Approve* re-derives the preview and refuses it if the hash changed (stale → `CANCELLED`), if the approver is not a mapped FINANCE/ADMIN/OPERATIONS_MANAGER employee, or if no Demo tenant is pinned. It then creates the one FINAL invoice (UNIQUE `invoice:final:<project>`) and one outbox row in the same transaction. The decision is keyed `invoice.decision:<APR>`, so a redelivered or new Approve event for the same approval is a duplicate. `05` searches Xero by invoice number and by reference **before** every create; it adopts a matching DRAFT from an earlier ambiguous attempt and refuses anything else. A timeout marks the invoice `UNKNOWN`, never "failed, try again". Xero's `Idempotency-Key` is only a second line of defence.
+**Consequence:** a project can never produce two RoofOps invoices, and a lost Xero response cannot produce two Xero invoices. Postgres records Xero IDs only from read-back proof (pinned tenant, DEMO class, DRAFT, ACCREC, unpaid, unsent, exact total/tax/reference/contact, exactly one match).
+
+### ADR-030: Xero writes are pinned to one proven Demo Company tenant
+**Status:** Accepted
+**Context:** the first `RoofOps Xero` connection was to a real organisation. The read-only check caught it before anything was read or written.
+**Decision:** `xero.demo_tenant_id` is empty by default (no writes possible). An operator pins it with `ops/pin-xero-demo-tenant.sql` only after `[RoofOps] 96` proves the single connection is `Class=DEMO`. The pin is audited, and the script refuses to re-point an existing pin. `05` re-checks the connection and `Class=DEMO` on every run, and `wf_complete_side_effect` rejects proof from any other tenant.
+
+### ADR-031: Duplicate outcomes report the invoice's verified state (found live)
+**Status:** Accepted (migration 900)
+**Context:** replaying the Approve event for PRJ-2026-0004 was correctly ignored, but `04` wrote Invoice Status "Duplicate ignored", overwriting "Xero draft created".
+**Decision:** `wf_invoice_prepare`/`wf_invoice_decide` wrap the unchanged migration-800 logic (renamed `*_core`, not callable by n8n) and add `xero_state` (verified external links, sync status, Xero number) to `ALREADY_INVOICED`/`ALREADY_PROCESSED`. `04` then keeps "Xero draft created" with the real IDs and says the duplicate was ignored in the preview text.

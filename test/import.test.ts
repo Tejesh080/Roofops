@@ -20,7 +20,7 @@ const ALL: Target[] = HOSTED ? [...TARGETS, 'hosted'] : TARGETS;
 // added its own (checked in test/live-phase2.test.ts), so bundle-preservation checks are scoped to imported rows.
 const IMPORTED: Record<string, string> = {
   projects: 'created_by_event_id is null', workflow_exceptions: "record_origin = 'IMPORT'",
-  automation_events: "event_key ~ '^EVT-'", processed_events: "consumer like 'legacy:%'",
+  automation_events: "event_key ~ '^EVT-'", processed_events: "consumer like 'legacy:%'", invoices: "record_origin = 'IMPORT'",
 };
 const imported = (table: string) => IMPORTED[table] ?? 'true';
 

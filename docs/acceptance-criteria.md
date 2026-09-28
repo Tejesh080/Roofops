@@ -85,10 +85,14 @@ Real services only (ADR-018). Each side effect: **create, then read back, then v
 - [ ] Next.js dashboard over the hosted DB (read models only via server); SYNTHETIC DEMO DATA banner; integration status (LIVE/BLOCKED) shown from real health checks
 - [ ] Playwright end-user tests for the demo path
 
-## Phase 5: Real Xero Demo Company
-- [ ] Generic OAuth2 credential (`offline_access accounting.contacts accounting.invoices`), Demo Company only
-- [ ] Contacts, invoice drafts, invoice lookup, invoice status; after create: GET → exists once, amount matches, contact matches, InvoiceID persisted
-- [ ] Duplicate send → one Xero invoice; ambiguous POST reconciled by Reference before retry (Xero idempotency keys last only 6 minutes)
+## Phase 5: Real Xero Demo Company (delivered early as "Phase 3": see [phase3-status.md](phase3-status.md))
+- [x] Xero OAuth2 credential `RoofOps Xero`, one connection, Demo Company (AU) proven `Class=DEMO` before the tenant was pinned; a real org was detected and refused (ADR-030)
+- [x] Contact find/create, invoice lookup, one DRAFT invoice; after create: GET → exists once, amount/tax/reference/contact match, InvoiceID + ContactID persisted as verified `external_links`
+- [x] Explicit approval of a hashed preview (project, customer, amount, reference, Xero organisation); no approval → nothing in Xero (proven by Xero inventory)
+- [x] Same event resent and new event for the same project → still one Xero invoice; Airtable keeps showing the real state (ADR-031)
+- [x] Search Xero by number and reference before every create; timeout → `UNKNOWN`, reconciled before retry; persistent idempotency in Postgres (ADR-029)
+- [x] Invalid project state rejected with a named exception and no approval; audit chain explains every step
+- [ ] Exception-queue UI for a dead-lettered Xero write (operator SQL today)
 
 ## Phase 6: Real DeepSeek Operations Copilot
 - [ ] Server-side DeepSeek (`DEEPSEEK_MODEL`), tool calling with GREEN/AMBER/RED tiers; the model never holds DB or external credentials

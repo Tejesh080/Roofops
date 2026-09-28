@@ -185,7 +185,7 @@ describe.each(ALL)('schema constraints [%s]', (target) => {
     expect(open).toEqual([]);
     const wf = await db.query<{ f: string }>(`select p.proname f from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public' and has_function_privilege('roofops_workflow', p.oid, 'execute') order by 1`);
-    expect(wf.map((r) => r.f)).toEqual(['wf_claim_side_effect', 'wf_complete_side_effect', 'wf_fail_side_effect', 'wf_quote_accepted']);
+    expect(wf.map((r) => r.f)).toEqual(['wf_airtable_cursor', 'wf_airtable_cursor_advance', 'wf_claim_side_effect', 'wf_complete_side_effect', 'wf_fail_side_effect', 'wf_quote_accepted']);
   });
 
   it('Supabase public roles (anon, authenticated) cannot read or write any RoofOps table', async () => {

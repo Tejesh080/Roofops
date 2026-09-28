@@ -21,6 +21,19 @@ async function call(db: Db, fn: string, ...args: unknown[]): Promise<Result> {
 }
 const count = async (db: Db, sql: string) => Number((await col(db, sql))[0]);
 
+const SUBFOLDERS = ['01 Quote', '02 Site', '03 Materials', '04 Supplier', '05 Completion'];
+const FOLDER = 'application/vnd.google-apps.folder';
+/** The shape n8n sends after reading the Drive folder and its children back. */
+function driveProof(projectId: string, name: string, over: Record<string, unknown> = {}) {
+  const folderId = '1TESTfolderIdFromDrive';
+  return {
+    verified: true, folder_id: folderId, mime_type: FOLDER, name, parent_id: '1ROOT', trashed: false,
+    web_view_link: `https://drive.google.com/drive/folders/${folderId}`, app_properties: { roofops_project_id: projectId },
+    subfolders: SUBFOLDERS.map((n, i) => ({ id: `1SUB${String(i)}`, name: n, parent_id: folderId, mime_type: FOLDER, trashed: false })),
+    ...over,
+  };
+}
+
 // Mutating tests: local engines only. The hosted DB is exercised through the real n8n workflow (Phase 2 E2E).
 describe.each(TARGETS)('Quote Accepted -> Project workflow functions [%s]', (target) => {
   let db: Db & { url?: string };
@@ -33,7 +46,7 @@ describe.each(TARGETS)('Quote Accepted -> Project workflow functions [%s]', (tar
     it('accepts a SENT quote and creates exactly one project with checklist, task, side effects, events and audit', async () => {
       expect(await col(db, `select status v from quotes where quote_number = 'Q-2026-0041'`)).toEqual(['SENT']);
       created = await call(db, 'wf_quote_accepted', quoteAccepted('EVT-T-0001', 'Q-2026-0041', 1));
-      expect(created).toMatchObject({ status: 'CREATED', duplicate: false, project_number: 'PRJ-2026-0031', quote_number: 'Q-2026-0041',
+      expect(created).toMatchObject({ status: 'CREATED', outcome: 'CREATED', duplicate: false, project_number: 'PRJ-2026-0031', quote_number: 'Q-2026-0041',
                                        idempotency_key: 'quote.accepted:Q-2026-0041:v1' });
       const pid = created.project_id as string;
       expect(await col(db, `select status || '|' || accepted_on::text v from quotes where quote_number = 'Q-2026-0041'`)).toEqual(['ACCEPTED|2026-09-29']);
@@ -56,7 +69,7 @@ describe.each(TARGETS)('Quote Accepted -> Project workflow functions [%s]', (tar
   describe('duplicates are safe', () => {
     it('transport redelivery (same event_id) returns the same project and creates nothing', async () => {
       const again = await call(db, 'wf_quote_accepted', quoteAccepted('EVT-T-0001', 'Q-2026-0041', 1));
-      expect(again).toMatchObject({ status: 'DUPLICATE', duplicate: true, project_id: created.project_id, delivery_count: 2 });
+      expect(again).toMatchObject({ status: 'DUPLICATE', outcome: 'ALREADY_PROCESSED', duplicate: true, project_id: created.project_id, delivery_count: 2 });
       expect(await count(db, `select count(*) v from projects where quote_id = (select id from quotes where quote_number = 'Q-2026-0041')`)).toBe(1);
       expect(await col(db, `select d.status || '|' || d.error_class || '|' || o.event_key || '|' || (d.metadata->>'reason') v
                               from automation_events d join automation_events o on o.event_id = d.causation_id where d.event_key = 'EVT-T-0001:redelivery:1'`))
@@ -89,7 +102,7 @@ describe.each(TARGETS)('Quote Accepted -> Project workflow functions [%s]', (tar
       const bad = quoteAccepted('EVT-T-BAD1', 'Q-2026-0042', 1);
       delete (bad.payload as Record<string, unknown>).quote_id;
       const r = await call(db, 'wf_quote_accepted', bad);
-      expect(r).toMatchObject({ status: 'REJECTED', error_class: 'VALIDATION_ERROR', retryable: false });
+      expect(r).toMatchObject({ status: 'REJECTED', outcome: 'INVALID_EVENT', error_class: 'VALIDATION_ERROR', retryable: false });
       expect(r.issues).toEqual(['payload.quote_id: required, format Q-YYYY-NNNN']);
       const again = await call(db, 'wf_quote_accepted', bad);
       expect(again).toMatchObject({ status: 'REJECTED', redelivery: true, exception_number: r.exception_number });
@@ -107,11 +120,27 @@ describe.each(TARGETS)('Quote Accepted -> Project workflow functions [%s]', (tar
     it('NOT_FOUND, INVALID_STATE (lost quote) and INVALID_STATE (stale version) create no project', async () => {
       const projectsBefore = await count(db, 'select count(*) v from projects');
       expect(await call(db, 'wf_quote_accepted', quoteAccepted('EVT-T-NF', 'Q-2026-9999', 1))).toMatchObject({ status: 'REJECTED', error_class: 'NOT_FOUND' });
-      expect(await call(db, 'wf_quote_accepted', quoteAccepted('EVT-T-LOST', 'Q-2026-0035', 1))).toMatchObject({ status: 'REJECTED', error_class: 'INVALID_STATE' });
+      expect(await call(db, 'wf_quote_accepted', quoteAccepted('EVT-T-LOST', 'Q-2026-0035', 1))).toMatchObject({ status: 'REJECTED', outcome: 'INVALID_STATE', error_class: 'INVALID_STATE' });
       expect(await call(db, 'wf_quote_accepted', quoteAccepted('EVT-T-VER', 'Q-2026-0051', 1))).toMatchObject({ status: 'REJECTED', error_class: 'INVALID_STATE' });
       expect(await count(db, 'select count(*) v from projects')).toBe(projectsBefore);
       // the claim was released: the corrected event (current version v2) succeeds
       expect(await call(db, 'wf_quote_accepted', quoteAccepted('EVT-T-VER2', 'Q-2026-0051', 2))).toMatchObject({ status: 'CREATED' });
+    });
+
+    it('cross-checks the Airtable record\'s RoofOps ID against Postgres: a mismatch is never guessed at', async () => {
+      const withUuid = (id: string, uuid: string) => {
+        const e = quoteAccepted(id, 'Q-2026-0054', 1);
+        (e.payload as Record<string, unknown>).quote_uuid = uuid;
+        return e;
+      };
+      expect(await call(db, 'wf_quote_accepted', withUuid('EVT-T-UUID-BAD', 'not-a-uuid')))
+        .toMatchObject({ status: 'REJECTED', outcome: 'INVALID_EVENT', issues: ['payload.quote_uuid: must be a UUID when present'] });
+      const wrong = await col(db, `select id::text v from quotes where quote_number = 'Q-2026-0058'`);
+      expect(await call(db, 'wf_quote_accepted', withUuid('EVT-T-UUID-WRONG', wrong[0]!)))
+        .toMatchObject({ status: 'REJECTED', outcome: 'INVALID_STATE', error_class: 'RECONCILIATION_MISMATCH' });
+      expect(await col(db, `select status v from quotes where quote_number = 'Q-2026-0054'`)).toEqual(['SENT']);
+      const right = await col(db, `select id::text v from quotes where quote_number = 'Q-2026-0054'`);
+      expect(await call(db, 'wf_quote_accepted', withUuid('EVT-T-UUID-OK', right[0]!))).toMatchObject({ status: 'CREATED' });
     });
 
     it('recovers the planted failure: accepted quote Q-2026-0031 without a project gets exactly one', async () => {
@@ -130,6 +159,28 @@ describe.each(TARGETS)('Quote Accepted -> Project workflow functions [%s]', (tar
       expect(await call(db, 'wf_claim_side_effect', drive(), 'worker-b', 120)).toMatchObject({ claimed: false, status: 'DISPATCHING' });
     });
 
+    it('the Airtable write-back cannot start before the Drive folder is verified (it needs the folder URL)', async () => {
+      expect(await call(db, 'wf_claim_side_effect', airtable(), 'worker-a', 120))
+        .toMatchObject({ claimed: false, status: 'WAITING_ON_DEPENDENCY', depends_on: drive(), dependency_status: 'DISPATCHING' });
+      expect(await col(db, `select status || '|' || attempts::text v from outbox where idempotency_key = '${airtable()}'`)).toEqual(['PENDING|0']);
+    });
+
+    it('refuses Drive proof that does not match what was asked for', async () => {
+      const pid = created.project_id as string;
+      const name = 'PRJ-2026-0031 - Oliver Grant';
+      const subs = driveProof(pid, name).subfolders;
+      const cases: [Record<string, unknown>, RegExp][] = [
+        [{ subfolders: subs.slice(0, 4) }, /subfolders read back/],
+        [{ subfolders: subs.map((f, i) => (i === 0 ? { ...f, trashed: true } : f)) }, /subfolders read back/],
+        [{ subfolders: subs.map((f, i) => (i === 0 ? { ...f, parent_id: 'elsewhere' } : f)) }, /subfolders read back/],
+        [{ name: 'PRJ-2026-0031 - Someone Else' }, /does not match/],
+        [{ app_properties: { roofops_project_id: '00000000-0000-0000-0000-000000000000' } }, /not tagged with project/],
+        [{ trashed: true }, /trashed=false/],
+      ];
+      for (const [over, err] of cases) await expect(call(db, 'wf_complete_side_effect', drive(), driveProof(pid, name, over))).rejects.toThrow(err);
+      expect(await count(db, `select count(*) v from external_links where provider = 'GOOGLE_DRIVE' and entity_id = '${pid}'`)).toBe(0);
+    });
+
     it('refuses to record a result without read-back verification', async () => {
       await expect(call(db, 'wf_complete_side_effect', drive(), { folder_id: 'abc', mime_type: 'application/vnd.google-apps.folder' }))
         .rejects.toThrow(/without read-back verification/);
@@ -142,11 +193,12 @@ describe.each(TARGETS)('Quote Accepted -> Project workflow functions [%s]', (tar
       expect(await call(db, 'wf_claim_side_effect', drive(), 'worker-a', 120)).toMatchObject({ claimed: false, status: 'FAILED' });
       await new Promise((r) => setTimeout(r, 1100));
       expect(await call(db, 'wf_claim_side_effect', drive(), 'worker-a', 120)).toMatchObject({ claimed: true, attempt: 2 });
-      const ok = await call(db, 'wf_complete_side_effect', drive(),
-        { verified: true, folder_id: '1TESTfolderIdFromDrive', mime_type: 'application/vnd.google-apps.folder', name: 'PRJ-2026-0031 - Oliver Grant', parent_id: '1ROOT' });
+      const ok = await call(db, 'wf_complete_side_effect', drive(), driveProof(created.project_id as string, 'PRJ-2026-0031 - Oliver Grant'));
       expect(ok).toMatchObject({ status: 'RECORDED', remaining_side_effects: 1 });
-      expect(await col(db, `select external_id || '|' || (verified_at is not null)::text v from external_links where provider = 'GOOGLE_DRIVE' and entity_id = '${created.project_id as string}'`))
+      expect(await col(db, `select external_id || '|' || (verified_at is not null)::text v from external_links where provider = 'GOOGLE_DRIVE' and entity_id = '${created.project_id as string}' and external_type = 'Folder'`))
         .toEqual(['1TESTfolderIdFromDrive|true']);
+      expect(await col(db, `select external_type v from external_links where provider = 'GOOGLE_DRIVE' and entity_id = '${created.project_id as string}' and external_type like 'Folder:%' order by 1`))
+        .toEqual(SUBFOLDERS.map((n) => `Folder:${n}`));
       expect(await col(db, `select error_class || '|' || http_status::text || '|' || retry_delay_ms::text v from workflow_run_steps
                               where run_id = (select id from workflow_runs where entity_id = '${created.project_id as string}') and status = 'FAILED'`))
         .toEqual(['UPSTREAM_5XX|503|1000']);
@@ -159,10 +211,16 @@ describe.each(TARGETS)('Quote Accepted -> Project workflow functions [%s]', (tar
     });
 
     it('completing the last side effect marks the workflow run SUCCEEDED', async () => {
-      expect(await call(db, 'wf_claim_side_effect', airtable(), 'worker-a', 120)).toMatchObject({ claimed: true });
-      await expect(call(db, 'wf_complete_side_effect', airtable(), { verified: true, project_record_id: 'not-a-record' })).rejects.toThrow(/recXXXXXXXXXXXXXX/);
-      expect(await call(db, 'wf_complete_side_effect', airtable(), { verified: true, project_record_id: 'recABCDEFGHIJKLMN' }))
-        .toMatchObject({ status: 'RECORDED', remaining_side_effects: 0 });
+      const claim = await call(db, 'wf_claim_side_effect', airtable(), 'worker-a', 120);
+      expect(claim).toMatchObject({ claimed: true, payload: { project_number: 'PRJ-2026-0031', status: 'Planning', quote_airtable_record_id: 'recTESTTESTTEST01',
+        drive_folder: { folder_id: '1TESTfolderIdFromDrive' } } });
+      const proof = { verified: true, project_record_id: 'recABCDEFGHIJKLMN', roofops_id: created.project_id, project_number: 'PRJ-2026-0031',
+        linked_quote_record_ids: ['recTESTTESTTEST01'], drive_folder_url: 'https://drive.google.com/drive/folders/1TESTfolderIdFromDrive' };
+      await expect(call(db, 'wf_complete_side_effect', airtable(), { ...proof, project_record_id: 'not-a-record' })).rejects.toThrow(/recXXXXXXXXXXXXXX/);
+      await expect(call(db, 'wf_complete_side_effect', airtable(), { ...proof, linked_quote_record_ids: [] })).rejects.toThrow(/not linked to quote record/);
+      await expect(call(db, 'wf_complete_side_effect', airtable(), { ...proof, drive_folder_url: 'https://example.com/x' })).rejects.toThrow(/does not match the verified folder/);
+      await expect(call(db, 'wf_complete_side_effect', airtable(), { ...proof, roofops_id: 'someone-else' })).rejects.toThrow(/does not carry project/);
+      expect(await call(db, 'wf_complete_side_effect', airtable(), proof)).toMatchObject({ status: 'RECORDED', remaining_side_effects: 0 });
       expect(await col(db, `select status v from workflow_runs where entity_id = '${created.project_id as string}'`)).toEqual(['SUCCEEDED']);
     });
 
@@ -191,12 +249,27 @@ describe.each(TARGETS)('Quote Accepted -> Project workflow functions [%s]', (tar
     });
   });
 
+  describe('Airtable webhook cursor (n8n keeps no state)', () => {
+    const hook = 'achTESTTESTTEST01';
+    it('starts at 1, only moves forward, and rejects a malformed webhook id', async () => {
+      expect(Number(await col(db, `select wf_airtable_cursor('${hook}') v`).then((r) => r[0]))).toBe(1);
+      expect(Number((await col(db, `select wf_airtable_cursor_advance('${hook}', 7) v`))[0])).toBe(7);
+      expect(Number((await col(db, `select wf_airtable_cursor_advance('${hook}', 3) v`))[0])).toBe(7);   // a slower, older execution
+      expect(Number((await col(db, `select wf_airtable_cursor('${hook}') v`))[0])).toBe(7);
+      await expect(db.query(`select wf_airtable_cursor_advance('not-a-hook', 9)`)).rejects.toThrow(/invalid Airtable webhook id/);
+    });
+  });
+
   describe('least privilege', () => {
     it('the workflow role can call the entry points but cannot read or write any table directly', async () => {
       await db.exec('begin; set local role roofops_workflow;');
       try {
         const r = await call(db, 'wf_claim_side_effect', 'no-such-key', 'w', 10);
         expect(r).toMatchObject({ claimed: false, status: 'UNKNOWN_KEY' });
+        expect(Number((await col(db, `select wf_airtable_cursor('achTESTTESTTEST02') v`))[0])).toBe(1);
+        await db.exec('savepoint c');
+        await expect(db.query('select * from integration_cursors')).rejects.toThrow(/permission denied/);
+        await db.exec('rollback to savepoint c');
         await db.exec('savepoint s');
         await expect(db.query('select * from projects limit 1')).rejects.toThrow(/permission denied/);
         await db.exec('rollback to savepoint s');

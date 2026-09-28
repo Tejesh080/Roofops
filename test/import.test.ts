@@ -16,6 +16,14 @@ const money = (x: string | number) => Number(x).toFixed(2);
 
 const ALL: Target[] = HOSTED ? [...TARGETS, 'hosted'] : TARGETS;
 
+// Rows that came from the bundle. Locally that is every row; on the hosted DB the live Phase 2 workflow has since
+// added its own (checked in test/live-phase2.test.ts), so bundle-preservation checks are scoped to imported rows.
+const IMPORTED: Record<string, string> = {
+  projects: 'created_by_event_id is null', workflow_exceptions: "record_origin = 'IMPORT'",
+  automation_events: "event_key ~ '^EVT-'", processed_events: "consumer like 'legacy:%'",
+};
+const imported = (table: string) => IMPORTED[table] ?? 'true';
+
 describe.each(ALL)('bundle import [%s]', (target) => {
   let db: Db;
   let first: ImportResult;
@@ -61,10 +69,10 @@ describe.each(ALL)('bundle import [%s]', (target) => {
         site_notes: 'site_notes', workflow_exceptions: 'workflow_exceptions', automation_events: 'project_events',
       };
       for (const [table, dbCol, srcCol] of pairs) {
-        const ids = await col(db, `select ${dbCol} v from ${table} order by 1`);
+        const ids = await col(db, `select ${dbCol} v from ${table} where ${imported(table)} order by 1`);
         expect(ids, table).toEqual(src[srcTable[table]!].rows.map((r) => r[srcCol]!).sort());
       }
-      const keys = await col(db, `select idempotency_key v from processed_events order by 1`);
+      const keys = await col(db, `select idempotency_key v from processed_events where ${imported('processed_events')} order by 1`);
       expect(keys).toEqual(src.processed_events.rows.map((r) => r.event_key!).sort());
     });
 
@@ -197,19 +205,19 @@ describe.each(ALL)('bundle import [%s]', (target) => {
       expect(await col(db, `select project_number v from v_project_risk where materials_after_start`)).toEqual(scenario('JOB_BEFORE_MATERIALS'));
     });
     it('1 unresolved automation exception', async () => {
-      expect(await col(db, `select exception_number v from workflow_exceptions where resolution_status = 'OPEN'`)).toEqual(scenario('OPEN_WORKFLOW_EXCEPTION'));
+      expect(await col(db, `select exception_number v from workflow_exceptions where resolution_status = 'OPEN' and record_origin = 'IMPORT'`)).toEqual(scenario('OPEN_WORKFLOW_EXCEPTION'));
     });
     it('KNOWN SOURCE DISCREPANCY: the UNRESOLVED_AUTOMATION_EXCEPTION tag is on PRJ-2026-0016, but the open exception is on PRJ-2026-0008', async () => {
       // Reported for review, deliberately not "fixed": only dates may be corrected.
       expect(scenario('UNRESOLVED_AUTOMATION_EXCEPTION')).toEqual(['PRJ-2026-0016']);
-      expect(await col(db, `select business_reference v from workflow_exceptions where resolution_status = 'OPEN'`)).toEqual(['PRJ-2026-0008']);
+      expect(await col(db, `select business_reference v from workflow_exceptions where resolution_status = 'OPEN' and record_origin = 'IMPORT'`)).toEqual(['PRJ-2026-0008']);
     });
     it('duplicate webhook fixture: blocked delivery linked to its original, plus its idempotency ledger entry', async () => {
       const [dup] = await db.query<{ key: string; status: string; cls: string; cause: string }>(`
         select d.event_key key, d.status, d.error_class cls, o.event_key cause
-        from automation_events d join automation_events o on o.event_id = d.causation_id where d.status = 'DUPLICATE_IGNORED'`);
+        from automation_events d join automation_events o on o.event_id = d.causation_id where d.status = 'DUPLICATE_IGNORED' and d.event_key ~ '^EVT-'`);
       expect(dup).toEqual({ key: 'EVT-DUP-0001', status: 'DUPLICATE_IGNORED', cls: 'DUPLICATE_EVENT', cause: 'EVT-00005' });
-      expect(await col(db, `select idempotency_key v from processed_events where idempotency_key like 'quote.accepted:%'`)).toEqual(['quote.accepted:Q-2026-0005']);
+      expect(await col(db, `select idempotency_key v from processed_events where idempotency_key like 'quote.accepted:%' and consumer like 'legacy:%'`)).toEqual(['quote.accepted:Q-2026-0005']);
     });
     it('rate-limit, timeout, validation, schema, auth and ambiguous-write exception fixtures exist and carry the right retry policy', async () => {
       const rows = await db.query<{ c: string; r: boolean }>(`select error_class c, retryable r from workflow_exceptions order by exception_number`);
@@ -246,7 +254,12 @@ describe.each(ALL)('bundle import [%s]', (target) => {
     it('continues friendly IDs after the imported ones', async () => {
       await db.exec('begin');
       expect(await col(db, `select next_friendly_id('PRJ', 2026) v union all select next_friendly_id('Q', 2026) union all select next_friendly_id('PO', 2026) union all select next_friendly_id('EXC')`))
-        .toEqual(['PRJ-2026-0031', 'Q-2026-0066', 'PO-2026-0036', 'EXC-0013']);
+        .toEqual(target === 'hosted'
+          // the live workflow has since issued PRJ-2026-0031..0033 and EXC-0013..0015: numbering continues after them, with no reuse
+          ? await col(db, `select 'PRJ-2026-' || lpad((max(substr(project_number, 10)::int) + 1)::text, 4, '0') v from projects
+                          union all select 'Q-2026-0066' union all select 'PO-2026-0036'
+                          union all select 'EXC-' || lpad((max(substr(exception_number, 5)::int) + 1)::text, 4, '0') from workflow_exceptions`)
+          : ['PRJ-2026-0031', 'Q-2026-0066', 'PO-2026-0036', 'EXC-0013']);
       await db.exec('rollback');
     });
   });

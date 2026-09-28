@@ -1,0 +1,56 @@
+{
+  "quote": {
+    "number": "Q-2026-0035",
+    "id": "e79e53cd-98d5-8034-b7d2-0a089fc1cf44",
+    "status": "LOST",
+    "accepted_on": null
+  },
+  "projects": [],
+  "tasks": [],
+  "checklist_items": 0,
+  "outbox": [],
+  "external_links": [],
+  "workflow_runs": [],
+  "run_steps": [],
+  "processed_events": [],
+  "automation_events": [
+    {
+      "event_key": "airtable:ach6PdRNqU0HAb2oV:txn27:recN0rrqihA57YQsu",
+      "event_type": "quote.accepted",
+      "status": "REJECTED",
+      "error_class": "INVALID_STATE",
+      "reason": "Quote Q-2026-0035 is LOST; only a SENT quote can be accepted"
+    },
+    {
+      "event_key": "airtable:ach6PdRNqU0HAb2oV:txn27:recN0rrqihA57YQsu:redelivery:1",
+      "event_type": "quote.accepted",
+      "status": "REJECTED",
+      "error_class": "INVALID_STATE",
+      "reason": "Quote Q-2026-0035 is LOST; only a SENT quote can be accepted"
+    }
+  ],
+  "audit": [],
+  "exceptions": [
+    {
+      "exception_number": "EXC-0013",
+      "error_class": "INVALID_STATE",
+      "resolution_status": "OPEN",
+      "attempt_count": 1,
+      "message": "Quote Q-2026-0035 is LOST; only a SENT quote can be accepted"
+    },
+    {
+      "exception_number": "EXC-0014",
+      "error_class": "INVALID_STATE",
+      "resolution_status": "OPEN",
+      "attempt_count": 1,
+      "message": "Quote Q-2026-0035 is LOST; only a SENT quote can be accepted"
+    }
+  ],
+  "audit_chain": "intact",
+  "totals": {
+    "projects": "31",
+    "material_reviews": "1",
+    "outbox": "2",
+    "exceptions": "14"
+  }
+}

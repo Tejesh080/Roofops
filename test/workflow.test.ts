@@ -24,12 +24,11 @@ const count = async (db: Db, sql: string) => Number((await col(db, sql))[0]);
 const SUBFOLDERS = ['01 Quote', '02 Site', '03 Materials', '04 Supplier', '05 Completion'];
 const FOLDER = 'application/vnd.google-apps.folder';
 /** The shape n8n sends after reading the Drive folder and its children back. */
-function driveProof(projectId: string, name: string, over: Record<string, unknown> = {}) {
-  const folderId = '1TESTfolderIdFromDrive';
+function driveProof(projectId: string, name: string, over: Record<string, unknown> = {}, folderId = '1TESTfolderIdFromDrive') {
   return {
     verified: true, folder_id: folderId, mime_type: FOLDER, name, parent_id: '1ROOT', trashed: false,
     web_view_link: `https://drive.google.com/drive/folders/${folderId}`, app_properties: { roofops_project_id: projectId },
-    subfolders: SUBFOLDERS.map((n, i) => ({ id: `1SUB${String(i)}`, name: n, parent_id: folderId, mime_type: FOLDER, trashed: false })),
+    subfolders: SUBFOLDERS.map((n, i) => ({ id: `${folderId}-SUB${String(i)}`, name: n, parent_id: folderId, mime_type: FOLDER, trashed: false })),
     ...over,
   };
 }
@@ -125,6 +124,15 @@ describe.each(TARGETS)('Quote Accepted -> Project workflow functions [%s]', (tar
       expect(await count(db, 'select count(*) v from projects')).toBe(projectsBefore);
       // the claim was released: the corrected event (current version v2) succeeds
       expect(await call(db, 'wf_quote_accepted', quoteAccepted('EVT-T-VER2', 'Q-2026-0051', 2))).toMatchObject({ status: 'CREATED' });
+    });
+
+    it('a rejected fact delivered again (redelivery or re-acceptance) reuses its one open exception (found live: EXC-0013/0014)', async () => {
+      const first = await call(db, 'wf_quote_accepted', quoteAccepted('EVT-T-LOST', 'Q-2026-0035', 1));   // transport redelivery of the earlier event
+      const again = await call(db, 'wf_quote_accepted', quoteAccepted('EVT-T-LOST-2', 'Q-2026-0035', 1)); // staff re-accept: new event, same fact
+      expect(first).toMatchObject({ outcome: 'INVALID_STATE' });
+      expect(again.exception_number).toBe(first.exception_number);
+      expect(await col(db, `select exception_number || '|' || attempt_count::text v from workflow_exceptions
+                              where business_reference = 'Q-2026-0035' and resolution_status = 'OPEN'`)).toEqual([`${first.exception_number as string}|3`]);
     });
 
     it('cross-checks the Airtable record\'s RoofOps ID against Postgres: a mismatch is never guessed at', async () => {
@@ -233,6 +241,25 @@ describe.each(TARGETS)('Quote Accepted -> Project workflow functions [%s]', (tar
       expect(await col(db, `select status v from workflow_runs where entity_id = '${q.project_id as string}'`)).toEqual(['DEAD_LETTERED']);
       expect(await col(db, `select error_class || '|' || resolution_status v from workflow_exceptions where exception_number = '${f.exception_number as string}'`))
         .toEqual(['AUTH_FAILURE|OPEN']);
+    });
+
+    it('a dead-lettered side effect that later succeeds auto-resolves its exception, naming the system actor (latent CHECK bug)', async () => {
+      const q = await call(db, 'wf_quote_accepted', quoteAccepted('EVT-T-HEAL', 'Q-2026-0036', 1));
+      const key = `drive:project-folder:${q.project_id as string}`;
+      await call(db, 'wf_claim_side_effect', key, 'w', 120);
+      const f = await call(db, 'wf_fail_side_effect', key, 'PERMISSION_DENIED', 'Drive 403 on the root folder', 403, null);
+      expect(f).toMatchObject({ retry: false });
+      await db.exec(`update outbox set status = 'PENDING', next_attempt_at = now() where idempotency_key = '${key}'`);   // operator re-queues after fixing sharing
+      await call(db, 'wf_claim_side_effect', key, 'w', 120);
+      const [name] = await col(db, `select payload->>'folder_name' v from outbox where idempotency_key = '${key}'`);
+      expect(await call(db, 'wf_complete_side_effect', key, driveProof(q.project_id as string, name!, {}, '1HEALfolderId'))).toMatchObject({ status: 'RECORDED', remaining_side_effects: 1 });
+      expect(await col(db, `select resolution_status v from workflow_exceptions where exception_number = '${f.exception_number as string}'`)).toEqual(['OPEN']);   // run-level: still one step left
+      const at = `airtable:project-writeback:${q.project_id as string}`;
+      await call(db, 'wf_claim_side_effect', at, 'w', 120);
+      expect(await call(db, 'wf_complete_side_effect', at, { verified: true, project_record_id: 'recHEALHEALHEAL01', roofops_id: q.project_id, project_number: q.project_number,
+        linked_quote_record_ids: ['recTESTTESTTEST01'], drive_folder_url: 'https://drive.google.com/drive/folders/1HEALfolderId' })).toMatchObject({ remaining_side_effects: 0 });
+      expect(await col(db, `select resolution_status || '|' || resolved_by_system v from workflow_exceptions where exception_number = '${f.exception_number as string}'`))
+        .toEqual(['RESOLVED|workflow:quote_to_project']);
     });
 
     it('retryable failures stop after max attempts and open an exception', async () => {

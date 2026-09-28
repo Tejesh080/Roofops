@@ -1,0 +1,253 @@
+{
+  "quote": {
+    "number": "Q-2026-0041",
+    "id": "f9602b55-2cc4-86c6-a6e4-e746b7336ed1",
+    "status": "ACCEPTED",
+    "accepted_on": "2026-09-29"
+  },
+  "projects": [
+    {
+      "id": "cf075e42-fcc0-4e99-9b8d-f851d16dd61e",
+      "project_number": "PRJ-2026-0031",
+      "status": "PLANNING",
+      "pm": "Lachlan Reed"
+    }
+  ],
+  "tasks": [
+    {
+      "task_type": "MATERIAL_REVIEW",
+      "title": "Review materials for PRJ-2026-0031",
+      "due_on": "2026-10-01",
+      "dedupe_key": "material_review:cf075e42-fcc0-4e99-9b8d-f851d16dd61e"
+    }
+  ],
+  "checklist_items": 5,
+  "outbox": [
+    {
+      "topic": "airtable.project_writeback",
+      "status": "DONE",
+      "attempts": 1,
+      "last_error": null
+    },
+    {
+      "topic": "drive.ensure_project_folder",
+      "status": "DONE",
+      "attempts": 1,
+      "last_error": null
+    }
+  ],
+  "external_links": [
+    {
+      "provider": "AIRTABLE",
+      "external_type": "Record",
+      "external_id": "recDT4dQPmrjy5Mmu",
+      "external_url": null,
+      "verified": true
+    },
+    {
+      "provider": "GOOGLE_DRIVE",
+      "external_type": "Folder",
+      "external_id": "1cI9mwecHdt2qA5961tXTa0sAgWhE6Wu9",
+      "external_url": "https://drive.google.com/drive/folders/1cI9mwecHdt2qA5961tXTa0sAgWhE6Wu9",
+      "verified": true
+    },
+    {
+      "provider": "GOOGLE_DRIVE",
+      "external_type": "Folder:01 Quote",
+      "external_id": "1bnYt6qaiymTjyNSIhdiXgCMOvFGMobKS",
+      "external_url": "https://drive.google.com/drive/folders/1bnYt6qaiymTjyNSIhdiXgCMOvFGMobKS",
+      "verified": true
+    },
+    {
+      "provider": "GOOGLE_DRIVE",
+      "external_type": "Folder:02 Site",
+      "external_id": "16yc8Z4VnVyRXwlIhAE-9ch5plszXgkMl",
+      "external_url": "https://drive.google.com/drive/folders/16yc8Z4VnVyRXwlIhAE-9ch5plszXgkMl",
+      "verified": true
+    },
+    {
+      "provider": "GOOGLE_DRIVE",
+      "external_type": "Folder:03 Materials",
+      "external_id": "1V8poJ02SZ1ok68hnREK6M_adB2pGZAi1",
+      "external_url": "https://drive.google.com/drive/folders/1V8poJ02SZ1ok68hnREK6M_adB2pGZAi1",
+      "verified": true
+    },
+    {
+      "provider": "GOOGLE_DRIVE",
+      "external_type": "Folder:04 Supplier",
+      "external_id": "1qvqDANUjfcuvCzTLkAmt_Js0coj4Z2iQ",
+      "external_url": "https://drive.google.com/drive/folders/1qvqDANUjfcuvCzTLkAmt_Js0coj4Z2iQ",
+      "verified": true
+    },
+    {
+      "provider": "GOOGLE_DRIVE",
+      "external_type": "Folder:05 Completion",
+      "external_id": "1Tw8CJuvM2sWX3nt0w2O2JpazTeJSBbZ3",
+      "external_url": "https://drive.google.com/drive/folders/1Tw8CJuvM2sWX3nt0w2O2JpazTeJSBbZ3",
+      "verified": true
+    }
+  ],
+  "workflow_runs": [
+    {
+      "status": "SUCCEEDED",
+      "attempt_count": 1,
+      "last_error_class": null
+    }
+  ],
+  "run_steps": [
+    {
+      "seq": 1,
+      "attempt": 1,
+      "step_key": "validate_event",
+      "status": "SUCCEEDED",
+      "error_class": null,
+      "http_status": null,
+      "retry_delay_ms": null
+    },
+    {
+      "seq": 2,
+      "attempt": 1,
+      "step_key": "claim_idempotency",
+      "status": "SUCCEEDED",
+      "error_class": null,
+      "http_status": null,
+      "retry_delay_ms": null
+    },
+    {
+      "seq": 3,
+      "attempt": 1,
+      "step_key": "accept_quote",
+      "status": "SUCCEEDED",
+      "error_class": null,
+      "http_status": null,
+      "retry_delay_ms": null
+    },
+    {
+      "seq": 4,
+      "attempt": 1,
+      "step_key": "create_project",
+      "status": "SUCCEEDED",
+      "error_class": null,
+      "http_status": null,
+      "retry_delay_ms": null
+    },
+    {
+      "seq": 5,
+      "attempt": 1,
+      "step_key": "create_checklist_and_task",
+      "status": "SUCCEEDED",
+      "error_class": null,
+      "http_status": null,
+      "retry_delay_ms": null
+    },
+    {
+      "seq": 6,
+      "attempt": 1,
+      "step_key": "queue_side_effects",
+      "status": "SUCCEEDED",
+      "error_class": null,
+      "http_status": null,
+      "retry_delay_ms": null
+    },
+    {
+      "seq": 7,
+      "attempt": 1,
+      "step_key": "drive.ensure_project_folder",
+      "status": "SUCCEEDED",
+      "error_class": null,
+      "http_status": null,
+      "retry_delay_ms": null
+    },
+    {
+      "seq": 8,
+      "attempt": 1,
+      "step_key": "airtable.project_writeback",
+      "status": "SUCCEEDED",
+      "error_class": null,
+      "http_status": null,
+      "retry_delay_ms": null
+    }
+  ],
+  "processed_events": [
+    {
+      "idempotency_key": "quote.accepted:Q-2026-0041:v1",
+      "status": "COMPLETED",
+      "delivery_count": 1
+    }
+  ],
+  "automation_events": [
+    {
+      "event_key": "airtable:ach6PdRNqU0HAb2oV:txn16:rec4MMzrBxFdppyVd",
+      "event_type": "quote.accepted",
+      "status": "SUCCEEDED",
+      "error_class": null,
+      "reason": null
+    },
+    {
+      "event_key": "airtable:ach6PdRNqU0HAb2oV:txn16:rec4MMzrBxFdppyVd:materials.review_requested",
+      "event_type": "materials.review_requested",
+      "status": "SUCCEEDED",
+      "error_class": null,
+      "reason": null
+    },
+    {
+      "event_key": "airtable:ach6PdRNqU0HAb2oV:txn16:rec4MMzrBxFdppyVd:project.created",
+      "event_type": "project.created",
+      "status": "SUCCEEDED",
+      "error_class": null,
+      "reason": null
+    },
+    {
+      "event_key": "drive:project-folder:cf075e42-fcc0-4e99-9b8d-f851d16dd61e:done:1",
+      "event_type": "drive.project_folder.verified",
+      "status": "SUCCEEDED",
+      "error_class": null,
+      "reason": null
+    },
+    {
+      "event_key": "airtable:project-writeback:cf075e42-fcc0-4e99-9b8d-f851d16dd61e:done:1",
+      "event_type": "airtable.project_writeback.verified",
+      "status": "SUCCEEDED",
+      "error_class": null,
+      "reason": null
+    }
+  ],
+  "audit": [
+    {
+      "seq": "14",
+      "action": "quote.accept",
+      "actor_id": "usr7uCnNO15fCefbH",
+      "business_reference": "Q-2026-0041",
+      "external_reference": null
+    },
+    {
+      "seq": "15",
+      "action": "project.create",
+      "actor_id": "quote_to_project@1",
+      "business_reference": "PRJ-2026-0031",
+      "external_reference": null
+    },
+    {
+      "seq": "17",
+      "action": "drive.folder.link",
+      "actor_id": "google-drive",
+      "business_reference": "PRJ-2026-0031",
+      "external_reference": "1cI9mwecHdt2qA5961tXTa0sAgWhE6Wu9"
+    },
+    {
+      "seq": "18",
+      "action": "airtable.project.writeback",
+      "actor_id": "airtable",
+      "business_reference": "PRJ-2026-0031",
+      "external_reference": "recDT4dQPmrjy5Mmu"
+    }
+  ],
+  "exceptions": [],
+  "audit_chain": "intact",
+  "totals": {
+    "projects": "31",
+    "material_reviews": "1",
+    "outbox": "2",
+    "exceptions": "12"
+  }
+}

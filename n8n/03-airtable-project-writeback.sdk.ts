@@ -1,6 +1,6 @@
 import { workflow, node, trigger, ifElse, switchCase, expr } from '@n8n/workflow-sdk';
 
-const AIRTABLE = { airtableApi: { id: '9oxseGuocpt3UtcB', name: 'Roofops Airtable account' } };
+const AIRTABLE = { airtableTokenApi: { id: '3XbFnHjAd7mFvBD2', name: 'Roofops Airtable Personal Access Token account' } };
 const PG = { postgres: { id: 'kWqjtv0gz7ref2EN', name: 'RoofOps Postgres' } };
 const RAW = { response: { response: { fullResponse: true, neverError: true } }, timeout: 20000 };
 const BASE = 'https://api.airtable.com/v0/appMc8V0Wm29tEeHQ';
@@ -84,7 +84,7 @@ return [{ json: { ok: true, request: { performUpsert: { fieldsToMergeOn: [F.roof
 const buildOk = ifElse({ version: 2.3, config: { name: 'Record Built?', parameters: OK_IF } });
 
 const upsert = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Upsert Project Record', onError: 'continueRegularOutput',
-  parameters: { method: 'PATCH', url: PROJECTS, authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableApi',
+  parameters: { method: 'PATCH', url: PROJECTS, authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi',
     sendBody: true, contentType: 'json', specifyBody: 'json', jsonBody: expr('{{ JSON.stringify($json.request) }}'), options: RAW },
   credentials: AIRTABLE }, output: [{ statusCode: 200, body: { records: [{ id: 'rec' }] } }] });
 
@@ -99,17 +99,17 @@ return [{ json: { ok: true, record_id: recs[0].id, created: (r.body.createdRecor
 const upsertOk = ifElse({ version: 2.3, config: { name: 'Upsert OK?', parameters: OK_IF } });
 
 const readProject = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Read Back Project Record', onError: 'continueRegularOutput',
-  parameters: { method: 'GET', url: expr(PROJECTS + '/{{ $json.record_id }}'), authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableApi',
+  parameters: { method: 'GET', url: expr(PROJECTS + '/{{ $json.record_id }}'), authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi',
     sendQuery: true, queryParameters: { parameters: [{ name: 'returnFieldsByFieldId', value: 'true' }] }, options: RAW },
   credentials: AIRTABLE }, output: [{ statusCode: 200, body: { id: 'rec', fields: {} } }] });
 
 const readQuote = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Read Back Quote Link', onError: 'continueRegularOutput',
-  parameters: { method: 'GET', url: expr(QUOTES + "/{{ $('Claim Airtable Write-back').last().json.c.payload.quote_airtable_record_id }}"), authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableApi',
+  parameters: { method: 'GET', url: expr(QUOTES + "/{{ $('Claim Airtable Write-back').last().json.c.payload.quote_airtable_record_id }}"), authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi',
     sendQuery: true, queryParameters: { parameters: [{ name: 'returnFieldsByFieldId', value: 'true' }] }, options: RAW },
   credentials: AIRTABLE }, output: [{ statusCode: 200, body: { id: 'rec', fields: {} } }] });
 
 const countMatches = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Count Matching Project Records', onError: 'continueRegularOutput',
-  parameters: { method: 'GET', url: PROJECTS, authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableApi',
+  parameters: { method: 'GET', url: PROJECTS, authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi',
     sendQuery: true, queryParameters: { parameters: [
       { name: 'filterByFormula', value: expr("OR({RoofOps ID}='{{ $('Claim Airtable Write-back').last().json.c.payload.project_id }}',{Project Number}='{{ $('Claim Airtable Write-back').last().json.c.payload.project_number }}')") },
       { name: 'fields[]', value: 'Project Number' }, { name: 'pageSize', value: '10' }] }, options: RAW },

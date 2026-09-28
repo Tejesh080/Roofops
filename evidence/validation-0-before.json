@@ -1,0 +1,26 @@
+{
+  "quote": {
+    "number": "Q-2026-0035",
+    "id": "e79e53cd-98d5-8034-b7d2-0a089fc1cf44",
+    "status": "LOST",
+    "accepted_on": null
+  },
+  "projects": [],
+  "tasks": [],
+  "checklist_items": 0,
+  "outbox": [],
+  "external_links": [],
+  "workflow_runs": [],
+  "run_steps": [],
+  "processed_events": [],
+  "automation_events": [],
+  "audit": [],
+  "exceptions": [],
+  "audit_chain": "intact",
+  "totals": {
+    "projects": "31",
+    "material_reviews": "1",
+    "outbox": "2",
+    "exceptions": "12"
+  }
+}

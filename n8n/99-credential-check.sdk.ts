@@ -1,6 +1,6 @@
 import { workflow, node, trigger, expr } from '@n8n/workflow-sdk';
 
-const AIRTABLE = { airtableApi: { id: '9oxseGuocpt3UtcB', name: 'Roofops Airtable account' } };
+const AIRTABLE = { airtableTokenApi: { id: '3XbFnHjAd7mFvBD2', name: 'Roofops Airtable Personal Access Token account' } };
 const DRIVE = { googleDriveOAuth2Api: { id: 'o7IjcWsTr1ZUy9wU', name: 'RoofOps Google Drive' } };
 const PG = { postgres: { id: 'kWqjtv0gz7ref2EN', name: 'RoofOps Postgres' } };
 const DEEPSEEK = { deepSeekApi: { id: 'jv3W4NvaBlk9SJgb', name: 'Roofops deepseek api key which i kept in .env aswell' } };
@@ -9,13 +9,13 @@ const RESP = { response: { response: { fullResponse: true, neverError: true } } 
 const start = trigger({ type: 'n8n-nodes-base.manualTrigger', version: 1, config: { name: 'Run Credential Check' }, output: [{}] });
 
 const atSchema = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Airtable Read Base Schema',
-  parameters: { method: 'GET', url: 'https://api.airtable.com/v0/meta/bases/appMc8V0Wm29tEeHQ/tables', authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableApi', options: RESP },
+  parameters: { method: 'GET', url: 'https://api.airtable.com/v0/meta/bases/appMc8V0Wm29tEeHQ/tables', authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi', options: RESP },
   credentials: AIRTABLE }, output: [{ statusCode: 200, body: { tables: [] } }] });
 const atQuote = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Airtable Read Quote Q-2026-0041',
-  parameters: { method: 'GET', url: 'https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/tblzenPRNVV5O7lZP/rec4MMzrBxFdppyVd?returnFieldsByFieldId=true', authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableApi', options: RESP },
+  parameters: { method: 'GET', url: 'https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/tblzenPRNVV5O7lZP/rec4MMzrBxFdppyVd?returnFieldsByFieldId=true', authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi', options: RESP },
   credentials: AIRTABLE }, output: [{ statusCode: 200, body: { id: 'rec', fields: {} } }] });
 const atHooks = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Airtable List Webhooks',
-  parameters: { method: 'GET', url: 'https://api.airtable.com/v0/bases/appMc8V0Wm29tEeHQ/webhooks', authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableApi', options: RESP },
+  parameters: { method: 'GET', url: 'https://api.airtable.com/v0/bases/appMc8V0Wm29tEeHQ/webhooks', authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi', options: RESP },
   credentials: AIRTABLE }, output: [{ statusCode: 200, body: { webhooks: [] } }] });
 
 const pgCheck = node({ type: 'n8n-nodes-base.postgres', version: 2.7, config: { name: 'Postgres Call Allowed Entry Point',

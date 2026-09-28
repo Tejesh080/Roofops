@@ -103,3 +103,35 @@ I recommend (a) for Phase 2, since it matches your flow ("Postgres idempotency c
 **Status:** Accepted (found by the hosted exposure test)
 **Context:** Postgres grants EXECUTE on new functions to PUBLIC, and per-schema `ALTER DEFAULT PRIVILEGES … REVOKE` cannot remove a global default. So the Supabase `anon` role could execute new functions.
 **Decision:** revoke globally (`ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC`) and assert in every environment that no public-schema function grants EXECUTE to PUBLIC.
+
+### ADR-022: Airtable webhook + durable Postgres cursor, not polling
+**Status:** Accepted (Phase 2)
+**Decision:** Airtable pushes a data-less ping; n8n fetches the payloads itself with its own credential, starting from a cursor kept in Postgres (`integration_cursors`, advanced monotonically by `wf_airtable_cursor_advance`). The webhook watches `Quotes.Status` only, so the workflow's own Automation Status writes never re-trigger it. `00 Setup` refreshes the webhook daily (Airtable expires webhooks after 7 days).
+**Consequence:** ~5 Airtable calls per acceptance and none while idle (the free plan allows 1,000 a month). Pings are not HMAC-verified: a forged ping can only cause an extra read. Overlapping pings read overlapping payloads, and idempotency absorbs that (proven live, ADR-025).
+
+### ADR-023: Event id comes from the Airtable transaction
+**Status:** Accepted
+**Decision:** `event_id = airtable:{webhook}:txn{baseTransactionNumber}:{recordId}`. A redelivery or replay of the same Airtable change is a transport duplicate; a new status change is a new event, and the business key `quote.accepted:Q:vN` catches it as a semantic duplicate.
+
+### ADR-024: Side effects are sub-workflows with a Postgres-owned retry loop
+**Status:** Accepted
+**Decision:** `02 Drive` and `03 Airtable` each process one project: claim → act → read back → prove. Failures are classified in n8n (HTTP status → error class) and handed to `wf_fail_side_effect`, which owns the backoff (1, 2, 4, 8 s, or Retry-After) and the attempt limit. The Airtable write-back cannot be claimed until the Drive folder is verified, and the claim hands it the verified folder.
+**Consequence:** retry policy lives in one place (Postgres); n8n holds no retry state. The final attempt is recorded as an event and an exception, not as a run step (known gap).
+
+### ADR-025: Status write-back tolerates concurrent deliveries (found live)
+**Status:** Accepted
+**Context:** two overlapping pings delivered the same fact; each wrote a message with its own delivery count, and the loser's read-back failed.
+**Decision:** the quote status message is deterministic per business fact. The read-back accepts a different value only if it is a non-failure state about the same project, and says so (`superseded_by_concurrent_delivery`). A mismatch involving Rejected or Failed still fails the execution.
+
+### ADR-026: One exception per rejected business fact (found live)
+**Status:** Accepted (migration 700)
+**Decision:** a rejection for the same quote, class and reason reuses the open exception (`attempt_count` increases) instead of opening a new one per delivery. Duplicates created before the fix were folded into the original with an audit row; nothing was deleted.
+
+### ADR-027: Machine resolutions name a system actor
+**Status:** Accepted (migration 700)
+**Context:** the CHECK on `workflow_exceptions` demanded an employee on every RESOLVED exception, so the workflow's auto-resolve (side effect succeeds after an exception) would have aborted completion. Found while fixing ADR-026, before it could happen live.
+**Decision:** `resolved_by_system` (e.g. `workflow:quote_to_project`). A resolution names an employee or a system actor, never neither. Proven live on EXC-0015.
+
+### ADR-028: Real, reversible fault injection for retry tests
+**Status:** Accepted (test tooling)
+**Decision:** transient failures are produced by moving the real Drive root to trash (`[RoofOps] 97`, manual only, never published) rather than by mocks, flags in production code, or breaking credentials. The Drive step gets a genuine "not available" answer and the system's real retry path runs. `00 Setup` never re-creates a root that is only in the trash.

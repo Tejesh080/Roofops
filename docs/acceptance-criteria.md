@@ -58,28 +58,23 @@ Scope revised by the user: load the **canonical synthetic data bundle** (no rege
 - ➡ Moved to **Phase 4**: permission-matrix tests (they belong with the copilot tool guard)
 - ➡ Not applicable: Next.js scaffold (no frontend this phase, per the user)
 
-## Phase 2: Real n8n + Airtable + Google Drive, Quote Accepted → Project (🟡 in progress)
+## Phase 2: Real n8n + Airtable + Google Drive, Quote Accepted → Project ✅ (awaiting review)
 
-Real services only (ADR-018). Each side effect: **create, then read back, then verify**.
+Real services only (ADR-018). Each side effect: **create, then read back, then verify**. Evidence: docs/phase2-status.md.
 
-**Done and verified**
-- [x] Hosted Postgres 17 (Supabase, Sydney): schema and data deployed; 50 hosted verification checks pass (counts, preservation, scenarios, constraints, security)
-- [x] Supabase Data API surface closed: `anon` and `authenticated` can read 0 tables/views and execute 0 functions (verified before and after the fix)
-- [x] Workflow control layer in Postgres (`wf_quote_accepted`, `wf_claim_side_effect`, `wf_complete_side_effect`, `wf_fail_side_effect`): validation, business-fact idempotency, project + checklist + material-review task, outbox, events, audit, in one transaction
-- [x] Duplicate safety proven on real Postgres: transport redelivery, semantic duplicate, and 3 concurrency races × 20 rounds (60 races): exactly one project, one task, one side-effect claim
-- [x] Validation failure (non-retryable, one exception even on redelivery) and transient failure (bounded backoff, then success) proven at the control layer
-- [x] Side effects cannot be recorded without `verified: true` read-back proof; a second Drive folder for one project is refused
-- [x] Least-privilege `roofops_n8n` login (hosted): EXECUTE on the 4 entry points only; table/function access denied (proven by connecting as the role)
-- [x] Airtable "RoofOps Demo" base: 6 tables, 228 synthetic records, all read back and matched to Postgres; record IDs stored as verified `external_links`
-
-**Blocked (see docs/phase2-status.md)**
-- [ ] Dedicated RoofOps n8n Cloud workspace (`N8N_BASE_URL` points at a shared workspace)
-- [ ] Google OAuth2 (`drive.file`) credential in that workspace → real "RoofOps Demo" root folder, created and read back
-- [ ] Airtable credential for n8n (PAT scoped to the RoofOps Demo base) + Airtable webhook (push; the free plan's 1,000 calls a month rules out polling)
-- [ ] n8n workflow deployed via API; secrets referenced by credential only
-- [ ] E2E: accept quote in Airtable → n8n execution (read via API) → exactly one Postgres project → Drive folder (files.get) → Airtable project record + quote link (read back) → audit chain
-- [ ] E2E duplicate: re-trigger → still one project, one folder, one task; duplicate event explained in `automation_events`
-- [ ] E2E failures: one real transient failure (e.g. genuine client timeout on the Drive call, reconciled by search before retry) and one validation failure, both visible in `workflow_exceptions` and in Airtable `Automation Status`
+- [x] Hosted Postgres 17 (Supabase): schema + data; migrations 000–700; hosted verification suite (63 checks) incl. live Phase 2 evidence
+- [x] Supabase Data API surface closed (`anon` / `authenticated`: 0 tables, 0 functions)
+- [x] Four n8n credentials verified against the real services (Airtable PAT, Postgres least-privilege role, Google Drive, DeepSeek)
+- [x] Airtable webhook (push, Quotes.Status only) with a durable Postgres cursor; refreshed daily; no polling
+- [x] `[RoofOps] 01 Quote Accepted → Project` published in the Roofops project; business logic only in Postgres functions; secrets only in n8n credentials
+- [x] Real Drive root + per-project folder with 01–05 subfolders; every create read back; IDs/URLs stored as verified `external_links` and in Airtable
+- [x] Airtable Project upserted on RoofOps ID, linked to Quote and Customer, Drive URL written; project, quote back-link and uniqueness read back
+- [x] E2E: Airtable Sent → Accepted → exactly one Postgres project, task, checklist, Drive folder, Airtable project; audit chain explains it
+- [x] Transport duplicate (same event id) and semantic duplicate (new event id, same fact), incl. overlapping executions: still 1 of everything, in all three systems
+- [x] Validation failure: rejected, no side effects, one exception (after the ADR-026 fix), no retry, staff-visible reason
+- [x] Transient failure: bounded, logged retries; recovery; exhaustion → exception; operator re-queue → recovery → auto-resolve (ADR-027)
+- [x] Bugs found by live testing fixed at the design level and pinned by tests (ADR-025/026/027)
+- [ ] Carried to Phase 3: exception-queue UI (re-queue button), scheduled sweeper for crashed runs, final-attempt run step
 
 ## Phase 3: Reliability / failure handling with real workflow behaviour
 - [ ] Exception queue actions (retry / resolve / view event) operate on real runs; retry is idempotent

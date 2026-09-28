@@ -23,7 +23,7 @@ RoofOps models the full job lifecycle (lead → quote → project → purchasing
 |---|---|---|
 | 0 | Architecture, schema, acceptance criteria | ✅ |
 | 1 | Database + canonical data import (dates normalised to 2026-09-29) | ✅ awaiting review |
-| 2 | Airtable Quote Accepted → n8n → Postgres → Project → Drive → audit → Airtable | 🟡 partial: hosted DB, Airtable, workflow functions live; n8n and Drive BLOCKED ([status](docs/phase2-status.md)) |
+| 2 | Airtable Quote Accepted → n8n → Postgres → Project → Drive → audit → Airtable | ✅ live and verified, awaiting review ([status](docs/phase2-status.md)) |
 | 3 | Reliability lab + exception queue | ⏳ |
 | 4 | AI Operations Copilot (GREEN/AMBER/RED tools) | ⏳ |
 | 5 | Supplier quote → PO | ⏳ |

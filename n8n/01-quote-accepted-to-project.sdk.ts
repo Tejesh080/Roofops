@@ -1,6 +1,6 @@
 import { workflow, node, trigger, ifElse, switchCase, expr } from '@n8n/workflow-sdk';
 
-const AIRTABLE = { airtableApi: { id: '9oxseGuocpt3UtcB', name: 'Roofops Airtable account' } };
+const AIRTABLE = { airtableTokenApi: { id: '3XbFnHjAd7mFvBD2', name: 'Roofops Airtable Personal Access Token account' } };
 const PG = { postgres: { id: 'kWqjtv0gz7ref2EN', name: 'RoofOps Postgres' } };
 const RAW = { response: { response: { fullResponse: true, neverError: true } }, timeout: 20000 };
 const BASE_ID = 'appMc8V0Wm29tEeHQ';
@@ -31,7 +31,7 @@ const loadCursor = node({ type: 'n8n-nodes-base.postgres', version: 2.7, config:
 const listPayloads = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'List Airtable Payloads',
   retryOnFail: true, maxTries: 3, waitBetweenTries: 5000,
   parameters: { method: 'GET', url: expr("https://api.airtable.com/v0/bases/" + BASE_ID + "/webhooks/{{ $('Validate Ping').first().json.webhook_id }}/payloads"),
-    authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableApi',
+    authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi',
     sendQuery: true, queryParameters: { parameters: [
       { name: 'cursor', value: expr("{{ $('Validate Ping').first().json.replay_from_cursor ?? $json.cursor }}") },
       { name: 'limit', value: '50' }] },
@@ -115,6 +115,7 @@ const runAirtable = node({ type: 'n8n-nodes-base.executeWorkflow', version: 1.3,
 
 const compose = node({ type: 'n8n-nodes-base.code', version: 2, config: { name: 'Compose Quote Status',
   parameters: { mode: 'runOnceForEachItem', jsCode: `
+// Deterministic per business fact: concurrent deliveries of the same fact write identical text.
 const j = $json;
 const r = j.r || {};
 let status; let msg;
@@ -134,7 +135,7 @@ if (j.outcome === 'INVALID_EVENT' || j.outcome === 'INVALID_STATE') {
     msg = j.project_number + ' created. Drive folder: ' + d.web_view_link + ' . Airtable project ' + a.project_record_id + '.';
   } else {
     status = 'Duplicate ignored';
-    msg = 'Already processed as ' + j.project_number + ' (delivery ' + r.delivery_count + '). Nothing was re-created.' +
+    msg = 'Already processed as ' + j.project_number + '. Nothing was re-created.' +
       (j.needs_side_effects ? ' Unfinished steps were completed: ' + j.pending_topics.join(', ') + '.' : '');
   }
 }
@@ -143,7 +144,7 @@ return { json: Object.assign({}, j, { quote_status: status, quote_message: msg +
 
 const writeStatus = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Write Quote Automation Status',
   retryOnFail: true, maxTries: 3, waitBetweenTries: 5000,
-  parameters: { method: 'PATCH', url: expr(QUOTES + '/{{ $json.quote_record_id }}'), authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableApi',
+  parameters: { method: 'PATCH', url: expr(QUOTES + '/{{ $json.quote_record_id }}'), authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi',
     sendBody: true, contentType: 'json', specifyBody: 'json',
     jsonBody: expr("{{ JSON.stringify({ returnFieldsByFieldId: true, fields: { fldVc9vw112vrP33n: $json.quote_status, fldC70PHs4gQh8M42: $json.quote_message } }) }}"),
     options: { timeout: 20000 } },
@@ -151,7 +152,7 @@ const writeStatus = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, con
 
 const readStatus = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Read Back Quote Status',
   retryOnFail: true, maxTries: 3, waitBetweenTries: 5000,
-  parameters: { method: 'GET', url: expr(QUOTES + "/{{ $('Compose Quote Status').item.json.quote_record_id }}"), authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableApi',
+  parameters: { method: 'GET', url: expr(QUOTES + "/{{ $('Compose Quote Status').item.json.quote_record_id }}"), authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi',
     sendQuery: true, queryParameters: { parameters: [{ name: 'returnFieldsByFieldId', value: 'true' }] }, options: { timeout: 20000 } },
   credentials: AIRTABLE }, output: [{ id: 'rec', fields: {} }] });
 
@@ -160,10 +161,16 @@ const verifyStatus = node({ type: 'n8n-nodes-base.code', version: 2, config: { n
 const want = $('Compose Quote Status').item.json;
 const f = $json.fields || {};
 const got = f.fldVc9vw112vrP33n && typeof f.fldVc9vw112vrP33n === 'object' ? f.fldVc9vw112vrP33n.name : f.fldVc9vw112vrP33n;
-if (got !== want.quote_status || f.fldC70PHs4gQh8M42 !== want.quote_message) {
-  throw new Error('Airtable quote ' + want.quote_record_id + ' read back "' + got + '", expected "' + want.quote_status + '"');
+const gotMsg = f.fldC70PHs4gQh8M42 || '';
+const exact = got === want.quote_status && gotMsg === want.quote_message;
+// Another delivery of the same accepted quote may legitimately write after us (Airtable pings can overlap).
+// Accept that only when it is a non-failure state about the same project; never hide a Rejected/Failed mismatch.
+const superseded = !exact && want.project_number && ['Project created', 'Duplicate ignored'].includes(want.quote_status)
+  && ['Project created', 'Duplicate ignored'].includes(got) && gotMsg.indexOf(want.project_number) >= 0;
+if (!exact && !superseded) {
+  throw new Error('Airtable quote ' + want.quote_record_id + ' read back "' + got + '" / "' + gotMsg.slice(0, 120) + '", expected "' + want.quote_status + '"');
 }
-return { json: { verified: true, outcome: want.outcome, quote: want.quote_number, quote_record_id: want.quote_record_id, quote_status: got,
+return { json: { verified: true, superseded_by_concurrent_delivery: superseded, outcome: want.outcome, quote: want.quote_number, quote_record_id: want.quote_record_id, quote_status: got,
   project_number: want.project_number, project_id: want.project_id, drive: want.drive || null, airtable: want.airtable || null, event_id: want.event_id } };` } },
   output: [{ verified: true }] });
 

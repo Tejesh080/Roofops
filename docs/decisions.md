@@ -1,14 +1,17 @@
 # Architecture decision records
 
-Short form: context → decision → consequence. **Status** is `Accepted` (my recommendation, reversible) or `Needs review` (your call before Phase 1).
+Short form: context → decision → consequence. **Status** is `Accepted` (my recommendation, reversible) or `Needs review` (your call before the next phase).
 
 ---
 
-### ADR-001: Postgres is the system of record; n8n orchestrates but never writes the DB
-**Status:** Accepted
-**Context:** n8n can talk to Postgres directly, but then validation, idempotency and audit would be duplicated across the Next.js app and n8n.
-**Decision:** n8n calls signed RoofOps command endpoints. Business invariants live in one codebase.
-**Consequence:** n8n workflows stay thin and replaceable. The demo runs without n8n (`WORKFLOW_RUNNER=local`).
+### ADR-001: Invariants live in one place; n8n orchestrates but never bypasses them
+**Status:** Accepted in principle · ⚠ mechanism to decide in Phase 2
+**Context:** Postgres is the control layer (ADR-006). If n8n writes tables with ad-hoc SQL, validation, idempotency and audit get duplicated in workflow nodes.
+**Decision:** n8n never issues raw INSERT/UPDATE against business tables. It invokes one guarded entry point per command.
+**Phase 2 choice:**
+(a) **Postgres functions** such as `create_project_from_quote(event jsonb)`, called from n8n's Postgres node. The idempotency claim, project creation, task and audit happen in one DB transaction. No API server is needed yet, and the invariants sit next to the constraints they rely on.
+(b) **A RoofOps HTTP command API** (Next.js route handlers) called by n8n. This needs the app server.
+I recommend (a) for Phase 2, since it matches your flow ("Postgres idempotency check → create Project"), with the same functions later exposed through (b) for the UI.
 
 ### ADR-002: Idempotency key = business fact, not event ID
 **Status:** Accepted
@@ -30,11 +33,10 @@ Short form: context → decision → consequence. **Status** is `Accepted` (my r
 **Decision:** line totals are GENERATED columns; header totals are derived by trigger; values supplied for them are overwritten. Supplier-quote extraction stores the model output *and* the code-computed values side by side.
 **Consequence:** a hallucinated total can't persist. Mismatches become visible review items.
 
-### ADR-006: Airtable is a downstream mirror
-**Status:** ⚠ Needs review
-**Context:** Many growing trades businesses already run operations in Airtable. If the target company does, "Postgres as the system of record" may look like it ignores their reality.
-**Decision (proposed):** a one-way mirror (RoofOps → Airtable), keyed on a hidden `roofops_id`. For the interview story: *"Stage 1: keep Airtable as the team's UI and mirror into it. Stage 2: move the invariants that Airtable can't enforce (uniqueness, idempotency, audit) into a real database behind the same Airtable views."*
-**Alternative:** implement an `AirtableRepository` so Airtable *is* the store. This is weaker on constraints and much slower to build.
+### ADR-006: Airtable is the staff-facing operations layer; Postgres is the control layer
+**Status:** Accepted (directed by the user, Phase 1). Supersedes "Airtable as a downstream mirror".
+**Target architecture:** Airtable → staff-facing operations · Postgres → system/control layer (idempotency, audit, exceptions, derived risk) · n8n → orchestration · Xero → accounting source of truth · Google Drive → document store · AI Copilot → conversational interface over tools.
+**Consequence:** staff keep working in Airtable. Airtable changes (e.g. a quote marked Accepted) arrive as events. Postgres enforces what Airtable cannot (uniqueness, idempotency, append-only audit) and writes outcomes back to Airtable, keyed on Airtable record IDs stored in `external_links`, never on names. Nothing is uploaded to Airtable until Phase 2.
 
 ### ADR-007: Text + CHECK instead of Postgres ENUM types
 **Status:** Accepted. Easier to evolve in forward-only migrations; the same safety at write time.
@@ -43,15 +45,15 @@ Short form: context → decision → consequence. **Status** is `Accepted` (my r
 **Status:** Accepted
 **Consequence:** the browser can never query tables directly, even with the anon key. A real multi-tenant product would need policies; this internal tool doesn't.
 
-### ADR-009: Test DB = PGlite by default, real Postgres for concurrency tests
+### ADR-009: Tests run on PGlite and on real Postgres 17
 **Status:** Accepted
-**Context:** PGlite runs Postgres 18 in-process (fast, no Docker), but has a single connection.
-**Decision:** most integration tests run on PGlite. The "two workers, same event" test runs against Supabase local in Docker (Docker 29 is available on this machine).
+**Context:** PGlite runs Postgres 18 in-process (fast, no Docker), but has a single connection. Supabase runs Postgres 17.
+**Decision:** every DB suite runs on PGlite by default and, with `TEST_DATABASE_URL` set, also on real Postgres 17 (docker compose). Each Postgres test gets its own throwaway database. The Phase 2 concurrency test ("two workers, same event") will be Postgres-only.
 
-### ADR-010: Demo dates re-anchored to the day the seed runs
-**Status:** ⚠ Needs review (D-1 in data-audit)
-**Decision (proposed):** keep CSV identities and scenarios; regenerate dates relative to `DEMO_ANCHOR_DATE`.
-**Consequence:** "at risk next week" is true on the day of the interview. Tests pin the anchor, so they stay deterministic.
+### ADR-010: Canonical bundle, dates normalised to a fixed DEMO_DATE
+**Status:** Accepted (directed by the user, Phase 1)
+**Decision:** the normalised CSVs in the synthetic data bundle are canonical. IDs, names, amounts, relationships and planted scenarios are never regenerated. Only dates are normalised, by logged rules, relative to the fixed `DEMO_DATE = 2026-09-29`. The database's `app_today()` is pinned to that date (`app_settings.business_date_override`).
+**Consequence:** "overdue" and "next week" stay true whenever the demo is presented. Removing the override switches to the real Brisbane date.
 
 ### ADR-011: LLM default provider
 **Status:** ⚠ Needs review
@@ -59,3 +61,26 @@ Short form: context → decision → consequence. **Status** is `Accepted` (my r
 
 ### ADR-012: Package manager and runtime
 **Status:** Accepted. Node 24 LTS + npm 11 (installed). pnpm isn't installed, and adding it gains nothing for a single app.
+
+### ADR-013: GST basis recorded per document (Xero's LineAmountTypes model)
+**Status:** ⚠ Needs review
+**Context:** the bundle's amounts don't say whether they include GST, and converting inclusive ⇄ exclusive at 10% can shift a cent.
+**Decision:** every quote version, PO and invoice stores `line_amount_type` (EXCLUSIVE | INCLUSIVE | NO_TAX). The source amount is stored exactly as the line amount and the database derives the GST split. Customer quotes and invoices are treated as INCLUSIVE (Australian Consumer Law single-price rule for consumers); supplier POs and prices as EXCLUSIVE (trade convention).
+**Consequence:** no amount changes by even a cent (tested). Maps directly onto Xero's `LineAmountTypes` in Phase 6. If the business treats amounts differently, the basis changes and the amounts stay the same.
+
+### ADR-014: The Phase 0 schema was amended in place, before its first apply
+**Status:** Accepted
+**Context:** loading real data exposed design gaps (GST basis, business dates vs row timestamps, source-ID columns, legacy approval metadata).
+**Decision:** because the migration had never been applied to any shared environment, it was edited directly rather than patched with ALTERs. From now on migrations are forward-only; `schema_migrations` stores a checksum, and a modified, already-applied migration is refused.
+
+### ADR-015: `record_origin = 'IMPORT'` for legacy records
+**Status:** Accepted
+**Decision:** imported POs, invoices, exceptions and ledger rows are marked IMPORT and exempted from approval/resolver metadata they cannot have. Records RoofOps creates must satisfy the full CHECKs.
+**Consequence:** no fake approvers are invented, and the exemption is visible and queryable rather than silent.
+
+### ADR-016: Staging layer keeps the source verbatim
+**Status:** Accepted
+**Decision:** `staging.*` holds every source column as text. Columns the core model derives instead of storing (`materials_status`, `schedule_risk`, `edge_case_tags`) remain queryable for lineage.
+
+### ADR-017: TypeScript 6.0 (not 7.0)
+**Status:** Accepted. TypeScript 7.0 (the native compiler) is out, but typescript-eslint 8.70 supports `<6.1`. Pinned to 6.0.3 until lint tooling catches up.

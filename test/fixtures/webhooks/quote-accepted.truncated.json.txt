@@ -1,0 +1,7 @@
+{
+  "event_id": "EVT-FIXTURE-QA-0005",
+  "correlation_id": "CORR-FIXTURE-QA-0005",
+  "causation_id": null,
+  "event_type": "quote.accepted",
+  "entity_type": "quote",
+  "entity_id"

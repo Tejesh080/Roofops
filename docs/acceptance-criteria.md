@@ -36,20 +36,31 @@ Each phase ends with: `npm run lint` · `npm run typecheck` · the relevant `npm
 - [x] `.env.example` with every planned variable; no secrets committed
 - [x] Decisions needing review listed (ADR-006, ADR-010, ADR-011)
 
-## Phase 1: Database + seed data
+## Phase 1: Database + canonical data import ✅ (awaiting review)
 
-- [ ] Next.js (latest stable) + TypeScript strict + Tailwind + shadcn/ui scaffold; `lint`, `typecheck`, `test` scripts
-- [ ] Migration applies to Supabase local **and** PGlite; `scripts/phase0-schema-check.mjs` ported to Vitest
-- [ ] Views: project risk, overdue invoices, outstanding balance, quote conversion, open PO value, missing completion docs
-- [ ] Seed generator: deterministic from `(SEED, DEMO_ANCHOR_DATE)`; **snapshot-hash test proves two runs produce identical output**
-- [ ] Counts within ±0 of the brief: 40 customers · 52 properties · 65 quotes · 30 projects · 6 suppliers · 45 products · 35 POs · 38 invoices · 110 project events · 75 site notes · 60 documents
-- [ ] All 14 scenarios are present and looked up via `seed-manifest.json`; one test per scenario asserts it holds (e.g. exactly 2 overdue invoices as of the anchor)
-- [ ] Fixtures for duplicate webhook, 429, timeout and invalid payload exist under `src/test/fixtures/`
-- [ ] Every email is on a reserved domain (`example.com/.org/.net`); a test scans the seed for any other domain
-- [ ] CSV contradictions P2–P6 are repaired; a test re-runs the audit script against generated data and finds zero issues
-- [ ] Domain unit tests: money/GST rounding, every state machine (valid and invalid edges), permission matrix
+Scope revised by the user: load the **canonical synthetic data bundle** (no regeneration), normalise **dates only** relative to `DEMO_DATE = 2026-09-29`, and build **no** frontend, Airtable, n8n or Xero.
+
+- [x] TypeScript project (strict, `noUncheckedIndexedAccess`) with `lint`, `typecheck`, `test`, `data:normalise`, `data:check`, `db:up`, `db:load`, `db:reset`
+- [x] Bundle unpacked verbatim to `data/raw/`; the per-table CSVs are canonical
+- [x] Date normalisation: 11 logged rules, 114 cells changed, 84 → 0 invariant violations; **test proves only date cells changed**
+- [x] Deterministic: a fresh run reproduces the committed `data/normalised/` exactly (test + `npm run data:check`)
+- [x] Migrations apply to **real Postgres 17** (docker compose, the Supabase major version) **and** PGlite; checksum drift is refused
+- [x] Phase 0 schema checks ported to Vitest (`test/schema.test.ts`, 18 checks), run on both engines
+- [x] Counts equal the brief: 40 customers · 52 properties · 65 quotes · 30 projects · 6 suppliers · 45 products · 35 POs · 38 invoices · 110 events · 75 site notes · 60 documents (+ 12 exceptions, 81 ledger entries)
+- [x] Every source ID, name, email, phone, amount (to the cent) and relationship is preserved (tests compare the DB against the CSVs)
+- [x] Views: project risk (with named reasons), invoice balances/overdue, PO status/ack SLA, waiting on materials, missing completion docs, accepted quotes without project, missing measurement, duplicate customers, quote conversion, executive KPIs
+- [x] All 14 scenarios are reproduced **from facts** by the views; one test each; scenario IDs come from `scenario-manifest.json`, not hard-coded
+- [x] Import is one transaction, all-or-nothing (tested with a corrupted row), refuses files that don't match `MANIFEST.json`, and is idempotent by dataset hash
+- [x] Fixtures under `test/fixtures/` (duplicate webhook: transport + semantic, missing field, wrong type, truncated JSON, Xero 429, Airtable 429, 500, timeout before commit, ambiguous timeout after commit), validated against the event envelope contract
+- [x] Every email is on a reserved `example.*` domain (test)
+- [x] Source discrepancies that are not dates are documented and pinned by tests, not silently fixed (`docs/data-import.md` K1–K8)
+- ➡ Moved to **Phase 2**: state-machine unit tests (they belong with the first state-changing command)
+- ➡ Moved to **Phase 4**: permission-matrix tests (they belong with the copilot tool guard)
+- ➡ Not applicable: Next.js scaffold (no frontend this phase, per the user)
 
 ## Phase 2: Module 1, Quote → Project
+
+> To be re-baselined at the start of Phase 2 for the confirmed flow: **Airtable Quote Accepted → webhook/event → validation → Postgres idempotency check → create Project → material-review task → Drive adapter → audit log → update Airtable** (n8n orchestrates; see ADR-001 for how n8n reaches Postgres). The idempotency, concurrency and audit criteria below stand.
 
 - [ ] `POST /api/events` validates the envelope (zod); rejects a missing field with 400 `VALIDATION_ERROR` and **no retry**
 - [ ] Steps 1–13 implemented; each writes a `workflow_run_steps` row

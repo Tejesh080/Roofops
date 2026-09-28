@@ -1,0 +1,6 @@
+{
+  "description": "Request timed out; the remote side never processed it. Safe to retry (same idempotency key).",
+  "kind": "timeout",
+  "after_ms": 10000,
+  "remote_committed": false
+}

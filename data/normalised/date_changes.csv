@@ -1,0 +1,115 @@
+table,record_id,field,from,to,rule,reason
+customers,CUST-0002,created_date,2026-07-28,2026-05-11,D1_CUSTOMER_SINCE_AFTER_FIRST_INSPECTION,customer record dated after first inspection (2026-05-11); set to first inspection date
+customers,CUST-0003,created_date,2026-05-25,2026-04-26,D1_CUSTOMER_SINCE_AFTER_FIRST_INSPECTION,customer record dated after first inspection (2026-04-26); set to first inspection date
+customers,CUST-0007,created_date,2026-07-28,2026-06-27,D1_CUSTOMER_SINCE_AFTER_FIRST_INSPECTION,customer record dated after first inspection (2026-06-27); set to first inspection date
+customers,CUST-0008,created_date,2026-07-31,2026-03-25,D1_CUSTOMER_SINCE_AFTER_FIRST_INSPECTION,customer record dated after first inspection (2026-03-25); set to first inspection date
+customers,CUST-0012,created_date,2026-07-01,2026-04-29,D1_CUSTOMER_SINCE_AFTER_FIRST_INSPECTION,customer record dated after first inspection (2026-04-29); set to first inspection date
+customers,CUST-0014,created_date,2026-08-04,2026-03-27,D1_CUSTOMER_SINCE_AFTER_FIRST_INSPECTION,customer record dated after first inspection (2026-03-27); set to first inspection date
+customers,CUST-0020,created_date,2026-05-18,2026-04-29,D1_CUSTOMER_SINCE_AFTER_FIRST_INSPECTION,customer record dated after first inspection (2026-04-29); set to first inspection date
+customers,CUST-0027,created_date,2026-07-12,2026-06-11,D1_CUSTOMER_SINCE_AFTER_FIRST_INSPECTION,customer record dated after first inspection (2026-06-11); set to first inspection date
+customers,CUST-0029,created_date,2026-08-29,2026-06-27,D1_CUSTOMER_SINCE_AFTER_FIRST_INSPECTION,customer record dated after first inspection (2026-06-27); set to first inspection date
+customers,CUST-0040,created_date,2026-05-13,2026-03-22,D1_CUSTOMER_SINCE_AFTER_FIRST_INSPECTION,customer record dated after first inspection (2026-03-22); set to first inspection date
+projects,PRJ-2026-0009,planned_start_date,2026-06-09,2026-10-15,D2_ACTIVE_SCHEDULE_REANCHORED,Planning: planned start moved into the Planning window after the demo date
+projects,PRJ-2026-0009,planned_completion_date,2026-06-13,2026-10-19,D2_ACTIVE_SCHEDULE_REANCHORED,Planning: planned start moved into the Planning window after the demo date
+projects,PRJ-2026-0010,planned_start_date,2026-09-08,2026-10-05,D2_ACTIVE_SCHEDULE_REANCHORED,materials/supplier scenario: planned start falls in the coming week
+projects,PRJ-2026-0010,planned_completion_date,2026-09-15,2026-10-12,D2_ACTIVE_SCHEDULE_REANCHORED,materials/supplier scenario: planned start falls in the coming week
+projects,PRJ-2026-0011,planned_start_date,2026-08-13,2026-09-27,D2_ACTIVE_SCHEDULE_REANCHORED,DELAYED_PROJECT (not started): planned start already passed as of demo date
+projects,PRJ-2026-0011,planned_completion_date,2026-08-17,2026-10-01,D2_ACTIVE_SCHEDULE_REANCHORED,DELAYED_PROJECT (not started): planned start already passed as of demo date
+projects,PRJ-2026-0012,planned_start_date,2026-08-01,2026-09-25,D2_ACTIVE_SCHEDULE_REANCHORED,In Progress: job window re-anchored so the demo date falls mid-job
+projects,PRJ-2026-0012,actual_start_date,2026-08-03,2026-09-27,D2_ACTIVE_SCHEDULE_REANCHORED,In Progress: job window re-anchored so the demo date falls mid-job
+projects,PRJ-2026-0012,planned_completion_date,2026-08-07,2026-10-01,D2_ACTIVE_SCHEDULE_REANCHORED,In Progress: job window re-anchored so the demo date falls mid-job
+projects,PRJ-2026-0013,planned_start_date,2026-06-08,2026-10-06,D2_ACTIVE_SCHEDULE_REANCHORED,materials/supplier scenario: planned start falls in the coming week
+projects,PRJ-2026-0013,planned_completion_date,2026-06-14,2026-10-12,D2_ACTIVE_SCHEDULE_REANCHORED,materials/supplier scenario: planned start falls in the coming week
+projects,PRJ-2026-0014,planned_start_date,2026-04-19,2026-10-08,D2_ACTIVE_SCHEDULE_REANCHORED,Materials Pending: planned start moved into the Materials Pending window after the demo date
+projects,PRJ-2026-0014,planned_completion_date,2026-04-24,2026-10-13,D2_ACTIVE_SCHEDULE_REANCHORED,Materials Pending: planned start moved into the Materials Pending window after the demo date
+projects,PRJ-2026-0015,planned_start_date,2026-06-22,2026-09-26,D2_ACTIVE_SCHEDULE_REANCHORED,DELAYED_PROJECT (not started): planned start already passed as of demo date
+projects,PRJ-2026-0015,planned_completion_date,2026-06-28,2026-10-02,D2_ACTIVE_SCHEDULE_REANCHORED,DELAYED_PROJECT (not started): planned start already passed as of demo date
+projects,PRJ-2026-0016,planned_start_date,2026-08-12,2026-09-26,D2_ACTIVE_SCHEDULE_REANCHORED,In Progress: job window re-anchored so the demo date falls mid-job
+projects,PRJ-2026-0016,actual_start_date,2026-08-13,2026-09-27,D2_ACTIVE_SCHEDULE_REANCHORED,In Progress: job window re-anchored so the demo date falls mid-job
+projects,PRJ-2026-0016,planned_completion_date,2026-08-18,2026-10-02,D2_ACTIVE_SCHEDULE_REANCHORED,In Progress: job window re-anchored so the demo date falls mid-job
+projects,PRJ-2026-0017,planned_start_date,2026-06-03,2026-10-19,D2_ACTIVE_SCHEDULE_REANCHORED,Planning: planned start moved into the Planning window after the demo date
+projects,PRJ-2026-0017,planned_completion_date,2026-06-06,2026-10-22,D2_ACTIVE_SCHEDULE_REANCHORED,Planning: planned start moved into the Planning window after the demo date
+projects,PRJ-2026-0018,planned_start_date,2026-06-11,2026-10-07,D2_ACTIVE_SCHEDULE_REANCHORED,materials/supplier scenario: planned start falls in the coming week
+projects,PRJ-2026-0018,planned_completion_date,2026-06-16,2026-10-12,D2_ACTIVE_SCHEDULE_REANCHORED,materials/supplier scenario: planned start falls in the coming week
+projects,PRJ-2026-0019,planned_start_date,2026-06-13,2026-10-01,D2_ACTIVE_SCHEDULE_REANCHORED,Scheduled: planned start moved into the Scheduled window after the demo date
+projects,PRJ-2026-0019,planned_completion_date,2026-06-16,2026-10-04,D2_ACTIVE_SCHEDULE_REANCHORED,Scheduled: planned start moved into the Scheduled window after the demo date
+projects,PRJ-2026-0020,planned_start_date,2026-06-07,2026-09-20,D2_ACTIVE_SCHEDULE_REANCHORED,DELAYED_PROJECT (in progress): planned completion 4 days before demo date
+projects,PRJ-2026-0020,actual_start_date,2026-06-07,2026-09-20,D2_ACTIVE_SCHEDULE_REANCHORED,DELAYED_PROJECT (in progress): planned completion 4 days before demo date
+projects,PRJ-2026-0020,planned_completion_date,2026-06-12,2026-09-25,D2_ACTIVE_SCHEDULE_REANCHORED,DELAYED_PROJECT (in progress): planned completion 4 days before demo date
+projects,PRJ-2026-0021,planned_start_date,2026-06-21,2026-10-23,D2_ACTIVE_SCHEDULE_REANCHORED,Planning: planned start moved into the Planning window after the demo date
+projects,PRJ-2026-0021,planned_completion_date,2026-06-26,2026-10-28,D2_ACTIVE_SCHEDULE_REANCHORED,Planning: planned start moved into the Planning window after the demo date
+projects,PRJ-2026-0022,planned_start_date,2026-05-16,2026-10-11,D2_ACTIVE_SCHEDULE_REANCHORED,Materials Pending: planned start moved into the Materials Pending window after the demo date
+projects,PRJ-2026-0022,planned_completion_date,2026-05-21,2026-10-16,D2_ACTIVE_SCHEDULE_REANCHORED,Materials Pending: planned start moved into the Materials Pending window after the demo date
+projects,PRJ-2026-0023,planned_start_date,2026-06-08,2026-10-04,D2_ACTIVE_SCHEDULE_REANCHORED,Scheduled: planned start moved into the Scheduled window after the demo date
+projects,PRJ-2026-0023,planned_completion_date,2026-06-12,2026-10-08,D2_ACTIVE_SCHEDULE_REANCHORED,Scheduled: planned start moved into the Scheduled window after the demo date
+projects,PRJ-2026-0025,planned_start_date,2026-07-23,2026-10-27,D2_ACTIVE_SCHEDULE_REANCHORED,Planning: planned start moved into the Planning window after the demo date
+projects,PRJ-2026-0025,planned_completion_date,2026-07-29,2026-11-02,D2_ACTIVE_SCHEDULE_REANCHORED,Planning: planned start moved into the Planning window after the demo date
+projects,PRJ-2026-0026,planned_start_date,2026-05-20,2026-10-14,D2_ACTIVE_SCHEDULE_REANCHORED,Materials Pending: planned start moved into the Materials Pending window after the demo date
+projects,PRJ-2026-0026,planned_completion_date,2026-05-23,2026-10-17,D2_ACTIVE_SCHEDULE_REANCHORED,Materials Pending: planned start moved into the Materials Pending window after the demo date
+projects,PRJ-2026-0027,planned_start_date,2026-07-18,2026-10-07,D2_ACTIVE_SCHEDULE_REANCHORED,Scheduled: planned start moved into the Scheduled window after the demo date
+projects,PRJ-2026-0027,planned_completion_date,2026-07-20,2026-10-09,D2_ACTIVE_SCHEDULE_REANCHORED,Scheduled: planned start moved into the Scheduled window after the demo date
+projects,PRJ-2026-0028,planned_start_date,2026-08-14,2026-09-28,D2_ACTIVE_SCHEDULE_REANCHORED,In Progress: job window re-anchored so the demo date falls mid-job
+projects,PRJ-2026-0028,actual_start_date,2026-08-14,2026-09-28,D2_ACTIVE_SCHEDULE_REANCHORED,In Progress: job window re-anchored so the demo date falls mid-job
+projects,PRJ-2026-0028,planned_completion_date,2026-08-17,2026-10-01,D2_ACTIVE_SCHEDULE_REANCHORED,In Progress: job window re-anchored so the demo date falls mid-job
+projects,PRJ-2026-0029,planned_start_date,2026-08-06,2026-10-31,D2_ACTIVE_SCHEDULE_REANCHORED,Planning: planned start moved into the Planning window after the demo date
+projects,PRJ-2026-0029,planned_completion_date,2026-08-11,2026-11-05,D2_ACTIVE_SCHEDULE_REANCHORED,Planning: planned start moved into the Planning window after the demo date
+projects,PRJ-2026-0030,planned_start_date,2026-05-22,2026-10-17,D2_ACTIVE_SCHEDULE_REANCHORED,Materials Pending: planned start moved into the Materials Pending window after the demo date
+projects,PRJ-2026-0030,planned_completion_date,2026-05-24,2026-10-19,D2_ACTIVE_SCHEDULE_REANCHORED,Materials Pending: planned start moved into the Materials Pending window after the demo date
+purchase_orders,PO-2026-0001,expected_delivery_date,2026-09-02,2026-06-22,D4_PO_ETA_ALIGNED_TO_SCHEDULE,completed project: materials must have been due before the job started
+purchase_orders,PO-2026-0001,po_date,2026-08-29,2026-06-19,D6_PO_DATED_AFTER_ETA,PO dated after its delivery date; set to delivery date minus supplier lead time (3d)
+purchase_orders,PO-2026-0002,expected_delivery_date,2026-08-12,2026-06-12,D4_PO_ETA_ALIGNED_TO_SCHEDULE,completed project: materials must have been due before the job started
+purchase_orders,PO-2026-0002,po_date,2026-08-04,2026-06-07,D6_PO_DATED_AFTER_ETA,PO dated after its delivery date; set to delivery date minus supplier lead time (5d)
+purchase_orders,PO-2026-0003,expected_delivery_date,2026-08-21,2026-05-12,D4_PO_ETA_ALIGNED_TO_SCHEDULE,completed project: materials must have been due before the job started
+purchase_orders,PO-2026-0003,po_date,2026-08-19,2026-05-10,D6_PO_DATED_AFTER_ETA,PO dated after its delivery date; set to delivery date minus supplier lead time (2d)
+purchase_orders,PO-2026-0004,expected_delivery_date,2026-07-12,2026-05-24,D4_PO_ETA_ALIGNED_TO_SCHEDULE,completed project: materials must have been due before the job started
+purchase_orders,PO-2026-0004,po_date,2026-07-05,2026-05-20,D6_PO_DATED_AFTER_ETA,PO dated after its delivery date; set to delivery date minus supplier lead time (4d)
+purchase_orders,PO-2026-0005,expected_delivery_date,2026-08-07,2026-08-05,D4_PO_ETA_ALIGNED_TO_SCHEDULE,completed project: materials must have been due before the job started
+purchase_orders,PO-2026-0006,expected_delivery_date,2026-08-11,2026-04-26,D4_PO_ETA_ALIGNED_TO_SCHEDULE,completed project: materials must have been due before the job started
+purchase_orders,PO-2026-0006,po_date,2026-08-04,2026-04-20,D6_PO_DATED_AFTER_ETA,PO dated after its delivery date; set to delivery date minus supplier lead time (6d)
+purchase_orders,PO-2026-0007,expected_delivery_date,2026-09-25,2026-08-07,D4_PO_ETA_ALIGNED_TO_SCHEDULE,completed project: materials must have been due before the job started
+purchase_orders,PO-2026-0007,po_date,2026-09-19,2026-08-04,D6_PO_DATED_AFTER_ETA,PO dated after its delivery date; set to delivery date minus supplier lead time (3d)
+purchase_orders,PO-2026-0008,expected_delivery_date,2026-09-30,2026-05-11,D4_PO_ETA_ALIGNED_TO_SCHEDULE,completed project: materials must have been due before the job started
+purchase_orders,PO-2026-0008,po_date,2026-09-24,2026-05-06,D6_PO_DATED_AFTER_ETA,PO dated after its delivery date; set to delivery date minus supplier lead time (5d)
+purchase_orders,PO-2026-0009,expected_delivery_date,2026-09-14,2026-10-13,D4_PO_ETA_ALIGNED_TO_SCHEDULE,"open PO: delivery still to come, set 2 days before the planned start"
+purchase_orders,PO-2026-0009,po_date,2026-09-10,2026-09-28,D5_PO_SENT_DATE_ALIGNED_TO_ACK_STATUS,project not flagged as awaiting supplier confirmation: PO sent within the acknowledgement SLA
+purchase_orders,PO-2026-0010,po_date,2026-08-11,2026-08-31,D3_PO_DATED_BEFORE_ACCEPTANCE,PO dated before quote acceptance (2026-08-31)
+purchase_orders,PO-2026-0012,expected_delivery_date,2026-07-27,2026-09-30,D4_PO_ETA_ALIGNED_TO_SCHEDULE,"open PO on a job in progress: delivery still to come, before planned completion"
+purchase_orders,PO-2026-0013,expected_delivery_date,2026-08-09,2026-10-08,D4_PO_ETA_ALIGNED_TO_SCHEDULE,scenario: materials arrive after the planned start
+purchase_orders,PO-2026-0014,expected_delivery_date,2026-07-30,2026-10-06,D4_PO_ETA_ALIGNED_TO_SCHEDULE,"open PO: delivery still to come, set 2 days before the planned start"
+purchase_orders,PO-2026-0017,expected_delivery_date,2026-09-21,2026-10-17,D4_PO_ETA_ALIGNED_TO_SCHEDULE,"open PO: delivery still to come, set 2 days before the planned start"
+purchase_orders,PO-2026-0018,expected_delivery_date,2026-08-30,2026-10-05,D4_PO_ETA_ALIGNED_TO_SCHEDULE,"open PO: delivery still to come, set 2 days before the planned start"
+purchase_orders,PO-2026-0019,expected_delivery_date,2026-09-18,2026-09-30,D4_PO_ETA_ALIGNED_TO_SCHEDULE,"open PO: delivery still to come, set 2 days before the planned start"
+purchase_orders,PO-2026-0023,expected_delivery_date,2026-08-10,2026-10-02,D4_PO_ETA_ALIGNED_TO_SCHEDULE,"open PO: delivery still to come, set 2 days before the planned start"
+purchase_orders,PO-2026-0023,po_date,2026-08-08,2026-09-28,D5_PO_SENT_DATE_ALIGNED_TO_ACK_STATUS,project not flagged as awaiting supplier confirmation: PO sent within the acknowledgement SLA
+purchase_orders,PO-2026-0025,expected_delivery_date,2026-07-14,2026-10-25,D4_PO_ETA_ALIGNED_TO_SCHEDULE,"open PO: delivery still to come, set 2 days before the planned start"
+purchase_orders,PO-2026-0026,expected_delivery_date,2026-07-18,2026-10-12,D4_PO_ETA_ALIGNED_TO_SCHEDULE,"open PO: delivery still to come, set 2 days before the planned start"
+purchase_orders,PO-2026-0026,po_date,2026-07-11,2026-09-28,D5_PO_SENT_DATE_ALIGNED_TO_ACK_STATUS,project not flagged as awaiting supplier confirmation: PO sent within the acknowledgement SLA
+purchase_orders,PO-2026-0028,expected_delivery_date,2026-09-19,2026-09-30,D4_PO_ETA_ALIGNED_TO_SCHEDULE,"open PO on a job in progress: delivery still to come, before planned completion"
+purchase_orders,PO-2026-0028,po_date,2026-09-12,2026-09-28,D5_PO_SENT_DATE_ALIGNED_TO_ACK_STATUS,project not flagged as awaiting supplier confirmation: PO sent within the acknowledgement SLA
+purchase_orders,PO-2026-0029,expected_delivery_date,2026-09-29,2026-09-28,D4_PO_ETA_ALIGNED_TO_SCHEDULE,delivered PO: delivery date must be in the past and before the job start
+purchase_orders,PO-2026-0030,expected_delivery_date,2026-08-09,2026-10-15,D4_PO_ETA_ALIGNED_TO_SCHEDULE,"open PO: delivery still to come, set 2 days before the planned start"
+purchase_orders,PO-2026-0031,expected_delivery_date,2026-08-24,2026-06-22,D4_PO_ETA_ALIGNED_TO_SCHEDULE,completed project: materials must have been due before the job started
+purchase_orders,PO-2026-0031,po_date,2026-08-21,2026-06-19,D6_PO_DATED_AFTER_ETA,PO dated after its delivery date; set to delivery date minus supplier lead time (3d)
+purchase_orders,PO-2026-0032,expected_delivery_date,2026-07-09,2026-06-12,D4_PO_ETA_ALIGNED_TO_SCHEDULE,completed project: materials must have been due before the job started
+purchase_orders,PO-2026-0032,po_date,2026-07-04,2026-06-07,D6_PO_DATED_AFTER_ETA,PO dated after its delivery date; set to delivery date minus supplier lead time (5d)
+purchase_orders,PO-2026-0033,expected_delivery_date,2026-08-04,2026-05-12,D4_PO_ETA_ALIGNED_TO_SCHEDULE,completed project: materials must have been due before the job started
+purchase_orders,PO-2026-0033,po_date,2026-07-30,2026-05-10,D6_PO_DATED_AFTER_ETA,PO dated after its delivery date; set to delivery date minus supplier lead time (2d)
+purchase_orders,PO-2026-0034,expected_delivery_date,2026-08-23,2026-05-24,D4_PO_ETA_ALIGNED_TO_SCHEDULE,completed project: materials must have been due before the job started
+purchase_orders,PO-2026-0034,po_date,2026-08-18,2026-05-20,D6_PO_DATED_AFTER_ETA,PO dated after its delivery date; set to delivery date minus supplier lead time (4d)
+purchase_orders,PO-2026-0035,expected_delivery_date,2026-09-01,2026-08-05,D4_PO_ETA_ALIGNED_TO_SCHEDULE,completed project: materials must have been due before the job started
+purchase_orders,PO-2026-0035,po_date,2026-08-29,2026-08-03,D6_PO_DATED_AFTER_ETA,PO dated after its delivery date; set to delivery date minus supplier lead time (2d)
+invoices,INV-2026-0003,paid_date,2026-09-30,2026-09-28,D10_INVOICE_PAID_ON_OR_AFTER_DEMO_DATE,payment dated on/after the demo date; moved to the day before
+invoices,INV-2026-0005,invoice_date,2026-07-09,2026-07-12,D7_INVOICE_ISSUED_BEFORE_ACCEPTANCE,invoice dated before quote acceptance (2026-07-12)
+invoices,INV-2026-0010,invoice_date,2026-06-29,2026-08-31,D7_INVOICE_ISSUED_BEFORE_ACCEPTANCE,invoice dated before quote acceptance (2026-08-31)
+invoices,INV-2026-0011,invoice_date,2026-06-09,2026-07-22,D7_INVOICE_ISSUED_BEFORE_ACCEPTANCE,invoice dated before quote acceptance (2026-07-22)
+invoices,INV-2026-0011,due_date,2026-06-23,2026-08-05,D8_INVOICE_DUE_BEFORE_ISSUE,due date before issue date; original 14-day terms kept
+invoices,INV-2026-0011,paid_date,2026-06-19,2026-08-01,D9_INVOICE_PAID_BEFORE_ISSUE,paid before issue date; original 10-day payment lag kept
+invoices,INV-2026-0021,invoice_date,2026-06-03,2026-06-06,D7_INVOICE_ISSUED_BEFORE_ACCEPTANCE,invoice dated before quote acceptance (2026-06-06)
+invoices,INV-2026-0024,invoice_date,2026-06-30,2026-09-15,D7_INVOICE_ISSUED_BEFORE_ACCEPTANCE,invoice dated before quote acceptance (2026-09-15)
+invoices,INV-2026-0024,due_date,2026-07-14,2026-09-29,D8_INVOICE_DUE_BEFORE_ISSUE,due date before issue date; original 14-day terms kept
+invoices,INV-2026-0024,paid_date,2026-07-08,2026-09-23,D9_INVOICE_PAID_BEFORE_ISSUE,paid before issue date; original 8-day payment lag kept
+invoices,INV-2026-0028,invoice_date,2026-07-21,2026-07-22,D7_INVOICE_ISSUED_BEFORE_ACCEPTANCE,invoice dated before quote acceptance (2026-07-22)
+invoices,INV-2026-0035,invoice_date,2026-06-26,2026-07-12,D7_INVOICE_ISSUED_BEFORE_ACCEPTANCE,invoice dated before quote acceptance (2026-07-12)
+invoices,INV-2026-0037,invoice_date,2026-06-21,2026-07-29,D7_INVOICE_ISSUED_BEFORE_ACCEPTANCE,invoice dated before quote acceptance (2026-07-29)
+invoices,INV-2026-0037,due_date,2026-07-05,2026-08-12,D8_INVOICE_DUE_BEFORE_ISSUE,due date before issue date; original 14-day terms kept
+invoices,INV-2026-0037,paid_date,2026-07-02,2026-08-09,D9_INVOICE_PAID_BEFORE_ISSUE,paid before issue date; original 11-day payment lag kept

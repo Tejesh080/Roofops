@@ -1,0 +1,89 @@
+{
+  "dataset": "RoofOps synthetic data bundle (canonical normalised tables)",
+  "synthetic_demo_data": true,
+  "demo_date": "2026-09-29",
+  "date_rules_version": "1.0.0",
+  "raw_violations_found": 84,
+  "violations_remaining": 0,
+  "date_changes_total": 114,
+  "date_changes_by_rule": {
+    "D10_INVOICE_PAID_ON_OR_AFTER_DEMO_DATE": 1,
+    "D1_CUSTOMER_SINCE_AFTER_FIRST_INSPECTION": 10,
+    "D2_ACTIVE_SCHEDULE_REANCHORED": 46,
+    "D3_PO_DATED_BEFORE_ACCEPTANCE": 1,
+    "D4_PO_ETA_ALIGNED_TO_SCHEDULE": 26,
+    "D5_PO_SENT_DATE_ALIGNED_TO_ACK_STATUS": 4,
+    "D6_PO_DATED_AFTER_ETA": 12,
+    "D7_INVOICE_ISSUED_BEFORE_ACCEPTANCE": 8,
+    "D8_INVOICE_DUE_BEFORE_ISSUE": 3,
+    "D9_INVOICE_PAID_BEFORE_ISSUE": 3
+  },
+  "files": {
+    "customers": {
+      "raw_sha256": "d8a543bb1a178f8852ef35180c224232a80be992fef2d7238e7479266b34fa22",
+      "normalised_sha256": "2d2f95523edcffe616291c80663666d1493f1ae3cd6165380d64b6c1cff1b96b",
+      "date_changes": 10
+    },
+    "properties": {
+      "raw_sha256": "4838dd92b28156e125db67848d59b93eb8fa1a669a20fca18bf1c977525e393f",
+      "normalised_sha256": "4838dd92b28156e125db67848d59b93eb8fa1a669a20fca18bf1c977525e393f",
+      "date_changes": 0
+    },
+    "quotes": {
+      "raw_sha256": "a7a8b02a392aecbf6ef2c924267576b74360177995cb0f8a83f5f362ffe56786",
+      "normalised_sha256": "a7a8b02a392aecbf6ef2c924267576b74360177995cb0f8a83f5f362ffe56786",
+      "date_changes": 0
+    },
+    "projects": {
+      "raw_sha256": "e1efb9d105578c0d23152e0e91486ea7f61e4b29e9f5c69cae8575529da2545e",
+      "normalised_sha256": "322585c7586bd859e3fc6f2da1446a34f24a7f2ce8adf8e03b0796784efdb10d",
+      "date_changes": 46
+    },
+    "suppliers": {
+      "raw_sha256": "595ddd7ad7be38970eb1f146dca5c17172bd4f648489e9025f2c7dcdcf25832a",
+      "normalised_sha256": "595ddd7ad7be38970eb1f146dca5c17172bd4f648489e9025f2c7dcdcf25832a",
+      "date_changes": 0
+    },
+    "products": {
+      "raw_sha256": "61f3d92347d79178f618eef7573c630b84050f3b0744f2ec6514c684bc397520",
+      "normalised_sha256": "61f3d92347d79178f618eef7573c630b84050f3b0744f2ec6514c684bc397520",
+      "date_changes": 0
+    },
+    "purchase_orders": {
+      "raw_sha256": "124106bda246d5c0e77bb172b5d47c491b950cc8bed6470f251c1a7cf8079eef",
+      "normalised_sha256": "0863cd07c07154ff32f124ece8393fe6d352ac01f41c17170281e1495ed84515",
+      "date_changes": 43
+    },
+    "invoices": {
+      "raw_sha256": "10971f95e602911f46b109704e99221167c5f173dfd96f49fc989865ecc54404",
+      "normalised_sha256": "fd0c31168ac6de8c16b74dcd6488eceece9a9237b857751b630246106fd74251",
+      "date_changes": 15
+    },
+    "project_events": {
+      "raw_sha256": "52c9a9735f9b4b7d6b65322a4eaa1d241269b497dc2af49dc853e8c85d7f9bca",
+      "normalised_sha256": "52c9a9735f9b4b7d6b65322a4eaa1d241269b497dc2af49dc853e8c85d7f9bca",
+      "date_changes": 0
+    },
+    "site_notes": {
+      "raw_sha256": "b10841a3a5769550ec06c4aa4cf86148e18bff87a2af9ea6149bcc3acc210244",
+      "normalised_sha256": "b10841a3a5769550ec06c4aa4cf86148e18bff87a2af9ea6149bcc3acc210244",
+      "date_changes": 0
+    },
+    "documents": {
+      "raw_sha256": "346289b771006be04d1084a059480b6f7eb0125ccc1f3f17f8c0810deba4dd2a",
+      "normalised_sha256": "346289b771006be04d1084a059480b6f7eb0125ccc1f3f17f8c0810deba4dd2a",
+      "date_changes": 0
+    },
+    "workflow_exceptions": {
+      "raw_sha256": "7c9bf2a8e6167b7754969cb426e7649b5321fac9d2ba0a935fe02b974ff472f1",
+      "normalised_sha256": "7c9bf2a8e6167b7754969cb426e7649b5321fac9d2ba0a935fe02b974ff472f1",
+      "date_changes": 0
+    },
+    "processed_events": {
+      "raw_sha256": "498386c6b745418046dd4227892dd929b4d0c04e41ab60e35c6b8c9cecfa7da7",
+      "normalised_sha256": "498386c6b745418046dd4227892dd929b4d0c04e41ab60e35c6b8c9cecfa7da7",
+      "date_changes": 0
+    }
+  },
+  "dataset_sha256": "0dd5b61419f726896dbf72b7c063487404d89f15d87957f7e1be44b1b8f85ee8"
+}

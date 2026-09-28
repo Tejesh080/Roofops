@@ -1,25 +1,54 @@
 -- =============================================================================
 -- RoofOps core schema
--- Phase 0 draft: designed and syntax/constraint-checked against PGlite (Postgres 17).
--- Applied to Supabase and exercised by seed + tests in Phase 1.
+-- Phase 0 design, amended in Phase 1 (before first apply) to load the canonical
+-- synthetic data bundle losslessly. Target: Postgres 17 (Supabase) and PGlite.
 --
 -- Conventions
---   * UUID primary keys internally; human-friendly business numbers (Q-2026-0042)
---     are separate UNIQUE columns issued by next_friendly_id().
+--   * UUID primary keys internally. Business IDs (Q-2026-0042) are separate UNIQUE
+--     columns. Imported records keep their source IDs verbatim; their UUIDs are
+--     deterministic (stable_uuid) so a re-import reproduces identical keys.
+--   * Business dates (quote accepted, PO date, due date) are `date` columns.
+--     `created_at` / `recorded_at` always mean "row inserted in this database".
 --   * Status columns are text + CHECK (easier to evolve than Postgres enums).
---   * Money is numeric(12,2) AUD. GST rate stored per document (default 0.10).
---     Line totals are GENERATED columns so arithmetic lives in the database,
---     never in an LLM response.
---   * record_version supports optimistic concurrency (UPDATE ... WHERE record_version = $n).
---   * Derived facts (schedule risk, overdue, outstanding balance) are NOT stored;
---     they are computed in views (Phase 1) so they cannot drift from the facts.
---   * RLS is enabled on every table with no policies: browsers never talk to the
---     database directly. All access goes through server code.
+--   * Money is numeric(12,2) AUD. Each document records its line_amount_type
+--     (EXCLUSIVE | INCLUSIVE | NO_TAX, as Xero does) and the database derives
+--     subtotal/GST/total from GENERATED line amounts. Callers cannot set totals.
+--   * record_origin = 'IMPORT' marks legacy records loaded from the bundle. They
+--     are exempt from approval-metadata checks they could never satisfy (who
+--     approved a PO before RoofOps existed is unknown); every record created by
+--     RoofOps itself ('ROOFOPS') is held to the full rule.
+--   * record_version supports optimistic concurrency.
+--   * Derived facts (risk, overdue, outstanding, conversion) live in views.
+--   * RLS enabled on every table with no policies: all access is server-side.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
 -- Shared helpers
 -- -----------------------------------------------------------------------------
+
+-- Deterministic UUID (RFC 9562 version 8, "custom") from an entity kind + business key.
+create or replace function stable_uuid(p_kind text, p_key text) returns uuid
+language sql immutable strict as $$
+  select (substr(h, 1, 12) || '8' || substr(h, 14, 3) ||
+          substr('89ab', (get_byte(decode(substr(h, 17, 2), 'hex'), 0) % 4) + 1, 1) ||
+          substr(h, 18, 15))::uuid
+    from (select md5('roofops:' || p_kind || ':' || p_key) as h) s
+$$;
+
+create table app_settings (
+  key        text primary key,
+  value      text not null,
+  updated_at timestamptz not null default now()
+);
+
+-- The business "today". Pinned to the demo date for the synthetic dataset so every
+-- "overdue"/"next week" statement stays true whenever the demo is presented;
+-- falls back to the real date in Brisbane when no override is set.
+create or replace function app_today() returns date language sql stable as $$
+  select coalesce(
+    (select value::date from app_settings where key = 'business_date_override'),
+    (now() at time zone 'Australia/Brisbane')::date)
+$$;
 
 create table id_counters (
   counter_key text    not null,
@@ -28,9 +57,7 @@ create table id_counters (
   primary key (counter_key, year)
 );
 
--- Concurrency-safe friendly ID issue. The upsert takes a row lock, so two
--- transactions can never receive the same number. Gaps are possible if a
--- transaction rolls back; that is acceptable and documented.
+-- Concurrency-safe friendly ID issue (row-locked upsert). Gaps possible on rollback.
 create or replace function next_friendly_id(p_prefix text, p_year integer default null, p_width integer default 4)
 returns text language plpgsql as $$
 declare v integer;
@@ -54,6 +81,42 @@ begin
   return new;
 end $$;
 
+-- GST split for a document whose lines sum to p_lines under p_type.
+create or replace function gst_split(p_lines numeric, p_type text, p_rate numeric,
+  out subtotal_ex_gst numeric, out gst_amount numeric, out total_inc_gst numeric)
+language sql immutable as $$
+  select case p_type when 'INCLUSIVE' then p_lines - round(p_lines * p_rate / (1 + p_rate), 2) else p_lines end,
+         case p_type when 'EXCLUSIVE' then round(p_lines * p_rate, 2)
+                     when 'INCLUSIVE' then round(p_lines * p_rate / (1 + p_rate), 2) else 0 end,
+         case p_type when 'EXCLUSIVE' then p_lines + round(p_lines * p_rate, 2) else p_lines end
+$$;
+
+-- Reference: error classes and whether the platform may retry them automatically.
+create table error_classes (
+  code        text primary key,
+  retryable   boolean not null,
+  description text not null
+);
+insert into error_classes (code, retryable, description) values
+  ('VALIDATION_ERROR',        false, 'Input failed schema or business validation'),
+  ('SCHEMA_MISMATCH',         false, 'Payload shape differs from the expected contract'),
+  ('NOT_FOUND',               false, 'Referenced record does not exist'),
+  ('INVALID_STATE',           false, 'Action not allowed in the record''s current state'),
+  ('PERMISSION_DENIED',       false, 'Actor lacks the permission, or approval is missing'),
+  ('AUTH_FAILURE',            false, 'Integration credentials invalid or expired; needs a human to reconnect'),
+  ('DUPLICATE_EVENT',         false, 'Event already processed (idempotency)'),
+  ('CONFLICT',                true,  'Optimistic-lock conflict; re-read then retry once'),
+  ('RATE_LIMITED',            true,  'HTTP 429; retry after Retry-After or backoff'),
+  ('UPSTREAM_5XX',            true,  'Transient upstream server error'),
+  ('TIMEOUT',                 true,  'Call timed out (idempotent operation)'),
+  ('NETWORK',                 true,  'Connection failure'),
+  ('SERVICE_UNAVAILABLE',     true,  'Provider down or circuit open'),
+  ('AMBIGUOUS_WRITE',         false, 'Write may or may not have committed; reconcile before any retry'),
+  ('ARITHMETIC_MISMATCH',     false, 'Stated totals disagree with recalculation'),
+  ('MISSING_DOCUMENT',        false, 'Required document not present'),
+  ('RECONCILIATION_MISMATCH', false, 'External state differs from internal state'),
+  ('UNKNOWN',                 false, 'Unclassified; requires investigation');
+
 -- -----------------------------------------------------------------------------
 -- People
 -- -----------------------------------------------------------------------------
@@ -61,12 +124,12 @@ end $$;
 create table employees (
   id             uuid primary key default gen_random_uuid(),
   employee_code  text not null unique,                       -- EMP-001
-  full_name      text not null,
+  full_name      text not null unique,
   email          text not null unique check (email ~* '^[^@]+@[^@]+\.[^@]+$'),
   role           text not null check (role in (
                    'ADMIN','OPERATIONS_MANAGER','PROJECT_MANAGER','ESTIMATOR',
                    'PURCHASING','FINANCE','FIELD_CREW','VIEWER')),
-  auth_user_id   uuid unique,                                -- Supabase auth.users id (real auth mode)
+  auth_user_id   uuid unique,
   is_active      boolean not null default true,
   created_at     timestamptz not null default now(),
   updated_at     timestamptz not null default now(),
@@ -82,7 +145,9 @@ create table customers (
   abn                     text check (abn ~ '^[0-9]{11}$'),
   email                   text check (email ~* '^[^@]+@[^@]+\.[^@]+$'),
   phone                   text,
-  phone_normalised        text,                              -- digits only, used for duplicate detection
+  phone_normalised        text generated always as (nullif(regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g'), '')) stored,
+  preferred_contact       text check (preferred_contact in ('PHONE','EMAIL','SMS')),
+  customer_since          date,
   status                  text not null default 'ACTIVE' check (status in ('ACTIVE','MERGED','ARCHIVED')),
   merged_into_customer_id uuid references customers(id),
   created_at              timestamptz not null default now(),
@@ -109,14 +174,13 @@ create table contacts (
 );
 create unique index contacts_one_primary_per_customer on contacts (customer_id) where is_primary;
 
--- Duplicate-customer review queue. Pair is stored in canonical order so (A,B) and (B,A)
--- cannot both exist.
+-- Duplicate-customer review queue; pair stored in canonical (uuid) order.
 create table customer_match_candidates (
   id                    uuid primary key default gen_random_uuid(),
   customer_id           uuid not null references customers(id),
   candidate_customer_id uuid not null references customers(id),
   match_score           numeric(4,3) not null check (match_score between 0 and 1),
-  match_reasons         jsonb not null default '[]'::jsonb,  -- e.g. ["PHONE_EXACT","NAME_EXACT"]
+  match_reasons         jsonb not null default '[]'::jsonb,
   status                text not null default 'OPEN' check (status in ('OPEN','CONFIRMED_DUPLICATE','NOT_DUPLICATE')),
   reviewed_by           uuid references employees(id),
   reviewed_at           timestamptz,
@@ -132,7 +196,7 @@ create table customer_match_candidates (
 
 create table leads (
   id                    uuid primary key default gen_random_uuid(),
-  lead_number           text not null unique,                -- LEAD-2026-0001
+  lead_number           text not null unique,
   source                text not null check (source in (
                           'GOOGLE_ADS','ORGANIC_SEARCH','REFERRAL','FACEBOOK','REPEAT_CUSTOMER',
                           'BUILDER_REFERRAL','LOCAL_SIGNAGE','WEBSITE_FORM','PHONE','OTHER')),
@@ -142,7 +206,7 @@ create table leads (
   email                 text,
   phone                 text,
   property_address_text text,
-  customer_id           uuid references customers(id),       -- set on conversion
+  customer_id           uuid references customers(id),
   received_at           timestamptz not null default now(),
   created_at            timestamptz not null default now(),
   updated_at            timestamptz not null default now(),
@@ -168,16 +232,15 @@ create table properties (
   unique (address_line1, suburb, state, postcode)
 );
 
--- Many-to-many: an owner, a tenant and a property manager can all relate to one
--- property, and a builder customer relates to many properties.
+-- Many-to-many: owner, tenant, property manager, builder...
 create table customer_properties (
   customer_id  uuid not null references customers(id),
   property_id  uuid not null references properties(id),
   relationship text not null check (relationship in ('OWNER','TENANT','PROPERTY_MANAGER','BUILDER','STRATA_MANAGER')),
-  valid_from   date not null default current_date,
+  valid_from   date,
   valid_to     date,
   primary key (customer_id, property_id, relationship),
-  check (valid_to is null or valid_to >= valid_from)
+  check (valid_to is null or valid_from is null or valid_to >= valid_from)
 );
 
 create table inspections (
@@ -188,7 +251,7 @@ create table inspections (
   inspector_id       uuid references employees(id),
   status             text not null default 'SCHEDULED' check (status in ('SCHEDULED','COMPLETED','CANCELLED')),
   scheduled_for      timestamptz,
-  completed_at       timestamptz,
+  inspected_on       date,
   roof_type          text check (roof_type in ('TILE','TERRACOTTA_TILE','METAL','COLORBOND','ZINCALUME','OTHER')),
   roof_area_sqm      numeric(8,1) check (roof_area_sqm > 0),   -- nullable: "missing measurement" is a real state
   pitch_degrees      numeric(4,1) check (pitch_degrees between 0 and 75),
@@ -197,8 +260,7 @@ create table inspections (
   created_at         timestamptz not null default now(),
   updated_at         timestamptz not null default now(),
   record_version     integer not null default 1,
-  check ((status = 'COMPLETED') = (completed_at is not null)),
-  check (roof_area_sqm is null or measurement_method is not null)
+  check ((status = 'COMPLETED') = (inspected_on is not null))
 );
 
 -- -----------------------------------------------------------------------------
@@ -206,21 +268,19 @@ create table inspections (
 -- -----------------------------------------------------------------------------
 
 create table products (
-  id                uuid primary key default gen_random_uuid(),
-  sku               text not null unique,                    -- RO-SHT-CB-0.42
-  name              text not null,
-  category          text not null check (category in (
-                      'ROOF_SHEETING','TILES','FLASHINGS','GUTTERS_DOWNPIPES','FASTENERS',
-                      'SARKING_INSULATION','VENTILATION','SEALANTS_COATINGS','SAFETY','ACCESSORIES')),
-  unit              text not null check (unit in ('EA','LM','M2','SHEET','BOX','ROLL','PACK','L','KG','LOT')),
-  is_active         boolean not null default true,
-  created_at        timestamptz not null default now(),
-  updated_at        timestamptz not null default now(),
-  record_version    integer not null default 1
+  id             uuid primary key default gen_random_uuid(),
+  product_code   text not null unique,                       -- PROD-0001
+  name           text not null,
+  category       text check (category in (
+                   'ROOF_SHEETING','TILES','FLASHINGS','GUTTERS_DOWNPIPES','FASTENERS',
+                   'SARKING_INSULATION','VENTILATION','SEALANTS_COATINGS','SAFETY','ACCESSORIES')),
+  unit           text not null check (unit in ('EA','LM','SQM','SHEET','BOX','ROLL','PACK','L','KG','LOT')),
+  is_active      boolean not null default true,
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now(),
+  record_version integer not null default 1
 );
 
--- Alternative descriptions seen on supplier paperwork; used by deterministic
--- product matching before any fuzzy/AI-assisted suggestion.
 create table product_aliases (
   id          uuid primary key default gen_random_uuid(),
   product_id  uuid not null references products(id) on delete cascade,
@@ -236,42 +296,50 @@ create table quotes (
   property_id         uuid not null references properties(id),
   inspection_id       uuid references inspections(id),
   lead_id             uuid references leads(id),
+  lead_source         text check (lead_source in (
+                        'GOOGLE_ADS','ORGANIC_SEARCH','REFERRAL','FACEBOOK','REPEAT_CUSTOMER',
+                        'BUILDER_REFERRAL','LOCAL_SIGNAGE','WEBSITE_FORM','PHONE','OTHER')),
   estimator_id        uuid references employees(id),
   job_type            text not null check (job_type in (
                         'LEAK_REPAIR','ROOF_RESTORATION','ROOF_REPLACEMENT','FULL_REROOF',
                         'EXTENSION_ROOF','STORM_DAMAGE_REPAIR')),
   status              text not null default 'DRAFT' check (status in ('DRAFT','SENT','ACCEPTED','LOST','EXPIRED')),
   accepted_version_id uuid,                                  -- composite FK added below
-  sent_at             timestamptz,
-  accepted_at         timestamptz,
+  created_on          date not null default current_date,
+  sent_on             date,
+  accepted_on         date,
   valid_until         date,
   lost_reason         text,
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now(),
   record_version      integer not null default 1,
-  unique (id, customer_id, property_id),                     -- target for projects composite FK
-  check ((status = 'ACCEPTED') = (accepted_version_id is not null and accepted_at is not null)),
+  unique (id, customer_id, property_id),
+  check ((status = 'ACCEPTED') = (accepted_version_id is not null and accepted_on is not null)),
   check (status <> 'LOST' or lost_reason is not null),
-  check (status = 'DRAFT' or sent_at is not null)
+  check (status = 'DRAFT' or sent_on is not null),
+  check (sent_on is null or sent_on >= created_on),
+  check (accepted_on is null or (sent_on is not null and accepted_on >= sent_on))
 );
 create index quotes_status_idx on quotes (status);
 
 create table quote_versions (
-  id               uuid primary key default gen_random_uuid(),
-  quote_id         uuid not null references quotes(id) on delete cascade,
-  version_number   integer not null check (version_number >= 1),
-  gst_rate         numeric(5,4) not null default 0.1000 check (gst_rate between 0 and 1),
-  subtotal_ex_gst  numeric(12,2) not null default 0 check (subtotal_ex_gst >= 0),
-  gst_amount       numeric(12,2) not null default 0,
-  total_inc_gst    numeric(12,2) not null default 0,
-  roof_area_basis_sqm numeric(8,1),
-  scope_summary    text,
-  created_by       uuid references employees(id),
-  created_at       timestamptz not null default now(),
+  id                  uuid primary key default gen_random_uuid(),
+  quote_id            uuid not null references quotes(id) on delete cascade,
+  version_number      integer not null check (version_number >= 1),
+  line_amount_type    text not null default 'INCLUSIVE' check (line_amount_type in ('EXCLUSIVE','INCLUSIVE','NO_TAX')),
+  gst_rate            numeric(5,4) not null default 0.1000 check (gst_rate between 0 and 1),
+  subtotal_ex_gst     numeric(12,2) not null default 0,       -- derived from lines
+  gst_amount          numeric(12,2) not null default 0,       -- derived
+  total_inc_gst       numeric(12,2) not null default 0,       -- derived
+  scope_summary       text,
+  created_by          uuid references employees(id),
+  created_at          timestamptz not null default now(),
   unique (quote_id, version_number),
-  unique (id, quote_id),                                     -- target for composite FKs
-  check (gst_amount = round(subtotal_ex_gst * gst_rate, 2)),
-  check (total_inc_gst = subtotal_ex_gst + gst_amount)
+  unique (id, quote_id),
+  check (case line_amount_type
+    when 'EXCLUSIVE' then gst_amount = round(subtotal_ex_gst * gst_rate, 2) and total_inc_gst = subtotal_ex_gst + gst_amount
+    when 'INCLUSIVE' then gst_amount = round(total_inc_gst * gst_rate / (1 + gst_rate), 2) and subtotal_ex_gst = total_inc_gst - gst_amount
+    else gst_amount = 0 and total_inc_gst = subtotal_ex_gst end)
 );
 
 alter table quotes
@@ -282,16 +350,41 @@ create table quote_version_lines (
   id                uuid primary key default gen_random_uuid(),
   quote_version_id  uuid not null references quote_versions(id) on delete cascade,
   line_no           integer not null check (line_no >= 1),
-  line_kind         text not null check (line_kind in ('MATERIAL','LABOUR','EQUIPMENT','OTHER')),
+  line_kind         text not null check (line_kind in ('MATERIAL','LABOUR','EQUIPMENT','OTHER','SUMMARY')),
   product_id        uuid references products(id),
   description       text not null,
   quantity          numeric(12,3) not null check (quantity > 0),
   unit              text not null,
-  unit_price_ex_gst numeric(12,2) not null check (unit_price_ex_gst >= 0),
-  line_total_ex_gst numeric(12,2) generated always as (round(quantity * unit_price_ex_gst, 2)) stored,
+  unit_price        numeric(12,2) not null check (unit_price >= 0),   -- per the version's line_amount_type
+  line_amount       numeric(12,2) generated always as (round(quantity * unit_price, 2)) stored,
   unique (quote_version_id, line_no),
   check (line_kind <> 'MATERIAL' or product_id is not null)
 );
+
+create or replace function derive_quote_version_totals() returns trigger language plpgsql as $$
+declare v numeric; s record;
+begin
+  select coalesce(sum(line_amount), 0) into v from quote_version_lines where quote_version_id = new.id;
+  s := gst_split(v, new.line_amount_type, new.gst_rate);
+  new.subtotal_ex_gst := s.subtotal_ex_gst; new.gst_amount := s.gst_amount; new.total_inc_gst := s.total_inc_gst;
+  return new;
+end $$;
+create trigger quote_versions_derive_totals before insert or update on quote_versions
+  for each row execute function derive_quote_version_totals();
+
+-- An accepted quote version is a contract: its lines are frozen. Changes become variations.
+create or replace function quote_version_lines_guard() returns trigger language plpgsql as $$
+declare v_version uuid := coalesce(new.quote_version_id, old.quote_version_id);
+begin
+  if exists (select 1 from quotes where accepted_version_id = v_version) then
+    raise exception 'quote version % is accepted and immutable; record a variation instead', v_version
+      using errcode = 'check_violation';
+  end if;
+  update quote_versions set gst_rate = gst_rate where id = v_version;   -- re-derive header
+  return null;
+end $$;
+create trigger quote_version_lines_guard after insert or update or delete on quote_version_lines
+  for each row execute function quote_version_lines_guard();
 
 -- -----------------------------------------------------------------------------
 -- Project -> Checklist / Tasks / Variations / Jobs
@@ -300,7 +393,7 @@ create table quote_version_lines (
 create table projects (
   id                        uuid primary key default gen_random_uuid(),
   project_number            text not null unique,            -- PRJ-2026-0018
-  quote_id                  uuid not null unique,            -- ONE project per quote: last line of idempotency defence
+  quote_id                  uuid not null unique,            -- ONE project per quote
   accepted_quote_version_id uuid not null,
   customer_id               uuid not null,
   property_id               uuid not null,
@@ -308,18 +401,18 @@ create table projects (
   status                    text not null default 'PLANNING' check (status in (
                               'PLANNING','MATERIALS_PENDING','SCHEDULED','IN_PROGRESS','ON_HOLD',
                               'COMPLETED','CLOSED','CANCELLED')),
-  contract_value_ex_gst     numeric(12,2) not null check (contract_value_ex_gst >= 0),
   planned_start_date        date,
   planned_completion_date   date,
   actual_start_date         date,
   actual_completion_date    date,
+  pm_risk_flag              text not null default 'LOW' check (pm_risk_flag in ('LOW','HIGH')),  -- PM's own assessment
+  delay_reason              text,
   on_hold_reason            text,
   cancellation_reason       text,
-  created_by_event_id       uuid,                            -- automation_events.event_id that created it
+  created_by_event_id       uuid,
   created_at                timestamptz not null default now(),
   updated_at                timestamptz not null default now(),
   record_version            integer not null default 1,
-  -- project must reference the same customer/property as its quote, and the accepted version of THAT quote
   foreign key (quote_id, customer_id, property_id) references quotes (id, customer_id, property_id),
   foreign key (accepted_quote_version_id, quote_id) references quote_versions (id, quote_id),
   foreign key (customer_id) references customers(id),
@@ -327,6 +420,8 @@ create table projects (
   check (planned_completion_date is null or planned_start_date is null or planned_completion_date >= planned_start_date),
   check (actual_completion_date is null or actual_start_date is null or actual_completion_date >= actual_start_date),
   check (status not in ('COMPLETED','CLOSED') or actual_completion_date is not null),
+  check (status not in ('IN_PROGRESS','COMPLETED','CLOSED') or actual_start_date is not null),
+  check (pm_risk_flag = 'LOW' or delay_reason is not null),
   check (status <> 'ON_HOLD' or on_hold_reason is not null),
   check (status <> 'CANCELLED' or cancellation_reason is not null)
 );
@@ -335,18 +430,18 @@ create index projects_status_idx on projects (status);
 create table project_checklist_items (
   id                   uuid primary key default gen_random_uuid(),
   project_id           uuid not null references projects(id) on delete cascade,
-  item_code            text not null,                         -- e.g. SWMS_SIGNED, COMPLETION_PHOTOS
+  item_code            text not null,
   label                text not null,
   stage                text not null check (stage in ('PRE_START','COMPLETION','INVOICING')),
   is_required          boolean not null default true,
   status               text not null default 'OPEN' check (status in ('OPEN','DONE','WAIVED','NOT_APPLICABLE')),
   completed_by         uuid references employees(id),
-  completed_at         timestamptz,
+  completed_on         date,
   evidence_document_id uuid,                                   -- FK added after documents
   waived_reason        text,
   sort_order           integer not null default 0,
   unique (project_id, item_code),
-  check ((status = 'DONE') = (completed_at is not null)),
+  check ((status = 'DONE') = (completed_on is not null)),
   check (status <> 'WAIVED' or waived_reason is not null)
 );
 
@@ -361,8 +456,8 @@ create table tasks (
   assignee_id            uuid references employees(id),
   status                 text not null default 'OPEN' check (status in ('OPEN','IN_PROGRESS','DONE','CANCELLED')),
   due_on                 date,
-  dedupe_key             text unique,                         -- e.g. 'material_review:<project_id>'
-  created_by_workflow_run_id uuid,                            -- FK added after workflow_runs
+  dedupe_key             text unique,
+  created_by_workflow_run_id uuid,
   created_at             timestamptz not null default now(),
   updated_at             timestamptz not null default now(),
   record_version         integer not null default 1
@@ -370,10 +465,10 @@ create table tasks (
 
 create table variations (
   id                   uuid primary key default gen_random_uuid(),
-  variation_number     text not null unique,                  -- VAR-2026-0001
+  variation_number     text not null unique,
   project_id           uuid not null references projects(id),
   description          text not null,
-  amount_ex_gst        numeric(12,2) not null,                -- may be negative (credit)
+  amount_inc_gst       numeric(12,2) not null,
   status               text not null default 'PROPOSED' check (status in ('PROPOSED','APPROVED','REJECTED','INVOICED')),
   customer_approved_at timestamptz,
   approved_by          uuid references employees(id),
@@ -385,7 +480,7 @@ create table variations (
 
 create table jobs (
   id              uuid primary key default gen_random_uuid(),
-  job_number      text not null unique,                       -- JOB-2026-0001
+  job_number      text not null unique,
   project_id      uuid not null references projects(id),
   job_type        text not null check (job_type in ('INSTALL','STRIP_AND_REPLACE','RESTORATION','REPAIR','MAKE_SAFE','RETURN_VISIT')),
   status          text not null default 'SCHEDULED' check (status in ('SCHEDULED','IN_PROGRESS','COMPLETED','WEATHER_DELAYED','CANCELLED')),
@@ -414,82 +509,82 @@ create table job_assignments (
 -- -----------------------------------------------------------------------------
 
 create table suppliers (
-  id                  uuid primary key default gen_random_uuid(),
-  supplier_code       text not null unique,                   -- SUP-001
-  name                text not null unique,
-  abn                 text check (abn ~ '^[0-9]{11}$'),
-  orders_email        text check (orders_email ~* '^[^@]+@[^@]+\.[^@]+$'),
-  phone               text,
-  payment_terms_days  integer not null default 30 check (payment_terms_days between 0 and 120),
+  id                     uuid primary key default gen_random_uuid(),
+  supplier_code          text not null unique,               -- SUP-001
+  name                   text not null unique,
+  abn                    text check (abn ~ '^[0-9]{11}$'),
+  orders_email           text check (orders_email ~* '^[^@]+@[^@]+\.[^@]+$'),
+  phone                  text,
+  payment_terms_days     integer check (payment_terms_days between 0 and 120),
   default_lead_time_days integer check (default_lead_time_days >= 0),
-  is_active           boolean not null default true,
-  created_at          timestamptz not null default now(),
-  updated_at          timestamptz not null default now(),
-  record_version      integer not null default 1
+  is_active              boolean not null default true,
+  created_at             timestamptz not null default now(),
+  updated_at             timestamptz not null default now(),
+  record_version         integer not null default 1
 );
 
 alter table product_aliases add foreign key (supplier_id) references suppliers(id);
 
 create table supplier_products (
-  id                uuid primary key default gen_random_uuid(),
-  supplier_id       uuid not null references suppliers(id),
-  product_id        uuid not null references products(id),
-  supplier_sku      text not null,
+  id                   uuid primary key default gen_random_uuid(),
+  supplier_id          uuid not null references suppliers(id),
+  product_id           uuid not null references products(id),
+  supplier_sku         text not null,
   supplier_description text,
-  pack_size         numeric(12,3) not null default 1 check (pack_size > 0),
-  list_price_ex_gst numeric(12,2) not null check (list_price_ex_gst >= 0),
-  lead_time_days    integer check (lead_time_days >= 0),
-  price_valid_until date,
+  pack_size            numeric(12,3) not null default 1 check (pack_size > 0),
+  list_price_ex_gst    numeric(12,2) not null check (list_price_ex_gst >= 0),
+  lead_time_days       integer check (lead_time_days >= 0),
+  price_valid_until    date,
+  is_active            boolean not null default true,
   unique (supplier_id, supplier_sku),
   unique (supplier_id, product_id)
 );
 
 create table material_requirements (
-  id                  uuid primary key default gen_random_uuid(),
-  project_id          uuid not null references projects(id),
-  product_id          uuid not null references products(id),
-  quantity            numeric(12,3) not null check (quantity > 0),
-  unit                text not null,
-  required_by         date,
-  source              text not null check (source in ('QUOTE','TAKEOFF','MANUAL')),
+  id                   uuid primary key default gen_random_uuid(),
+  project_id           uuid not null references projects(id),
+  product_id           uuid not null references products(id),
+  quantity             numeric(12,3) not null check (quantity > 0),
+  unit                 text not null,
+  required_by          date,
+  source               text not null check (source in ('QUOTE','TAKEOFF','MANUAL')),
   source_quote_line_id uuid references quote_version_lines(id),
-  takeoff_reference   text,                                   -- measurement provenance (Module 6)
-  status              text not null default 'DRAFT' check (status in ('DRAFT','APPROVED','ORDERED','PARTIALLY_RECEIVED','RECEIVED','CANCELLED')),
-  approved_by         uuid references employees(id),
-  approved_at         timestamptz,
-  created_at          timestamptz not null default now(),
-  updated_at          timestamptz not null default now(),
-  record_version      integer not null default 1,
+  takeoff_reference    text,
+  status               text not null default 'DRAFT' check (status in ('DRAFT','APPROVED','ORDERED','PARTIALLY_RECEIVED','RECEIVED','CANCELLED')),
+  approved_by          uuid references employees(id),
+  approved_at          timestamptz,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now(),
+  record_version       integer not null default 1,
   check ((status in ('DRAFT','CANCELLED')) or (approved_by is not null and approved_at is not null))
 );
 create unique index material_requirements_one_active_per_product
   on material_requirements (project_id, product_id) where status <> 'CANCELLED';
 
 create table supplier_quotes (
-  id                    uuid primary key default gen_random_uuid(),
-  supplier_id           uuid references suppliers(id),         -- null until the supplier is identified
-  project_id            uuid references projects(id),
-  supplier_reference    text,                                  -- the supplier's own quote number
-  received_at           timestamptz not null default now(),
-  source_document_id    uuid,                                  -- FK added after documents
-  raw_text              text,
-  status                text not null default 'RECEIVED' check (status in (
-                          'RECEIVED','EXTRACTED','EXTRACTION_FAILED','NEEDS_REVIEW','REVIEWED','REJECTED','CONVERTED')),
-  extraction            jsonb,                                 -- raw structured output from the model, kept verbatim
-  extraction_model      text,
+  id                        uuid primary key default gen_random_uuid(),
+  supplier_id               uuid references suppliers(id),
+  project_id                uuid references projects(id),
+  supplier_reference        text,
+  received_at               timestamptz not null default now(),
+  source_document_id        uuid,                            -- FK added after documents
+  raw_text                  text,
+  status                    text not null default 'RECEIVED' check (status in (
+                              'RECEIVED','EXTRACTED','EXTRACTION_FAILED','NEEDS_REVIEW','REVIEWED','REJECTED','CONVERTED')),
+  extraction                jsonb,
+  extraction_model          text,
   extraction_prompt_version text,
-  prices_include_gst    boolean,
-  freight_ex_gst        numeric(12,2) check (freight_ex_gst >= 0),
-  stated_total          numeric(12,2),                         -- what the supplier wrote
-  lead_time_days        integer check (lead_time_days >= 0),
-  delivery_date         date,
-  valid_until           date,
-  validation_issues     jsonb not null default '[]'::jsonb,    -- [{code, field, message}]
-  reviewed_by           uuid references employees(id),
-  reviewed_at           timestamptz,
-  created_at            timestamptz not null default now(),
-  updated_at            timestamptz not null default now(),
-  record_version        integer not null default 1,
+  prices_include_gst        boolean,
+  stated_total              numeric(12,2),
+  lead_time_days            integer check (lead_time_days >= 0),
+  delivery_date             date,
+  valid_until               date,
+  validation_issues         jsonb not null default '[]'::jsonb,
+  reviewed_by               uuid references employees(id),
+  reviewed_at               timestamptz,
+  created_at                timestamptz not null default now(),
+  updated_at                timestamptz not null default now(),
+  record_version            integer not null default 1,
   check (status not in ('REVIEWED','CONVERTED') or (reviewed_by is not null and supplier_id is not null))
 );
 
@@ -497,12 +592,13 @@ create table supplier_quote_lines (
   id                   uuid primary key default gen_random_uuid(),
   supplier_quote_id    uuid not null references supplier_quotes(id) on delete cascade,
   line_no              integer not null check (line_no >= 1),
+  line_kind            text not null default 'ITEM' check (line_kind in ('ITEM','FREIGHT')),
   raw_description      text not null,
   supplier_sku         text,
-  quantity             numeric(12,3),                          -- nullable: "missing field" fixture
+  quantity             numeric(12,3),
   unit                 text,
   unit_price_as_stated numeric(12,2),
-  unit_price_ex_gst    numeric(12,2),                          -- normalised by code, not by the model
+  unit_price_ex_gst    numeric(12,2),
   stated_line_total    numeric(12,2),
   computed_line_total_ex_gst numeric(12,2) generated always as (round(quantity * unit_price_ex_gst, 2)) stored,
   matched_product_id   uuid references products(id),
@@ -512,39 +608,44 @@ create table supplier_quote_lines (
 );
 
 create table purchase_orders (
-  id                     uuid primary key default gen_random_uuid(),
-  po_number              text not null unique,                 -- PO-2026-0031
-  supplier_id            uuid not null references suppliers(id),
-  project_id             uuid references projects(id),         -- null = stock order
-  origin                 text not null default 'MANUAL' check (origin in ('MANUAL','AI_DRAFT','SUPPLIER_QUOTE')),
+  id                       uuid primary key default gen_random_uuid(),
+  po_number                text not null unique,             -- PO-2026-0031
+  supplier_id              uuid not null references suppliers(id),
+  project_id               uuid references projects(id),     -- null = stock order
+  record_origin            text not null default 'ROOFOPS' check (record_origin in ('ROOFOPS','IMPORT')),
+  origin                   text not null default 'MANUAL' check (origin in ('MANUAL','AI_DRAFT','SUPPLIER_QUOTE','LEGACY')),
   source_supplier_quote_id uuid references supplier_quotes(id),
-  status                 text not null default 'DRAFT' check (status in (
-                           'DRAFT','PENDING_APPROVAL','APPROVED','SENT','ACKNOWLEDGED',
-                           'PARTIALLY_DELIVERED','DELIVERED','CANCELLED')),
-  gst_rate               numeric(5,4) not null default 0.1000,
-  subtotal_ex_gst        numeric(12,2) not null default 0,     -- maintained by trigger from lines
-  freight_ex_gst         numeric(12,2) not null default 0 check (freight_ex_gst >= 0),
-  gst_amount             numeric(12,2) not null default 0,
-  total_inc_gst          numeric(12,2) not null default 0,
-  required_by            date,
-  expected_delivery_date date,
-  supplier_reference     text,
-  approval_id            uuid,                                 -- FK added after approvals
-  approved_by            uuid references employees(id),
-  approved_at            timestamptz,
-  sent_at                timestamptz,
-  acknowledged_at        timestamptz,
-  cancelled_reason       text,
-  idempotency_key        text unique,                          -- guards duplicate "send PO" / "create PO"
-  created_by             uuid references employees(id),
-  created_at             timestamptz not null default now(),
-  updated_at             timestamptz not null default now(),
-  record_version         integer not null default 1,
-  check (gst_amount = round((subtotal_ex_gst + freight_ex_gst) * gst_rate, 2)),
-  check (total_inc_gst = subtotal_ex_gst + freight_ex_gst + gst_amount),
-  check (status in ('DRAFT','PENDING_APPROVAL','CANCELLED') or (approved_by is not null and approved_at is not null)),
-  check (status not in ('SENT','ACKNOWLEDGED','PARTIALLY_DELIVERED','DELIVERED') or sent_at is not null),
-  check (status not in ('ACKNOWLEDGED') or acknowledged_at is not null),
+  status                   text not null default 'DRAFT' check (status in (
+                             'DRAFT','PENDING_APPROVAL','APPROVED','SENT','ACKNOWLEDGED',
+                             'PARTIALLY_DELIVERED','DELIVERED','CANCELLED')),
+  line_amount_type         text not null default 'EXCLUSIVE' check (line_amount_type in ('EXCLUSIVE','INCLUSIVE','NO_TAX')),
+  gst_rate                 numeric(5,4) not null default 0.1000,
+  subtotal_ex_gst          numeric(12,2) not null default 0,  -- derived
+  gst_amount               numeric(12,2) not null default 0,  -- derived
+  total_inc_gst            numeric(12,2) not null default 0,  -- derived
+  po_date                  date not null default current_date,
+  required_by              date,
+  expected_delivery_date   date,
+  supplier_reference       text,
+  approval_id              uuid,                              -- FK added after approvals
+  approved_by              uuid references employees(id),
+  approved_at              timestamptz,
+  sent_at                  timestamptz,
+  acknowledged_at          timestamptz,
+  cancelled_reason         text,
+  idempotency_key          text unique,
+  created_by               uuid references employees(id),
+  created_at               timestamptz not null default now(),
+  updated_at               timestamptz not null default now(),
+  record_version           integer not null default 1,
+  check (case line_amount_type
+    when 'EXCLUSIVE' then gst_amount = round(subtotal_ex_gst * gst_rate, 2) and total_inc_gst = subtotal_ex_gst + gst_amount
+    when 'INCLUSIVE' then gst_amount = round(total_inc_gst * gst_rate / (1 + gst_rate), 2) and subtotal_ex_gst = total_inc_gst - gst_amount
+    else gst_amount = 0 and total_inc_gst = subtotal_ex_gst end),
+  check (expected_delivery_date is null or expected_delivery_date >= po_date),
+  check (record_origin = 'IMPORT' or status in ('DRAFT','PENDING_APPROVAL','CANCELLED') or (approved_by is not null and approved_at is not null)),
+  check (record_origin = 'IMPORT' or status not in ('SENT','ACKNOWLEDGED','PARTIALLY_DELIVERED','DELIVERED') or sent_at is not null),
+  check (record_origin = 'IMPORT' or status <> 'ACKNOWLEDGED' or acknowledged_at is not null),
   check (status <> 'CANCELLED' or cancelled_reason is not null)
 );
 create index purchase_orders_status_idx on purchase_orders (status);
@@ -553,19 +654,20 @@ create table purchase_order_lines (
   id                  uuid primary key default gen_random_uuid(),
   purchase_order_id   uuid not null references purchase_orders(id) on delete cascade,
   line_no             integer not null check (line_no >= 1),
-  product_id          uuid not null references products(id),
+  line_kind           text not null default 'ITEM' check (line_kind in ('ITEM','FREIGHT','SUMMARY')),
+  product_id          uuid references products(id),
   supplier_product_id uuid references supplier_products(id),
   description         text not null,
   quantity            numeric(12,3) not null check (quantity > 0),
   unit                text not null,
-  unit_price_ex_gst   numeric(12,2) not null check (unit_price_ex_gst >= 0),
-  line_total_ex_gst   numeric(12,2) generated always as (round(quantity * unit_price_ex_gst, 2)) stored,
+  unit_price          numeric(12,2) not null check (unit_price >= 0),
+  line_amount         numeric(12,2) generated always as (round(quantity * unit_price, 2)) stored,
   quantity_received   numeric(12,3) not null default 0 check (quantity_received >= 0),
-  unique (purchase_order_id, line_no)
+  unique (purchase_order_id, line_no),
+  check (line_kind <> 'ITEM' or product_id is not null)
 );
 
--- Junction: one PO line can satisfy several requirements (consolidated order),
--- and one requirement can be split across several PO lines/suppliers.
+-- Junction: one PO line can serve several requirements; one requirement can be split.
 create table po_line_allocations (
   purchase_order_line_id  uuid not null references purchase_order_lines(id) on delete cascade,
   material_requirement_id uuid not null references material_requirements(id),
@@ -573,31 +675,25 @@ create table po_line_allocations (
   primary key (purchase_order_line_id, material_requirement_id)
 );
 
--- PO header totals are fully derived: subtotal from lines, then GST and total.
--- Any value supplied by a caller (or an LLM) for these columns is overwritten.
--- Arithmetic lives here, never in input.
 create or replace function derive_purchase_order_totals() returns trigger language plpgsql as $$
+declare v numeric; s record;
 begin
-  select coalesce(sum(line_total_ex_gst), 0) into new.subtotal_ex_gst
-    from purchase_order_lines where purchase_order_id = new.id;
-  new.gst_amount    := round((new.subtotal_ex_gst + new.freight_ex_gst) * new.gst_rate, 2);
-  new.total_inc_gst := new.subtotal_ex_gst + new.freight_ex_gst + new.gst_amount;
+  select coalesce(sum(line_amount), 0) into v from purchase_order_lines where purchase_order_id = new.id;
+  s := gst_split(v, new.line_amount_type, new.gst_rate);
+  new.subtotal_ex_gst := s.subtotal_ex_gst; new.gst_amount := s.gst_amount; new.total_inc_gst := s.total_inc_gst;
   return new;
 end $$;
-create trigger purchase_orders_derive_totals
-  before insert or update on purchase_orders
+create trigger purchase_orders_derive_totals before insert or update on purchase_orders
   for each row execute function derive_purchase_order_totals();
 
--- A line change "touches" its header so the header re-derives (and bumps record_version,
--- which invalidates any approval granted against the old contents).
+-- A line change touches its header: totals re-derive and record_version bumps,
+-- which invalidates any approval granted against the old contents.
 create or replace function touch_purchase_order_from_line() returns trigger language plpgsql as $$
 begin
-  update purchase_orders set freight_ex_gst = freight_ex_gst
-   where id = coalesce(new.purchase_order_id, old.purchase_order_id);
+  update purchase_orders set gst_rate = gst_rate where id = coalesce(new.purchase_order_id, old.purchase_order_id);
   return null;
 end $$;
-create trigger purchase_order_lines_touch_header
-  after insert or update or delete on purchase_order_lines
+create trigger purchase_order_lines_touch_header after insert or update or delete on purchase_order_lines
   for each row execute function touch_purchase_order_from_line();
 
 -- -----------------------------------------------------------------------------
@@ -605,62 +701,65 @@ create trigger purchase_order_lines_touch_header
 -- -----------------------------------------------------------------------------
 
 create table invoices (
-  id              uuid primary key default gen_random_uuid(),
-  invoice_number  text not null unique,                       -- INV-2026-0012
-  project_id      uuid not null references projects(id),
-  customer_id     uuid not null references customers(id),
-  invoice_type    text not null check (invoice_type in ('DEPOSIT','PROGRESS','FINAL','VARIATION')),
-  status          text not null default 'DRAFT' check (status in (
-                    'DRAFT','PENDING_APPROVAL','APPROVED','ISSUED','PARTIALLY_PAID','PAID','VOIDED')),
-  -- Accounting sync state is separate from business state. UNKNOWN = ambiguous
-  -- write (timeout after POST) and MUST be reconciled before any retry.
-  sync_status     text not null default 'NOT_SYNCED' check (sync_status in ('NOT_SYNCED','PENDING','SYNCED','FAILED','UNKNOWN')),
-  gst_rate        numeric(5,4) not null default 0.1000,
-  subtotal_ex_gst numeric(12,2) not null default 0,
-  gst_amount      numeric(12,2) not null default 0,
-  total_inc_gst   numeric(12,2) not null default 0,
-  issue_date      date,
-  due_date        date,
-  approval_id     uuid,                                       -- FK added after approvals
-  approved_by     uuid references employees(id),
-  approved_at     timestamptz,
-  idempotency_key text unique,                                -- guards duplicate create/sync
-  voided_reason   text,
-  created_at      timestamptz not null default now(),
-  updated_at      timestamptz not null default now(),
-  record_version  integer not null default 1,
-  check (gst_amount = round(subtotal_ex_gst * gst_rate, 2)),
-  check (total_inc_gst = subtotal_ex_gst + gst_amount),
+  id               uuid primary key default gen_random_uuid(),
+  invoice_number   text not null unique,                      -- INV-2026-0012
+  project_id       uuid not null references projects(id),
+  customer_id      uuid not null references customers(id),
+  record_origin    text not null default 'ROOFOPS' check (record_origin in ('ROOFOPS','IMPORT')),
+  invoice_type     text check (invoice_type in ('DEPOSIT','PROGRESS','FINAL','VARIATION')),  -- null: not stated in source
+  status           text not null default 'DRAFT' check (status in (
+                     'DRAFT','PENDING_APPROVAL','APPROVED','ISSUED','PARTIALLY_PAID','PAID','VOIDED')),
+  -- Accounting sync state is separate from business state. UNKNOWN = ambiguous write; reconcile before retry.
+  sync_status      text not null default 'NOT_SYNCED' check (sync_status in ('NOT_SYNCED','PENDING','SYNCED','FAILED','UNKNOWN')),
+  line_amount_type text not null default 'INCLUSIVE' check (line_amount_type in ('EXCLUSIVE','INCLUSIVE','NO_TAX')),
+  gst_rate         numeric(5,4) not null default 0.1000,
+  subtotal_ex_gst  numeric(12,2) not null default 0,         -- derived
+  gst_amount       numeric(12,2) not null default 0,         -- derived
+  total_inc_gst    numeric(12,2) not null default 0,         -- derived
+  issue_date       date,
+  due_date         date,
+  approval_id      uuid,
+  approved_by      uuid references employees(id),
+  approved_at      timestamptz,
+  idempotency_key  text unique,
+  voided_reason    text,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now(),
+  record_version   integer not null default 1,
+  check (case line_amount_type
+    when 'EXCLUSIVE' then gst_amount = round(subtotal_ex_gst * gst_rate, 2) and total_inc_gst = subtotal_ex_gst + gst_amount
+    when 'INCLUSIVE' then gst_amount = round(total_inc_gst * gst_rate / (1 + gst_rate), 2) and subtotal_ex_gst = total_inc_gst - gst_amount
+    else gst_amount = 0 and total_inc_gst = subtotal_ex_gst end),
   check (due_date is null or issue_date is null or due_date >= issue_date),
-  check (status in ('DRAFT','PENDING_APPROVAL','VOIDED') or (approved_by is not null and approved_at is not null)),
+  check (record_origin = 'IMPORT' or status in ('DRAFT','PENDING_APPROVAL','VOIDED') or (approved_by is not null and approved_at is not null)),
   check (status not in ('ISSUED','PARTIALLY_PAID','PAID') or (issue_date is not null and due_date is not null)),
   check (status <> 'VOIDED' or voided_reason is not null)
 );
 create index invoices_status_due_idx on invoices (status, due_date);
 
 create table invoice_lines (
-  id                uuid primary key default gen_random_uuid(),
-  invoice_id        uuid not null references invoices(id) on delete cascade,
-  line_no           integer not null check (line_no >= 1),
-  description       text not null,
-  quantity          numeric(12,3) not null check (quantity > 0),
-  unit_price_ex_gst numeric(12,2) not null,
-  line_total_ex_gst numeric(12,2) generated always as (round(quantity * unit_price_ex_gst, 2)) stored,
-  variation_id      uuid references variations(id),
-  account_code      text,                                     -- Xero account code, e.g. '200'
+  id           uuid primary key default gen_random_uuid(),
+  invoice_id   uuid not null references invoices(id) on delete cascade,
+  line_no      integer not null check (line_no >= 1),
+  line_kind    text not null default 'ITEM' check (line_kind in ('ITEM','SUMMARY')),
+  description  text not null,
+  quantity     numeric(12,3) not null check (quantity > 0),
+  unit_price   numeric(12,2) not null,
+  line_amount  numeric(12,2) generated always as (round(quantity * unit_price, 2)) stored,
+  variation_id uuid references variations(id),
+  account_code text,
   unique (invoice_id, line_no)
 );
 
 create or replace function derive_invoice_totals() returns trigger language plpgsql as $$
+declare v numeric; s record;
 begin
-  select coalesce(sum(line_total_ex_gst), 0) into new.subtotal_ex_gst
-    from invoice_lines where invoice_id = new.id;
-  new.gst_amount    := round(new.subtotal_ex_gst * new.gst_rate, 2);
-  new.total_inc_gst := new.subtotal_ex_gst + new.gst_amount;
+  select coalesce(sum(line_amount), 0) into v from invoice_lines where invoice_id = new.id;
+  s := gst_split(v, new.line_amount_type, new.gst_rate);
+  new.subtotal_ex_gst := s.subtotal_ex_gst; new.gst_amount := s.gst_amount; new.total_inc_gst := s.total_inc_gst;
   return new;
 end $$;
-create trigger invoices_derive_totals
-  before insert or update on invoices
+create trigger invoices_derive_totals before insert or update on invoices
   for each row execute function derive_invoice_totals();
 
 create or replace function touch_invoice_from_line() returns trigger language plpgsql as $$
@@ -668,8 +767,7 @@ begin
   update invoices set gst_rate = gst_rate where id = coalesce(new.invoice_id, old.invoice_id);
   return null;
 end $$;
-create trigger invoice_lines_touch_header
-  after insert or update or delete on invoice_lines
+create trigger invoice_lines_touch_header after insert or update or delete on invoice_lines
   for each row execute function touch_invoice_from_line();
 
 create table payments (
@@ -677,8 +775,8 @@ create table payments (
   invoice_id  uuid not null references invoices(id),
   amount      numeric(12,2) not null check (amount > 0),
   received_on date not null,
-  method      text not null check (method in ('BANK_TRANSFER','CARD','CASH','CHEQUE','OTHER')),
-  source      text not null default 'MANUAL' check (source in ('MANUAL','XERO')),
+  method      text not null check (method in ('BANK_TRANSFER','CARD','CASH','CHEQUE','OTHER','UNKNOWN')),
+  source      text not null default 'MANUAL' check (source in ('MANUAL','XERO','IMPORT')),
   reference   text,
   created_at  timestamptz not null default now()
 );
@@ -689,17 +787,20 @@ create table payments (
 
 create table documents (
   id                uuid primary key default gen_random_uuid(),
+  document_number   text not null unique,                     -- DOC-0001
   document_type     text not null check (document_type in (
-                      'PHOTO_BEFORE','PHOTO_DURING','PHOTO_AFTER','COMPLIANCE_CERTIFICATE','SWMS',
-                      'QUOTE_PDF','SUPPLIER_QUOTE','PO_PDF','INVOICE_PDF','PLAN','OTHER')),
+                      'INSPECTION_PHOTOS','ROOF_PLAN','CUSTOMER_QUOTE','SIGNED_ACCEPTANCE','SUPPLIER_QUOTE',
+                      'PURCHASE_ORDER','PROGRESS_PHOTOS','COMPLETION_PHOTOS','WARRANTY_PACK','INVOICE_PDF',
+                      'COMPLIANCE_CERTIFICATE','SWMS','OTHER')),
   title             text not null,
   file_name         text not null,
   mime_type         text not null,
   size_bytes        bigint check (size_bytes >= 0),
   sha256            text check (sha256 ~ '^[0-9a-f]{64}$'),
-  storage_provider  text not null check (storage_provider in ('GOOGLE_DRIVE','SUPABASE_STORAGE','MOCK')),
-  storage_ref       text not null,                            -- Drive file id / storage path
-  captured_at       timestamptz,
+  storage_provider  text not null check (storage_provider in ('GOOGLE_DRIVE','SUPABASE_STORAGE','MOCK_DRIVE')),
+  storage_ref       text not null,
+  review_status     text not null default 'NEEDS_REVIEW' check (review_status in ('NEEDS_REVIEW','APPROVED','REJECTED')),
+  uploaded_at       timestamptz,
   uploaded_by       uuid references employees(id),
   project_id        uuid references projects(id),
   job_id            uuid references jobs(id),
@@ -708,8 +809,6 @@ create table documents (
   supplier_quote_id uuid references supplier_quotes(id),
   invoice_id        uuid references invoices(id),
   created_at        timestamptz not null default now(),
-  -- explicit nullable FKs instead of a polymorphic (entity_type, entity_id) pair,
-  -- so every attachment is referentially checked
   check (num_nonnulls(project_id, job_id, quote_id, purchase_order_id, supplier_quote_id, invoice_id) >= 1)
 );
 create index documents_project_idx on documents (project_id, document_type);
@@ -718,27 +817,30 @@ alter table project_checklist_items add foreign key (evidence_document_id) refer
 alter table supplier_quotes add foreign key (source_document_id) references documents(id);
 
 create table site_notes (
-  id         uuid primary key default gen_random_uuid(),
-  project_id uuid not null references projects(id),
-  job_id     uuid,
-  author_id  uuid references employees(id),
-  note_type  text not null default 'GENERAL' check (note_type in ('GENERAL','SAFETY','WEATHER','ACCESS','DEFECT','VARIATION','MATERIALS')),
-  body       text not null check (length(body) between 1 and 5000),
-  created_at timestamptz not null default now(),
-  foreign key (job_id, project_id) references jobs (id, project_id)   -- note's job must belong to the note's project
+  id                   uuid primary key default gen_random_uuid(),
+  note_number          text not null unique,                  -- NOTE-0001
+  project_id           uuid not null references projects(id),
+  job_id               uuid,
+  author_id            uuid references employees(id),
+  note_type            text not null default 'GENERAL' check (note_type in ('GENERAL','SAFETY','WEATHER','ACCESS','DEFECT','VARIATION','MATERIALS')),
+  body                 text not null check (length(body) between 1 and 5000),
+  noted_at             timestamptz not null,
+  ai_extraction_status text not null default 'PENDING' check (ai_extraction_status in ('PENDING','PROCESSED','FAILED')),
+  created_at           timestamptz not null default now(),
+  foreign key (job_id, project_id) references jobs (id, project_id)
 );
 
 -- -----------------------------------------------------------------------------
--- Integration identity. External systems are keyed by their own IDs, never by names.
+-- Integration identity: external systems keyed by their own IDs, never by names.
 -- -----------------------------------------------------------------------------
 
 create table external_links (
   id             uuid primary key default gen_random_uuid(),
   provider       text not null check (provider in ('XERO','GOOGLE_DRIVE','AIRTABLE','GMAIL','N8N')),
-  is_mock        boolean not null,                            -- every link says whether it came from a mock provider
-  entity_type    text not null,                               -- 'invoice','customer','project',...
+  is_mock        boolean not null,
+  entity_type    text not null,
   entity_id      uuid not null,
-  external_type  text not null,                               -- 'Invoice','Contact','Folder','Record'
+  external_type  text not null,
   external_id    text not null,
   external_url   text,
   last_synced_at timestamptz,
@@ -751,41 +853,39 @@ create table external_links (
 -- Automation: event log, idempotency ledger, runs, exceptions, outbox
 -- -----------------------------------------------------------------------------
 
--- Operational/debug event log. One row per event_id; a duplicate *delivery* is
--- recorded as its own event (webhook.duplicate_ignored) with causation_id -> original.
 create table automation_events (
   event_id           uuid primary key,
+  event_key          text unique,                           -- source/business key, e.g. EVT-00001
   correlation_id     uuid not null,
+  correlation_key    text,                                  -- source key, e.g. CORR-0001
   causation_id       uuid,
   event_type         text not null check (event_type ~ '^[a-z_]+(\.[a-z_]+)+$'),
   entity_type        text,
   entity_id          uuid,
-  business_reference text,                                   -- Q-2026-0042 etc., for humans
+  business_reference text,
   actor_type         text not null check (actor_type in ('USER','SYSTEM','AI','INTEGRATION','WORKFLOW')),
   actor_id           text,
-  source             text not null,                          -- 'roofops-web','n8n','xero-webhook','seed'
+  source             text not null,
   workflow_version   text,
   occurred_at        timestamptz not null,
   recorded_at        timestamptz not null default now(),
   status             text not null check (status in ('RECEIVED','SUCCEEDED','FAILED','DUPLICATE_IGNORED','REJECTED','INFO')),
   external_reference text,
-  error_class        text,
+  error_class        text references error_classes(code),
   metadata           jsonb not null default '{}'::jsonb,
   payload            jsonb,
-  check (status <> 'FAILED' or error_class is not null)
+  check (status not in ('FAILED','DUPLICATE_IGNORED') or error_class is not null)
 );
 create index automation_events_correlation_idx on automation_events (correlation_id, occurred_at);
 create index automation_events_entity_idx on automation_events (entity_type, entity_id, occurred_at);
 create index automation_events_type_idx on automation_events (event_type, occurred_at desc);
 
--- Idempotency ledger. Claimed with INSERT ... ON CONFLICT DO NOTHING; the
--- winner holds a lease, losers read the stored outcome. request_hash detects
--- "same key, different payload" (rejected, like Xero does).
 create table processed_events (
-  consumer         text not null,                            -- 'quote_to_project@v1'
-  idempotency_key  text not null,                            -- 'quote.accepted:<quote_id>:v<version>'
-  first_event_id   uuid not null,
-  request_hash     text not null,
+  consumer         text not null,
+  idempotency_key  text not null,
+  record_origin    text not null default 'ROOFOPS' check (record_origin in ('ROOFOPS','IMPORT')),
+  first_event_id   uuid references automation_events(event_id),
+  request_hash     text,
   status           text not null check (status in ('PROCESSING','COMPLETED','FAILED')),
   locked_by        text,
   lease_expires_at timestamptz,
@@ -797,12 +897,13 @@ create table processed_events (
   completed_at     timestamptz,
   primary key (consumer, idempotency_key),
   check ((status = 'COMPLETED') = (completed_at is not null and result is not null)),
-  check (status <> 'PROCESSING' or lease_expires_at is not null)
+  check (status <> 'PROCESSING' or lease_expires_at is not null),
+  check (record_origin = 'IMPORT' or (first_event_id is not null and request_hash is not null))
 );
 
 create table workflow_runs (
   id                 uuid primary key default gen_random_uuid(),
-  workflow_key       text not null,                          -- 'quote_to_project'
+  workflow_key       text not null,
   workflow_version   text not null,
   runner             text not null check (runner in ('LOCAL','N8N')),
   trigger_event_id   uuid references automation_events(event_id),
@@ -818,7 +919,7 @@ create table workflow_runs (
   next_attempt_at    timestamptz,
   started_at         timestamptz,
   finished_at        timestamptz,
-  last_error_class   text,
+  last_error_class   text references error_classes(code),
   last_error_message text,
   output             jsonb,
   created_at         timestamptz not null default now(),
@@ -835,57 +936,52 @@ create index workflow_runs_key_status_idx on workflow_runs (workflow_key, status
 alter table tasks add foreign key (created_by_workflow_run_id) references workflow_runs(id);
 
 create table workflow_run_steps (
-  id            uuid primary key default gen_random_uuid(),
-  run_id        uuid not null references workflow_runs(id) on delete cascade,
-  attempt       integer not null check (attempt >= 1),
-  seq           integer not null,
-  step_key      text not null,                               -- 'validate_schema','create_project',...
-  status        text not null check (status in ('STARTED','SUCCEEDED','FAILED','SKIPPED')),
-  started_at    timestamptz not null default now(),
-  finished_at   timestamptz,
-  http_status   integer,
-  error_class   text,
-  retry_delay_ms integer,                                    -- what the backoff policy decided
-  detail        jsonb not null default '{}'::jsonb,
+  id             uuid primary key default gen_random_uuid(),
+  run_id         uuid not null references workflow_runs(id) on delete cascade,
+  attempt        integer not null check (attempt >= 1),
+  seq            integer not null,
+  step_key       text not null,
+  status         text not null check (status in ('STARTED','SUCCEEDED','FAILED','SKIPPED')),
+  started_at     timestamptz not null default now(),
+  finished_at    timestamptz,
+  http_status    integer,
+  error_class    text references error_classes(code),
+  retry_delay_ms integer,
+  detail         jsonb not null default '{}'::jsonb,
   unique (run_id, attempt, seq)
 );
 
 create table workflow_exceptions (
   id                 uuid primary key default gen_random_uuid(),
-  exception_number   text not null unique,                   -- EXC-2026-0001
+  exception_number   text not null unique,                    -- EXC-0001
+  record_origin      text not null default 'ROOFOPS' check (record_origin in ('ROOFOPS','IMPORT')),
   workflow_run_id    uuid references workflow_runs(id),
   event_id           uuid references automation_events(event_id),
   workflow_key       text not null,
   entity_type        text,
   entity_id          uuid,
   business_reference text,
-  error_class        text not null check (error_class in (
-                       'VALIDATION_ERROR','NOT_FOUND','INVALID_STATE','PERMISSION_DENIED','CONFLICT',
-                       'RATE_LIMITED','UPSTREAM_5XX','TIMEOUT','NETWORK','SERVICE_UNAVAILABLE',
-                       'AMBIGUOUS_WRITE','UNKNOWN')),
+  error_class        text not null references error_classes(code),
   error_message      text not null,
   retryable          boolean not null,
   attempt_count      integer not null check (attempt_count >= 0),
-  first_failed_at    timestamptz not null default now(),
-  last_attempt_at    timestamptz not null default now(),
+  first_failed_at    timestamptz not null,
+  last_attempt_at    timestamptz not null,
   resolution_status  text not null default 'OPEN' check (resolution_status in ('OPEN','RETRY_QUEUED','RESOLVED','IGNORED')),
   resolved_by        uuid references employees(id),
   resolved_at        timestamptz,
   resolution_note    text,
   created_at         timestamptz not null default now(),
-  check ((resolution_status in ('RESOLVED','IGNORED')) = (resolved_by is not null and resolved_at is not null)),
+  check (last_attempt_at >= first_failed_at),
+  check (record_origin = 'IMPORT' or (resolution_status in ('RESOLVED','IGNORED')) = (resolved_by is not null and resolved_at is not null)),
   check (resolution_status <> 'IGNORED' or resolution_note is not null)
 );
--- At most one live exception per run: pressing RETRY twice cannot fork the queue.
 create unique index workflow_exceptions_one_open_per_run
   on workflow_exceptions (workflow_run_id) where resolution_status in ('OPEN','RETRY_QUEUED');
 
--- Transactional outbox: side effects (Drive folder, PM notification, Xero push)
--- are written in the same transaction as the business change and dispatched
--- afterwards, each with its own idempotency key.
 create table outbox (
   id               uuid primary key default gen_random_uuid(),
-  topic            text not null,                            -- 'drive.create_project_folder'
+  topic            text not null,
   aggregate_type   text not null,
   aggregate_id     uuid not null,
   correlation_id   uuid not null,
@@ -906,64 +1002,64 @@ create index outbox_pending_idx on outbox (next_attempt_at) where status in ('PE
 -- -----------------------------------------------------------------------------
 
 create table ai_tool_invocations (
-  id                uuid primary key default gen_random_uuid(),
-  conversation_id   uuid not null,
-  employee_id       uuid not null references employees(id),   -- the human the AI is acting for
-  provider          text not null,                            -- 'anthropic','openai','mock'
-  model             text,
-  tool_name         text not null,
-  tier              text not null check (tier in ('GREEN','AMBER','RED')),
-  input             jsonb not null,
-  decision          text not null check (decision in (
-                      'EXECUTED','DRAFT_CREATED','APPROVAL_REQUESTED','DENIED_PERMISSION',
-                      'INVALID_INPUT','UNKNOWN_TOOL','ERROR')),
-  result_summary    jsonb,
-  approval_id       uuid,
-  latency_ms        integer,
-  created_at        timestamptz not null default now()
+  id              uuid primary key default gen_random_uuid(),
+  conversation_id uuid not null,
+  employee_id     uuid not null references employees(id),
+  provider        text not null,
+  model           text,
+  tool_name       text not null,
+  tier            text not null check (tier in ('GREEN','AMBER','RED')),
+  input           jsonb not null,
+  decision        text not null check (decision in (
+                    'EXECUTED','DRAFT_CREATED','APPROVAL_REQUESTED','DENIED_PERMISSION',
+                    'INVALID_INPUT','UNKNOWN_TOOL','ERROR')),
+  result_summary  jsonb,
+  approval_id     uuid,
+  latency_ms      integer,
+  created_at      timestamptz not null default now()
 );
 create index ai_tool_invocations_conversation_idx on ai_tool_invocations (conversation_id, created_at);
 
 create table ai_drafts (
-  id                  uuid primary key default gen_random_uuid(),
-  draft_type          text not null check (draft_type in ('SUPPLIER_EMAIL','CUSTOMER_MESSAGE','PROJECT_SUMMARY','PURCHASE_ORDER')),
-  project_id          uuid references projects(id),
-  purchase_order_id   uuid references purchase_orders(id),
-  content             jsonb not null,
-  status              text not null default 'DRAFT' check (status in ('DRAFT','DISCARDED','PROMOTED')),
-  invocation_id       uuid references ai_tool_invocations(id),
-  created_for         uuid not null references employees(id),
-  created_at          timestamptz not null default now()
+  id                uuid primary key default gen_random_uuid(),
+  draft_type        text not null check (draft_type in ('SUPPLIER_EMAIL','CUSTOMER_MESSAGE','PROJECT_SUMMARY','PURCHASE_ORDER')),
+  project_id        uuid references projects(id),
+  purchase_order_id uuid references purchase_orders(id),
+  content           jsonb not null,
+  status            text not null default 'DRAFT' check (status in ('DRAFT','DISCARDED','PROMOTED')),
+  invocation_id     uuid references ai_tool_invocations(id),
+  created_for       uuid not null references employees(id),
+  created_at        timestamptz not null default now()
 );
 
 create table approvals (
-  id                       uuid primary key default gen_random_uuid(),
-  approval_number          text not null unique,              -- APR-2026-0001
-  action_type              text not null check (action_type in (
-                             'SEND_PURCHASE_ORDER','APPROVE_PURCHASE_ORDER','CREATE_INVOICE',
-                             'SYNC_INVOICE_TO_XERO','CANCEL_PROJECT','CHANGE_APPROVED_MATERIALS')),
-  entity_type              text not null,
-  entity_id                uuid not null,
-  business_reference       text,
-  requested_by_actor_type  text not null check (requested_by_actor_type in ('USER','AI','WORKFLOW')),
-  requested_by_employee_id uuid references employees(id),     -- for AI: the user the AI was acting for
+  id                          uuid primary key default gen_random_uuid(),
+  approval_number             text not null unique,
+  action_type                 text not null check (action_type in (
+                                'SEND_PURCHASE_ORDER','APPROVE_PURCHASE_ORDER','CREATE_INVOICE',
+                                'SYNC_INVOICE_TO_XERO','CANCEL_PROJECT','CHANGE_APPROVED_MATERIALS')),
+  entity_type                 text not null,
+  entity_id                   uuid not null,
+  business_reference          text,
+  requested_by_actor_type     text not null check (requested_by_actor_type in ('USER','AI','WORKFLOW')),
+  requested_by_employee_id    uuid references employees(id),
   requested_via_invocation_id uuid references ai_tool_invocations(id),
-  required_permission      text not null,
-  action_payload           jsonb not null,                    -- validated, structured - never free text
-  payload_hash             text not null,                     -- approver approves THIS exact payload
-  expected_record_version  integer not null,                  -- stale if the target changed since request
-  idempotency_key          text not null unique,
-  status                   text not null default 'PENDING' check (status in (
-                             'PENDING','APPROVED','REJECTED','EXPIRED','EXECUTING','EXECUTED','EXECUTION_FAILED','CANCELLED')),
-  decided_by               uuid references employees(id),
-  decided_at               timestamptz,
-  decision_reason          text,
-  expires_at               timestamptz not null,
-  executed_at              timestamptz,
-  execution_result         jsonb,
-  created_at               timestamptz not null default now(),
-  updated_at               timestamptz not null default now(),
-  record_version           integer not null default 1,
+  required_permission         text not null,
+  action_payload              jsonb not null,
+  payload_hash                text not null,
+  expected_record_version     integer not null,
+  idempotency_key             text not null unique,
+  status                      text not null default 'PENDING' check (status in (
+                                'PENDING','APPROVED','REJECTED','EXPIRED','EXECUTING','EXECUTED','EXECUTION_FAILED','CANCELLED')),
+  decided_by                  uuid references employees(id),
+  decided_at                  timestamptz,
+  decision_reason             text,
+  expires_at                  timestamptz not null,
+  executed_at                 timestamptz,
+  execution_result            jsonb,
+  created_at                  timestamptz not null default now(),
+  updated_at                  timestamptz not null default now(),
+  record_version              integer not null default 1,
   check (status not in ('APPROVED','REJECTED','EXECUTING','EXECUTED','EXECUTION_FAILED') or (decided_by is not null and decided_at is not null)),
   check (status <> 'REJECTED' or decision_reason is not null),
   check (status not in ('EXECUTED','EXECUTION_FAILED') or (executed_at is not null and execution_result is not null)),
@@ -986,8 +1082,8 @@ create table audit_events (
   actor_type         text not null check (actor_type in ('USER','SYSTEM','AI','INTEGRATION','WORKFLOW')),
   actor_id           text not null,
   actor_display      text,
-  on_behalf_of       uuid references employees(id),           -- AI/workflow acting for a person
-  action             text not null,                           -- 'project.create','po.approve','invoice.sync'
+  on_behalf_of       uuid references employees(id),
+  action             text not null,
   entity_type        text not null,
   entity_id          uuid not null,
   business_reference text,
@@ -1004,24 +1100,42 @@ create table audit_events (
 create index audit_events_entity_idx on audit_events (entity_type, entity_id, seq);
 create index audit_events_correlation_idx on audit_events (correlation_id);
 
--- Hash chain: each row commits to the previous row. The advisory lock serialises
--- audit inserts so concurrent writers cannot fork the chain (fine at SMB volume;
--- revisit if audit write rate becomes a bottleneck).
+create or replace function audit_row_hash(p_prev text, a audit_events) returns text language sql immutable as $$
+  select encode(sha256(convert_to(
+    -- occurred_at rendered in UTC so the hash does not depend on the session time zone
+    coalesce(p_prev, '') || '|' || a.audit_id || '|' ||
+    to_char(a.occurred_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') || '|' || a.actor_type || '|' ||
+    a.actor_id || '|' || a.action || '|' || a.entity_type || '|' || a.entity_id || '|' ||
+    coalesce(a.before_state::text, '') || '|' || coalesce(a.after_state::text, '') || '|' ||
+    coalesce(a.approval_id::text, '') || '|' || coalesce(a.external_reference, '') || '|' ||
+    coalesce(a.reason, ''), 'UTF8')), 'hex')
+$$;
+
+-- The advisory lock serialises audit inserts so concurrent writers cannot fork the chain.
 create or replace function audit_events_chain() returns trigger language plpgsql as $$
 declare v_prev text;
 begin
   perform pg_advisory_xact_lock(hashtext('audit_events_chain'));
   select row_hash into v_prev from audit_events order by seq desc limit 1;
   new.prev_hash := v_prev;
-  new.row_hash := encode(sha256(convert_to(
-    coalesce(v_prev,'') || '|' || new.audit_id || '|' || new.occurred_at || '|' || new.actor_type || '|' ||
-    new.actor_id || '|' || new.action || '|' || new.entity_type || '|' || new.entity_id || '|' ||
-    coalesce(new.before_state::text,'') || '|' || coalesce(new.after_state::text,'') || '|' ||
-    coalesce(new.approval_id::text,'') || '|' || coalesce(new.external_reference,''), 'UTF8')), 'hex');
+  new.row_hash := audit_row_hash(v_prev, new);
   return new;
 end $$;
 create trigger audit_events_chain before insert on audit_events
   for each row execute function audit_events_chain();
+
+-- Recompute the chain; returns the first broken seq, or null if intact.
+create or replace function verify_audit_chain() returns bigint language plpgsql stable as $$
+declare r audit_events; v_prev text := null;
+begin
+  for r in select * from audit_events order by seq loop
+    if r.prev_hash is distinct from v_prev or r.row_hash <> audit_row_hash(v_prev, r) then
+      return r.seq;
+    end if;
+    v_prev := r.row_hash;
+  end loop;
+  return null;
+end $$;
 
 create or replace function reject_mutation() returns trigger language plpgsql as $$
 begin
@@ -1058,7 +1172,6 @@ begin
   for r in select tablename from pg_tables where schemaname = 'public' loop
     execute format('alter table %I enable row level security', r.tablename);
   end loop;
-  -- Supabase-specific roles only exist on Supabase; skip cleanly elsewhere (PGlite/CI).
   if exists (select 1 from pg_roles where rolname = 'authenticated') then
     execute 'revoke all on all tables in schema public from anon, authenticated';
   end if;

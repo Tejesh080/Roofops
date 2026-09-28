@@ -1,0 +1,76 @@
+﻿site_note_id,project_id,created_at,author,note_text,ai_structured_status
+NOTE-0001,PRJ-2026-0001,2026-07-01T07:30:00+10:00,Aiden Brooks,Crew arrived and completed safety setup.,pending
+NOTE-0002,PRJ-2026-0002,2026-07-02T01:30:00+10:00,Sophie Carter,Old roofing removed from western section.,processed
+NOTE-0003,PRJ-2026-0003,2026-07-02T19:30:00+10:00,Lachlan Reed,Unexpected timber damage identified near valley.,processed
+NOTE-0004,PRJ-2026-0004,2026-07-03T13:30:00+10:00,Maddison Price,Weather delay due to heavy rain.,processed
+NOTE-0005,PRJ-2026-0005,2026-07-04T07:30:00+10:00,Aiden Brooks,Customer requested update on colour selection.,processed
+NOTE-0006,PRJ-2026-0006,2026-07-05T01:30:00+10:00,Sophie Carter,Material delivery checked against PO.,pending
+NOTE-0007,PRJ-2026-0007,2026-07-05T19:30:00+10:00,Lachlan Reed,Photos captured for progress record.,processed
+NOTE-0008,PRJ-2026-0008,2026-07-06T13:30:00+10:00,Maddison Price,Flashing work completed around penetration.,processed
+NOTE-0009,PRJ-2026-0009,2026-07-07T07:30:00+10:00,Aiden Brooks,Site left clean and secure.,processed
+NOTE-0010,PRJ-2026-0010,2026-07-08T01:30:00+10:00,Sophie Carter,Supervisor inspection completed.,processed
+NOTE-0011,PRJ-2026-0011,2026-07-08T19:30:00+10:00,Lachlan Reed,Crew arrived and completed safety setup.,pending
+NOTE-0012,PRJ-2026-0012,2026-07-09T13:30:00+10:00,Maddison Price,Old roofing removed from western section.,processed
+NOTE-0013,PRJ-2026-0013,2026-07-10T07:30:00+10:00,Aiden Brooks,Unexpected timber damage identified near valley.,processed
+NOTE-0014,PRJ-2026-0014,2026-07-11T01:30:00+10:00,Sophie Carter,Weather delay due to heavy rain.,processed
+NOTE-0015,PRJ-2026-0015,2026-07-11T19:30:00+10:00,Lachlan Reed,Customer requested update on colour selection.,processed
+NOTE-0016,PRJ-2026-0016,2026-07-12T13:30:00+10:00,Maddison Price,Material delivery checked against PO.,pending
+NOTE-0017,PRJ-2026-0017,2026-07-13T07:30:00+10:00,Aiden Brooks,Photos captured for progress record.,processed
+NOTE-0018,PRJ-2026-0018,2026-07-14T01:30:00+10:00,Sophie Carter,Flashing work completed around penetration.,processed
+NOTE-0019,PRJ-2026-0019,2026-07-14T19:30:00+10:00,Lachlan Reed,Site left clean and secure.,processed
+NOTE-0020,PRJ-2026-0020,2026-07-15T13:30:00+10:00,Maddison Price,Supervisor inspection completed.,processed
+NOTE-0021,PRJ-2026-0021,2026-07-16T07:30:00+10:00,Aiden Brooks,Crew arrived and completed safety setup.,pending
+NOTE-0022,PRJ-2026-0022,2026-07-17T01:30:00+10:00,Sophie Carter,Old roofing removed from western section.,processed
+NOTE-0023,PRJ-2026-0023,2026-07-17T19:30:00+10:00,Lachlan Reed,Unexpected timber damage identified near valley.,processed
+NOTE-0024,PRJ-2026-0024,2026-07-18T13:30:00+10:00,Maddison Price,Weather delay due to heavy rain.,processed
+NOTE-0025,PRJ-2026-0025,2026-07-19T07:30:00+10:00,Aiden Brooks,Customer requested update on colour selection.,processed
+NOTE-0026,PRJ-2026-0026,2026-07-20T01:30:00+10:00,Sophie Carter,Material delivery checked against PO.,pending
+NOTE-0027,PRJ-2026-0027,2026-07-20T19:30:00+10:00,Lachlan Reed,Photos captured for progress record.,processed
+NOTE-0028,PRJ-2026-0028,2026-07-21T13:30:00+10:00,Maddison Price,Flashing work completed around penetration.,processed
+NOTE-0029,PRJ-2026-0029,2026-07-22T07:30:00+10:00,Aiden Brooks,Site left clean and secure.,processed
+NOTE-0030,PRJ-2026-0030,2026-07-23T01:30:00+10:00,Sophie Carter,Supervisor inspection completed.,processed
+NOTE-0031,PRJ-2026-0001,2026-07-23T19:30:00+10:00,Lachlan Reed,Crew arrived and completed safety setup.,pending
+NOTE-0032,PRJ-2026-0002,2026-07-24T13:30:00+10:00,Maddison Price,Old roofing removed from western section.,processed
+NOTE-0033,PRJ-2026-0003,2026-07-25T07:30:00+10:00,Aiden Brooks,Unexpected timber damage identified near valley.,processed
+NOTE-0034,PRJ-2026-0004,2026-07-26T01:30:00+10:00,Sophie Carter,Weather delay due to heavy rain.,processed
+NOTE-0035,PRJ-2026-0005,2026-07-26T19:30:00+10:00,Lachlan Reed,Customer requested update on colour selection.,processed
+NOTE-0036,PRJ-2026-0006,2026-07-27T13:30:00+10:00,Maddison Price,Material delivery checked against PO.,pending
+NOTE-0037,PRJ-2026-0007,2026-07-28T07:30:00+10:00,Aiden Brooks,Photos captured for progress record.,processed
+NOTE-0038,PRJ-2026-0008,2026-07-29T01:30:00+10:00,Sophie Carter,Flashing work completed around penetration.,processed
+NOTE-0039,PRJ-2026-0009,2026-07-29T19:30:00+10:00,Lachlan Reed,Site left clean and secure.,processed
+NOTE-0040,PRJ-2026-0010,2026-07-30T13:30:00+10:00,Maddison Price,Supervisor inspection completed.,processed
+NOTE-0041,PRJ-2026-0011,2026-07-31T07:30:00+10:00,Aiden Brooks,Crew arrived and completed safety setup.,pending
+NOTE-0042,PRJ-2026-0012,2026-08-01T01:30:00+10:00,Sophie Carter,Old roofing removed from western section.,processed
+NOTE-0043,PRJ-2026-0013,2026-08-01T19:30:00+10:00,Lachlan Reed,Unexpected timber damage identified near valley.,processed
+NOTE-0044,PRJ-2026-0014,2026-08-02T13:30:00+10:00,Maddison Price,Weather delay due to heavy rain.,processed
+NOTE-0045,PRJ-2026-0015,2026-08-03T07:30:00+10:00,Aiden Brooks,Customer requested update on colour selection.,processed
+NOTE-0046,PRJ-2026-0016,2026-08-04T01:30:00+10:00,Sophie Carter,Material delivery checked against PO.,pending
+NOTE-0047,PRJ-2026-0017,2026-08-04T19:30:00+10:00,Lachlan Reed,Photos captured for progress record.,processed
+NOTE-0048,PRJ-2026-0018,2026-08-05T13:30:00+10:00,Maddison Price,Flashing work completed around penetration.,processed
+NOTE-0049,PRJ-2026-0019,2026-08-06T07:30:00+10:00,Aiden Brooks,Site left clean and secure.,processed
+NOTE-0050,PRJ-2026-0020,2026-08-07T01:30:00+10:00,Sophie Carter,Supervisor inspection completed.,processed
+NOTE-0051,PRJ-2026-0021,2026-08-07T19:30:00+10:00,Lachlan Reed,Crew arrived and completed safety setup.,pending
+NOTE-0052,PRJ-2026-0022,2026-08-08T13:30:00+10:00,Maddison Price,Old roofing removed from western section.,processed
+NOTE-0053,PRJ-2026-0023,2026-08-09T07:30:00+10:00,Aiden Brooks,Unexpected timber damage identified near valley.,processed
+NOTE-0054,PRJ-2026-0024,2026-08-10T01:30:00+10:00,Sophie Carter,Weather delay due to heavy rain.,processed
+NOTE-0055,PRJ-2026-0025,2026-08-10T19:30:00+10:00,Lachlan Reed,Customer requested update on colour selection.,processed
+NOTE-0056,PRJ-2026-0026,2026-08-11T13:30:00+10:00,Maddison Price,Material delivery checked against PO.,pending
+NOTE-0057,PRJ-2026-0027,2026-08-12T07:30:00+10:00,Aiden Brooks,Photos captured for progress record.,processed
+NOTE-0058,PRJ-2026-0028,2026-08-13T01:30:00+10:00,Sophie Carter,Flashing work completed around penetration.,processed
+NOTE-0059,PRJ-2026-0029,2026-08-13T19:30:00+10:00,Lachlan Reed,Site left clean and secure.,processed
+NOTE-0060,PRJ-2026-0030,2026-08-14T13:30:00+10:00,Maddison Price,Supervisor inspection completed.,processed
+NOTE-0061,PRJ-2026-0001,2026-08-15T07:30:00+10:00,Aiden Brooks,Crew arrived and completed safety setup.,pending
+NOTE-0062,PRJ-2026-0002,2026-08-16T01:30:00+10:00,Sophie Carter,Old roofing removed from western section.,processed
+NOTE-0063,PRJ-2026-0003,2026-08-16T19:30:00+10:00,Lachlan Reed,Unexpected timber damage identified near valley.,processed
+NOTE-0064,PRJ-2026-0004,2026-08-17T13:30:00+10:00,Maddison Price,Weather delay due to heavy rain.,processed
+NOTE-0065,PRJ-2026-0005,2026-08-18T07:30:00+10:00,Aiden Brooks,Customer requested update on colour selection.,processed
+NOTE-0066,PRJ-2026-0006,2026-08-19T01:30:00+10:00,Sophie Carter,Material delivery checked against PO.,pending
+NOTE-0067,PRJ-2026-0007,2026-08-19T19:30:00+10:00,Lachlan Reed,Photos captured for progress record.,processed
+NOTE-0068,PRJ-2026-0008,2026-08-20T13:30:00+10:00,Maddison Price,Flashing work completed around penetration.,processed
+NOTE-0069,PRJ-2026-0009,2026-08-21T07:30:00+10:00,Aiden Brooks,Site left clean and secure.,processed
+NOTE-0070,PRJ-2026-0010,2026-08-22T01:30:00+10:00,Sophie Carter,Supervisor inspection completed.,processed
+NOTE-0071,PRJ-2026-0011,2026-08-22T19:30:00+10:00,Lachlan Reed,Crew arrived and completed safety setup.,pending
+NOTE-0072,PRJ-2026-0012,2026-08-23T13:30:00+10:00,Maddison Price,Old roofing removed from western section.,processed
+NOTE-0073,PRJ-2026-0013,2026-08-24T07:30:00+10:00,Aiden Brooks,Unexpected timber damage identified near valley.,processed
+NOTE-0074,PRJ-2026-0014,2026-08-25T01:30:00+10:00,Sophie Carter,Weather delay due to heavy rain.,processed
+NOTE-0075,PRJ-2026-0015,2026-08-25T19:30:00+10:00,Lachlan Reed,Customer requested update on colour selection.,processed

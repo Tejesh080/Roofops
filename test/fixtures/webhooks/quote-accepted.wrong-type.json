@@ -1,0 +1,19 @@
+{
+  "event_id": "EVT-FIXTURE-QA-BADVER",
+  "correlation_id": "CORR-FIXTURE-QA-0005",
+  "causation_id": null,
+  "event_type": "quote.accepted",
+  "entity_type": "quote",
+  "entity_id": "Q-2026-0005",
+  "actor_type": "INTEGRATION",
+  "actor_id": "airtable-automation",
+  "source": "airtable",
+  "workflow_version": "quote_to_project@1.0.0",
+  "occurred_at": "2026-07-12T10:15:00+10:00",
+  "payload": {
+    "quote_id": "Q-2026-0005",
+    "accepted_version": "two",
+    "accepted_on": "2026-07-12",
+    "airtable_record_id": "recDEMOq0005"
+  }
+}

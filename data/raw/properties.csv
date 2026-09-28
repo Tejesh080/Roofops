@@ -1,0 +1,53 @@
+﻿property_id,customer_id,street_address,suburb,state,postcode,property_type,storeys,access_notes
+PROP-0001,CUST-0001,11 Coral Gum Drive,Bundaberg West,QLD,4670,Detached House,2,Standard access
+PROP-0002,CUST-0002,18 Banksia Rise,Bundaberg North,QLD,4670,Detached House,1,Narrow side access
+PROP-0003,CUST-0003,25 Pelican View Road,Kalkie,QLD,4670,Detached House,1,Standard access
+PROP-0004,CUST-0004,32 Paperbark Lane,Ashfield,QLD,4670,Small Commercial,2,Standard access
+PROP-0005,CUST-0005,39 Sugar Mill Way,Avenell Heights,QLD,4670,Detached House,2,Rear access available
+PROP-0006,CUST-0006,46 Bottlebrush Circuit,Bargara,QLD,4670,Detached House,1,Standard access
+PROP-0007,CUST-0007,53 Riverbend Avenue,Burnett Heads,QLD,4670,Detached House,1,Rear access available
+PROP-0008,CUST-0008,60 Sea Breeze Street,Innes Park,QLD,4670,Detached House,1,Rear access available
+PROP-0009,CUST-0009,67 Jacaranda Close,Elliott Heads,QLD,4670,Townhouse,1,Rear access available
+PROP-0010,CUST-0010,74 Kookaburra Crescent,Branyan,QLD,4670,Detached House,2,Narrow side access
+PROP-0011,CUST-0011,81 Ironbark Court,Bundaberg West,QLD,4670,Detached House,1,Power lines near frontage
+PROP-0012,CUST-0012,88 Coastal Ridge Drive,Bundaberg North,QLD,4670,Townhouse,1,Clear driveway access
+PROP-0013,CUST-0013,95 Wallum Street,Kalkie,QLD,4670,Detached House,1,Standard access
+PROP-0014,CUST-0014,102 Reef View Parade,Ashfield,QLD,4670,Detached House,1,Power lines near frontage
+PROP-0015,CUST-0015,109 Cane Fields Road,Avenell Heights,QLD,4670,Townhouse,2,Rear access available
+PROP-0016,CUST-0016,116 Mango Tree Lane,Bargara,QLD,4670,Townhouse,2,Clear driveway access
+PROP-0017,CUST-0017,123 Lagoon Way,Burnett Heads,QLD,4670,Detached House,1,Standard access
+PROP-0018,CUST-0018,130 Turtle Bay Street,Innes Park,QLD,4670,Small Commercial,2,Standard access
+PROP-0019,CUST-0019,137 Sunbird Court,Elliott Heads,QLD,4670,Small Commercial,1,Clear driveway access
+PROP-0020,CUST-0020,144 Wattlebird Avenue,Branyan,QLD,4670,Small Commercial,1,Rear access available
+PROP-0021,CUST-0021,151 Coral Gum Drive,Bundaberg West,QLD,4670,Detached House,1,Power lines near frontage
+PROP-0022,CUST-0022,158 Banksia Rise,Bundaberg North,QLD,4670,Townhouse,1,Clear driveway access
+PROP-0023,CUST-0023,165 Pelican View Road,Kalkie,QLD,4670,Townhouse,2,Rear access available
+PROP-0024,CUST-0024,172 Paperbark Lane,Ashfield,QLD,4670,Detached House,2,Power lines near frontage
+PROP-0025,CUST-0025,179 Sugar Mill Way,Avenell Heights,QLD,4670,Detached House,1,Rear access available
+PROP-0026,CUST-0026,186 Bottlebrush Circuit,Bargara,QLD,4670,Townhouse,1,Rear access available
+PROP-0027,CUST-0027,193 Riverbend Avenue,Burnett Heads,QLD,4670,Detached House,1,Standard access
+PROP-0028,CUST-0028,12 Sea Breeze Street,Innes Park,QLD,4670,Detached House,1,Narrow side access
+PROP-0029,CUST-0029,19 Jacaranda Close,Elliott Heads,QLD,4670,Small Commercial,1,Standard access
+PROP-0030,CUST-0030,26 Kookaburra Crescent,Branyan,QLD,4670,Townhouse,2,Clear driveway access
+PROP-0031,CUST-0031,33 Ironbark Court,Bundaberg West,QLD,4670,Small Commercial,1,Standard access
+PROP-0032,CUST-0032,40 Coastal Ridge Drive,Bundaberg North,QLD,4670,Detached House,1,Power lines near frontage
+PROP-0033,CUST-0033,47 Wallum Street,Kalkie,QLD,4670,Detached House,1,Clear driveway access
+PROP-0034,CUST-0034,54 Reef View Parade,Ashfield,QLD,4670,Small Commercial,1,Standard access
+PROP-0035,CUST-0035,61 Cane Fields Road,Avenell Heights,QLD,4670,Townhouse,2,Narrow side access
+PROP-0036,CUST-0036,68 Mango Tree Lane,Bargara,QLD,4670,Detached House,1,Power lines near frontage
+PROP-0037,CUST-0037,75 Lagoon Way,Burnett Heads,QLD,4670,Small Commercial,1,Rear access available
+PROP-0038,CUST-0038,82 Turtle Bay Street,Innes Park,QLD,4670,Detached House,1,Power lines near frontage
+PROP-0039,CUST-0039,89 Sunbird Court,Elliott Heads,QLD,4670,Small Commercial,1,Standard access
+PROP-0040,CUST-0040,96 Wattlebird Avenue,Branyan,QLD,4670,Small Commercial,1,Standard access
+PROP-0041,CUST-0001,103 Coral Gum Drive,Bundaberg West,QLD,4670,Detached House,2,Standard access
+PROP-0042,CUST-0002,110 Banksia Rise,Bundaberg North,QLD,4670,Detached House,1,Narrow side access
+PROP-0043,CUST-0003,117 Pelican View Road,Kalkie,QLD,4670,Townhouse,2,Narrow side access
+PROP-0044,CUST-0004,124 Paperbark Lane,Ashfield,QLD,4670,Detached House,1,Clear driveway access
+PROP-0045,CUST-0005,131 Sugar Mill Way,Avenell Heights,QLD,4670,Detached House,2,Standard access
+PROP-0046,CUST-0006,138 Bottlebrush Circuit,Bargara,QLD,4670,Detached House,1,Clear driveway access
+PROP-0047,CUST-0007,145 Riverbend Avenue,Burnett Heads,QLD,4670,Small Commercial,2,Standard access
+PROP-0048,CUST-0008,152 Sea Breeze Street,Innes Park,QLD,4670,Detached House,1,Rear access available
+PROP-0049,CUST-0009,159 Jacaranda Close,Elliott Heads,QLD,4670,Small Commercial,2,Clear driveway access
+PROP-0050,CUST-0010,166 Kookaburra Crescent,Branyan,QLD,4670,Detached House,1,Power lines near frontage
+PROP-0051,CUST-0011,173 Ironbark Court,Bundaberg West,QLD,4670,Detached House,1,Rear access available
+PROP-0052,CUST-0012,180 Coastal Ridge Drive,Bundaberg North,QLD,4670,Townhouse,1,Narrow side access

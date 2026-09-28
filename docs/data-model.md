@@ -1,7 +1,9 @@
 # RoofOps — Data model
 
 Source of truth: [`supabase/migrations/20260929000000_core_schema.sql`](../supabase/migrations/20260929000000_core_schema.sql)
-Verified: applied to PostgreSQL 18 (PGlite 0.5.8), 44 tables, 31/31 constraint checks passing (`scripts/phase0-schema-check.mjs`).
+Verified (Phase 1): applied to **Postgres 17** and PGlite (Postgres 18): 48 public tables (the 44 designed in Phase 0, plus `app_settings`, `error_classes`, `import_batches` and `schema_migrations`), 10 views and 14 staging tables. Constraint suite: `test/schema.test.ts`.
+
+**Phase 1 amendments (ADR-014):** business dates are `date` columns (`customer_since`, `quotes.created_on/sent_on/accepted_on`, `po_date`), and `created_at` always means row insertion. Each quote version, PO and invoice has `line_amount_type` (EXCLUSIVE/INCLUSIVE/NO_TAX, ADR-013); lines use `unit_price` and `line_amount`, and freight is a line (`line_kind = FREIGHT`). Source-ID columns were added (`product_code`, `document_number`, `note_number`, `automation_events.event_key`). `record_origin` marks imported legacy rows (ADR-015). Error classes moved from CHECK lists to an `error_classes` reference table carrying the retry policy. There is a `stable_uuid()` for deterministic keys and an `app_today()` business date, accepted quote versions are frozen, and `verify_audit_chain()` recomputes the audit hashes.
 
 ## Entity–relationship overview
 

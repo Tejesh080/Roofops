@@ -1,6 +1,6 @@
 # RoofOps — Architecture
 
-> **Status:** Phase 0 (design). Nothing in this document is implemented yet unless it says so.
+> **Status:** Phase 1 complete: database, canonical data import and operational views are implemented and tested (see [data-import.md](data-import.md)). Everything else here is design for later phases unless it says otherwise.
 > Everything in RoofOps runs on **synthetic demo data**. No real customers, suppliers or companies.
 
 ## 1. What this system is
@@ -17,7 +17,23 @@ It is built to show **how** a small business's operational automation should be 
 
 **Non-goals.** It is not a generic SaaS product, not a RAG chatbot, not a replacement for Xero or a job-management package, and it does not produce roofing estimates automatically.
 
-## 2. System context
+## 2. Target architecture (confirmed after Phase 1)
+
+| Layer | System | Role |
+|---|---|---|
+| Staff-facing operations | **Airtable** | where staff work day to day (quotes, projects, POs) |
+| System / control layer | **Postgres (Supabase)** | idempotency ledger, audit trail, exception queue, derived risk, integration identities |
+| Orchestration | **n8n** | webhooks, schedules, fan-out, write-back to Airtable |
+| Accounting source of truth | **Xero** | invoices, payments, contacts |
+| Document store | **Google Drive** | project folders, photos, PDFs |
+| Conversational interface | **AI Copilot** | tool calling over the control layer (GREEN/AMBER/RED) |
+
+First workflow (Phase 2): Airtable Quote Accepted → webhook/event → validation → Postgres idempotency check → create Project → create material-review task → Drive adapter → audit log → update Airtable.
+First Xero workflow (Phase 6): project invoice-ready → n8n → validate → approval → Xero Demo Company → persist Xero InvoiceID → update internal invoice → audit/reconciliation.
+
+The diagram below is the Phase 0 component view; the table above supersedes its "system of record" wording.
+
+### Component view (Phase 0)
 
 ```mermaid
 flowchart LR
@@ -51,7 +67,7 @@ flowchart LR
   XERO -- webhooks --> API
 ```
 
-**Ownership rule:** Postgres is the system of record and the Next.js server owns every business invariant. n8n orchestrates (triggers, schedules, fan-out, retries of *its* calls) but **never writes to the database directly**. It calls RoofOps command endpoints, the same ones the UI uses. That keeps validation, idempotency and audit in one place.
+**Ownership rule:** every business invariant lives in one place, in the control layer. n8n orchestrates (triggers, schedules, fan-out, retries of *its* calls) but **never issues raw writes against business tables**. It invokes one guarded entry point per command: Postgres functions in Phase 2, and the same functions behind an HTTP API once the app exists (ADR-001). That keeps validation, idempotency and audit in one place.
 
 ## 3. Layers and code layout (planned)
 
@@ -380,19 +396,19 @@ n8n is the **orchestrator**, not the database. Workflows live in `n8n/*.json`, e
 
 ## 12. Airtable's role
 
-Airtable is treated as a **downstream operational view** for staff who live in Airtable: a one-way mirror of Projects and Purchase Orders, upserted on the RoofOps UUID stored in a hidden `roofops_id` field (never on name). Airtable is not a second system of record, which avoids two-way-sync conflicts. If the target company *already* runs on Airtable, the migration path is in `docs/decisions.md` (ADR-006).
+Airtable is the **staff-facing operations layer** (ADR-006). Staff act in Airtable; those actions arrive as events; Postgres enforces what Airtable cannot (uniqueness, idempotency, append-only audit, exception handling) and n8n writes outcomes back. Airtable records are linked through `external_links` (provider AIRTABLE) by Airtable record ID, never by name. Airtable's limit is 5 requests per second per base, and a 429 needs a 30-second wait, so write-backs are queued and rate-capped. Nothing has been uploaded to Airtable yet.
 
 ## 13. Testing strategy
 
 | Layer | Tool | Database |
 |---|---|---|
 | Domain (state machines, money, permissions, risk, backoff) | Vitest unit | none |
-| Commands / workflows / idempotency / audit | Vitest integration | **PGlite** (in-process Postgres 18). Fast, no Docker. |
+| Import, schema constraints, views, idempotency, audit | Vitest integration | **PGlite** (in-process Postgres 18) always; **real Postgres 17** too when `TEST_DATABASE_URL` is set (throwaway database per test). Implemented in Phase 1: 124 tests pass on both engines. |
 | True concurrency (two workers, same event) | Vitest integration | **Real Postgres** via Docker (Supabase local). PGlite has a single connection and would make the race test meaningless. |
 | Adapters | Vitest contract tests: the same suite runs against Mock and (opt-in, `RUN_REAL_INTEGRATION_TESTS=true`) Real | — |
 | Demo path | Playwright | seeded DB |
 
-Phase 0 already includes `scripts/phase0-schema-check.mjs`: 31 constraint checks run against PGlite. It becomes the first Vitest suite in Phase 1.
+The Phase 0 constraint script became `test/schema.test.ts` in Phase 1.
 
 ## 14. Deployment and safe change
 

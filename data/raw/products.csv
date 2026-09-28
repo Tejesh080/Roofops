@@ -1,0 +1,46 @@
+﻿product_id,supplier_id,supplier_sku,product_name,unit,unit_price_aud,active
+PROD-0001,SUP-001,1-ROO-100,Roof Sheet Monument,PACK,10.53,True
+PROD-0002,SUP-002,2-RID-101,Ridge Capping Surfmist,PACK,36.21,True
+PROD-0003,SUP-003,3-VAL-102,Valley Tray Woodland Grey,SQM,14.06,True
+PROD-0004,SUP-004,4-BAR-103,Barge Capping Shale Grey,LM,30.89,True
+PROD-0005,SUP-005,5-GUT-104,Gutter Basalt,ROLL,53.14,True
+PROD-0006,SUP-006,6-DOW-105,Downpipe Classic Cream,PACK,89.69,True
+PROD-0007,SUP-001,1-ROO-106,Roof Screw Pack Standard,LM,80.18,True
+PROD-0008,SUP-002,2-SAR-107,Sarking Roll Surfmist,LM,80.25,True
+PROD-0009,SUP-003,3-FLA-108,Flashing Woodland Grey,SQM,61.17,True
+PROD-0010,SUP-004,4-VEN-109,Vent Standard,EA,45.93,True
+PROD-0011,SUP-005,5-SEA-110,Sealant Standard,ROLL,81.94,True
+PROD-0012,SUP-006,6-INS-111,Insulation Blanket Classic Cream,ROLL,12.39,True
+PROD-0013,SUP-001,1-TIL-112,Tile Monument,PACK,67.3,True
+PROD-0014,SUP-002,2-TIL-113,Tile Clip Surfmist,SQM,10.21,True
+PROD-0015,SUP-003,3-UND-114,Underlay Woodland Grey,ROLL,72.67,True
+PROD-0016,SUP-004,4-ROO-115,Roof Sheet Shale Grey,SQM,43.15,True
+PROD-0017,SUP-005,5-RID-116,Ridge Capping Basalt,SQM,92.71,True
+PROD-0018,SUP-006,6-VAL-117,Valley Tray Classic Cream,PACK,27.7,True
+PROD-0019,SUP-001,1-BAR-118,Barge Capping Monument,LM,36.79,True
+PROD-0020,SUP-002,2-GUT-119,Gutter Surfmist,EA,14.56,True
+PROD-0021,SUP-003,3-DOW-120,Downpipe Woodland Grey,PACK,80.59,True
+PROD-0022,SUP-004,4-ROO-121,Roof Screw Pack Standard,PACK,65.79,True
+PROD-0023,SUP-005,5-SAR-122,Sarking Roll Basalt,PACK,82.2,True
+PROD-0024,SUP-006,6-FLA-123,Flashing Classic Cream,EA,12.69,True
+PROD-0025,SUP-001,1-VEN-124,Vent Standard,ROLL,91.07,True
+PROD-0026,SUP-002,2-SEA-125,Sealant Standard,SQM,69.55,True
+PROD-0027,SUP-003,3-INS-126,Insulation Blanket Woodland Grey,PACK,91.88,True
+PROD-0028,SUP-004,4-TIL-127,Tile Shale Grey,SQM,91.63,True
+PROD-0029,SUP-005,5-TIL-128,Tile Clip Basalt,SQM,44.27,True
+PROD-0030,SUP-006,6-UND-129,Underlay Classic Cream,PACK,83.56,True
+PROD-0031,SUP-001,1-ROO-130,Roof Sheet Monument,LM,14.15,True
+PROD-0032,SUP-002,2-RID-131,Ridge Capping Surfmist,EA,68.13,True
+PROD-0033,SUP-003,3-VAL-132,Valley Tray Woodland Grey,ROLL,42.17,True
+PROD-0034,SUP-004,4-BAR-133,Barge Capping Shale Grey,LM,17.28,True
+PROD-0035,SUP-005,5-GUT-134,Gutter Basalt,ROLL,62.94,True
+PROD-0036,SUP-006,6-DOW-135,Downpipe Classic Cream,PACK,88.61,True
+PROD-0037,SUP-001,1-ROO-136,Roof Screw Pack Standard,EA,50.88,True
+PROD-0038,SUP-002,2-SAR-137,Sarking Roll Surfmist,PACK,26.4,True
+PROD-0039,SUP-003,3-FLA-138,Flashing Woodland Grey,ROLL,72.38,True
+PROD-0040,SUP-004,4-VEN-139,Vent Standard,SQM,81.56,True
+PROD-0041,SUP-005,5-SEA-140,Sealant Standard,EA,77.31,True
+PROD-0042,SUP-006,6-INS-141,Insulation Blanket Classic Cream,LM,54.05,True
+PROD-0043,SUP-001,1-TIL-142,Tile Monument,LM,24.22,True
+PROD-0044,SUP-002,2-TIL-143,Tile Clip Surfmist,LM,31.38,True
+PROD-0045,SUP-003,3-UND-144,Underlay Woodland Grey,PACK,75.75,True

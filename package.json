@@ -1,0 +1,39 @@
+{
+  "name": "roofops",
+  "version": "0.1.0",
+  "private": true,
+  "description": "RoofOps: operations and automation platform for a fictional Australian roofing contractor (synthetic demo data).",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "data:normalise": "tsx scripts/normalise-dates.ts",
+    "db:up": "docker compose up -d --wait postgres",
+    "db:down": "docker compose down",
+    "db:load": "tsx scripts/db-load.ts",
+    "db:reset": "tsx scripts/db-load.ts --reset",
+    "check": "npm run lint && npm run typecheck && npm test",
+    "data:check": "tsx scripts/normalise-dates.ts --check"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.19.0",
+    "@types/pg": "^8.23.1",
+    "eslint": "^10.11.0",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.70.1",
+    "vitest": "^5.0.2"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "csv-parse": "^7.0.3",
+    "pg": "^8.23.0",
+    "zod": "^4.6.5"
+  }
+}

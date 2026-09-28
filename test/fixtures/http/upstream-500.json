@@ -1,0 +1,6 @@
+{
+  "description": "Transient upstream server error: retry with bounded exponential backoff.",
+  "status": 500,
+  "headers": {},
+  "body": { "message": "Internal Server Error" }
+}

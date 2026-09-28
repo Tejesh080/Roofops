@@ -1,0 +1,6 @@
+{
+  "description": "Xero per-tenant minute limit exceeded (per developer.xero.com OAuth2 limits docs). Honour Retry-After.",
+  "status": 429,
+  "headers": { "retry-after": "7", "x-rate-limit-problem": "minute", "x-minlimit-remaining": "0" },
+  "body": { "Title": "Too Many Requests" }
+}

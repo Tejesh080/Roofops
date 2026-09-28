@@ -1,0 +1,7 @@
+{
+  "description": "Airtable 5 req/s per base exceeded (per airtable.com/developers rate-limits docs): wait 30 seconds.",
+  "status": 429,
+  "headers": {},
+  "body": { "errors": [{ "error": "RATE_LIMIT_REACHED" }] },
+  "minimum_wait_ms": 30000
+}

@@ -1,0 +1,7 @@
+﻿supplier_id,supplier_name,email,phone,default_lead_time_days,active
+SUP-001,Coastal Roofing Supplies Demo,sales@coastalroofing.example.com,0400 900 101,3,True
+SUP-002,Wide Bay Trade Supplies Demo,orders@widebaytrade.example.com,0400 900 102,5,True
+SUP-003,Coral Building Products Demo,quotes@coralbuilding.example.com,0400 900 103,2,True
+SUP-004,Bundaberg Sheet Metal Demo,sales@bsm-demo.example.com,0400 900 104,4,True
+SUP-005,Pacific Fasteners Demo,trade@pacificfasteners.example.com,0400 900 105,2,True
+SUP-006,Queensland Roof Accessories Demo,orders@qra-demo.example.com,0400 900 106,6,True

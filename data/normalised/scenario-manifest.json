@@ -1,0 +1,160 @@
+{
+  "ACCEPTED_QUOTE_PROJECT_CREATION_FAILED": {
+    "description": "Accepted quote for which no project was created",
+    "records": [
+      "Q-2026-0031"
+    ]
+  },
+  "DELAYED_PROJECT": {
+    "description": "Active project delayed as of the demo date",
+    "records": [
+      "PRJ-2026-0011",
+      "PRJ-2026-0015",
+      "PRJ-2026-0020"
+    ]
+  },
+  "DUPLICATE_CUSTOMER_CANDIDATE": {
+    "description": "Customer record that duplicates another (pair)",
+    "records": [
+      "CUST-0008",
+      "CUST-0040"
+    ]
+  },
+  "DUPLICATE_WEBHOOK": {
+    "description": "Webhook delivery blocked as a duplicate + its idempotency ledger entry",
+    "records": [
+      "EVT-DUP-0001",
+      "quote.accepted:Q-2026-0005"
+    ]
+  },
+  "EXCEPTION_CLASS:AmbiguousWrite": {
+    "description": "Workflow exception fixture of class AmbiguousWrite",
+    "records": [
+      "EXC-0007"
+    ]
+  },
+  "EXCEPTION_CLASS:ArithmeticMismatch": {
+    "description": "Workflow exception fixture of class ArithmeticMismatch",
+    "records": [
+      "EXC-0010"
+    ]
+  },
+  "EXCEPTION_CLASS:AuthFailure": {
+    "description": "Workflow exception fixture of class AuthFailure",
+    "records": [
+      "EXC-0005"
+    ]
+  },
+  "EXCEPTION_CLASS:DuplicateEvent": {
+    "description": "Workflow exception fixture of class DuplicateEvent",
+    "records": [
+      "EXC-0001"
+    ]
+  },
+  "EXCEPTION_CLASS:ExternalServiceTimeout": {
+    "description": "Workflow exception fixture of class ExternalServiceTimeout",
+    "records": [
+      "EXC-0003"
+    ]
+  },
+  "EXCEPTION_CLASS:InvalidStateTransition": {
+    "description": "Workflow exception fixture of class InvalidStateTransition",
+    "records": [
+      "EXC-0008"
+    ]
+  },
+  "EXCEPTION_CLASS:MissingDocument": {
+    "description": "Workflow exception fixture of class MissingDocument",
+    "records": [
+      "EXC-0011"
+    ]
+  },
+  "EXCEPTION_CLASS:PermissionDenied": {
+    "description": "Workflow exception fixture of class PermissionDenied",
+    "records": [
+      "EXC-0009"
+    ]
+  },
+  "EXCEPTION_CLASS:RateLimit": {
+    "description": "Workflow exception fixture of class RateLimit",
+    "records": [
+      "EXC-0002"
+    ]
+  },
+  "EXCEPTION_CLASS:ReconciliationMismatch": {
+    "description": "Workflow exception fixture of class ReconciliationMismatch",
+    "records": [
+      "EXC-0012"
+    ]
+  },
+  "EXCEPTION_CLASS:SchemaMismatch": {
+    "description": "Workflow exception fixture of class SchemaMismatch",
+    "records": [
+      "EXC-0006"
+    ]
+  },
+  "EXCEPTION_CLASS:ValidationError": {
+    "description": "Workflow exception fixture of class ValidationError",
+    "records": [
+      "EXC-0004"
+    ]
+  },
+  "FAILED_AUTOMATION_EVENT": {
+    "description": "Automation event recorded as failed",
+    "records": [
+      "EVT-FAIL-0001"
+    ]
+  },
+  "JOB_BEFORE_MATERIALS": {
+    "description": "Job scheduled to start before its materials arrive",
+    "records": [
+      "PRJ-2026-0013"
+    ]
+  },
+  "MISSING_COMPLIANCE_PHOTOS": {
+    "description": "Completed project missing completion/compliance photos",
+    "records": [
+      "PRJ-2026-0007"
+    ]
+  },
+  "MISSING_INSPECTION_MEASUREMENT": {
+    "description": "Quote whose inspection has no roof measurement",
+    "records": [
+      "Q-2026-0051"
+    ]
+  },
+  "OPEN_WORKFLOW_EXCEPTION": {
+    "description": "Workflow exception still open",
+    "records": [
+      "EXC-0003"
+    ]
+  },
+  "OVERDUE_INVOICE": {
+    "description": "Issued invoice past its due date and unpaid",
+    "records": [
+      "INV-2026-0025",
+      "INV-2026-0032"
+    ]
+  },
+  "SUPPLIER_ACK_PENDING": {
+    "description": "Project whose sent PO is still awaiting supplier acknowledgement",
+    "records": [
+      "PO-2026-0011",
+      "PO-2026-0018",
+      "PRJ-2026-0011",
+      "PRJ-2026-0018"
+    ]
+  },
+  "SUPPLIER_DELIVERY_DELAY": {
+    "description": "Acknowledged supplier delivery lands after the planned start",
+    "records": [
+      "PO-2026-0010"
+    ]
+  },
+  "UNRESOLVED_AUTOMATION_EXCEPTION": {
+    "description": "Project tagged with an unresolved automation exception",
+    "records": [
+      "PRJ-2026-0016"
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+# Local Postgres matching Supabase's major version (17).
+# The same migrations apply unchanged to a Supabase project.
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: roofops-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: roofops
+      TZ: Australia/Brisbane
+    ports:
+      - "54322:5432"
+    volumes:
+      - roofops-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d roofops"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  roofops-pgdata:

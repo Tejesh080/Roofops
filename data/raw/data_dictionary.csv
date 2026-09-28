@@ -1,0 +1,63 @@
+﻿column,sample_value,description
+record_id,OPS-0001,Synthetic RoofOps demo field.
+customer_id,CUST-0001,Synthetic RoofOps demo field.
+customer_name,Oliver Grant,Synthetic RoofOps demo field.
+customer_email,oliver.grant@example.com,Synthetic RoofOps demo field.
+customer_phone,0400 000001,Synthetic RoofOps demo field.
+customer_type,Residential,Synthetic RoofOps demo field.
+duplicate_candidate_of,CUST-0008,Synthetic RoofOps demo field.
+property_id,PROP-0001,Synthetic RoofOps demo field.
+property_address,11 Coral Gum Drive,Synthetic RoofOps demo field.
+suburb,Bundaberg West,Synthetic RoofOps demo field.
+state,QLD,Synthetic RoofOps demo field.
+postcode,4670,Synthetic RoofOps demo field.
+property_type,Detached House,Synthetic RoofOps demo field.
+storeys,2,Synthetic RoofOps demo field.
+quote_id,Q-2026-0001,Synthetic RoofOps demo field.
+quote_version,2,Synthetic RoofOps demo field.
+lead_source,Google Ads,Synthetic RoofOps demo field.
+estimator,Ethan Wright,Synthetic RoofOps demo field.
+job_type,Leak Repair,Synthetic RoofOps demo field.
+roof_type,Tile,Synthetic RoofOps demo field.
+roof_area_sqm,203.0,Synthetic RoofOps demo field.
+inspection_date,2026-05-13,Synthetic RoofOps demo field.
+quote_created_date,2026-05-22,Synthetic RoofOps demo field.
+quote_status,Accepted,Synthetic RoofOps demo field.
+quote_accepted_date,2026-06-02,Synthetic RoofOps demo field.
+quote_amount_aud,38607.58,Synthetic RoofOps demo field.
+lost_reason,Competitor,Synthetic RoofOps demo field.
+project_id,PRJ-2026-0001,Synthetic RoofOps demo field.
+project_status,Completed,Synthetic RoofOps demo field.
+project_manager,Aiden Brooks,Synthetic RoofOps demo field.
+planned_start_date,2026-06-22,Synthetic RoofOps demo field.
+planned_completion_date,2026-06-26,Synthetic RoofOps demo field.
+actual_completion_date,2026-06-25,Synthetic RoofOps demo field.
+schedule_risk,Low,Low/High indicator for demo prioritisation; high risk is paired with a concrete reason.
+delay_reason,Supplier confirmation outstanding,Synthetic RoofOps demo field.
+materials_status,Ordered,Operational material state for project scheduling/purchasing demos.
+compliance_photos_status,Complete,Synthetic RoofOps demo field.
+drive_folder_status,Created,Synthetic RoofOps demo field.
+po_id,PO-2026-0001,Synthetic RoofOps demo field.
+po_status,Sent,Synthetic RoofOps demo field.
+po_value_aud,12519.89,Synthetic RoofOps demo field.
+supplier_id,SUP-001,Synthetic RoofOps demo field.
+supplier_name,Coastal Roofing Supplies Demo,Synthetic RoofOps demo field.
+supplier_acknowledged,No,Synthetic RoofOps demo field.
+supplier_eta,2026-09-02,Synthetic RoofOps demo field.
+invoice_id,INV-2026-0001,Synthetic RoofOps demo field.
+invoice_status,Sent,Synthetic RoofOps demo field.
+invoice_amount_aud,3860.76,Synthetic RoofOps demo field.
+invoice_due_date,2026-10-21,Synthetic RoofOps demo field.
+invoice_paid_date,2026-09-30,Synthetic RoofOps demo field.
+invoice_count,2,Synthetic RoofOps demo field.
+overdue_invoice_count,0,Synthetic RoofOps demo field.
+total_invoiced_aud,7721.52,Synthetic RoofOps demo field.
+outstanding_invoice_aud,7721.52,Synthetic RoofOps demo field.
+open_exception_count,0,Synthetic RoofOps demo field.
+latest_exception_class,ExternalServiceTimeout,Synthetic RoofOps demo field.
+project_event_count,4,Synthetic RoofOps demo field.
+last_event_type,materials.review_requested,Synthetic RoofOps demo field.
+last_event_status,success,Synthetic RoofOps demo field.
+automation_health,Healthy,Synthetic RoofOps demo field.
+edge_case_tags,OVERDUE_INVOICE,Semicolon-delimited synthetic anomalies intentionally seeded for demos and tests.
+synthetic_demo_data,YES,Always YES. Confirms the row is fictional demo data.

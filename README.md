@@ -2,45 +2,85 @@
 
 **An operations and automation platform for a fictional Australian roofing contractor. Portfolio/interview project.**
 
-> ⚠ **SYNTHETIC DEMO DATA.** Every customer, supplier, address and amount is fictional. External integrations run in **MOCK** mode unless explicitly configured, and the UI always shows which mode each integration is in.
+> ⚠ **SYNTHETIC DEMO DATA.** Every customer, supplier, address and amount is fictional. External integrations run in **MOCK** mode unless explicitly configured, and every stored integration ID records whether it is mock or real.
 
-RoofOps models the full job lifecycle (lead → quote → project → purchasing → field work → invoice → payment). Its focus is the parts that break in real operations:
+RoofOps models the full job lifecycle (lead → quote → project → purchasing → field work → invoice → payment). Its focus is the parts that break in real operations: duplicate webhooks, rate limits, ambiguous writes, AI that may read but must not move money without approval, and an audit trail you can prove hasn't been edited.
 
-- a webhook delivered twice must not create two projects
-- Xero returning 429, or timing out after it may have created the invoice
-- an AI assistant that can read freely, draft safely, and **never** move money without a human approving
-- a supplier quote parsed by AI but totalled by code
-- every change traceable in an append-only, hash-chained audit trail
+## Target architecture
+
+| Layer | System |
+|---|---|
+| Staff-facing operations | Airtable |
+| System / control layer | Postgres (Supabase) |
+| Workflow orchestration | n8n |
+| Accounting source of truth | Xero |
+| Document store | Google Drive |
+| Conversational interface | AI Copilot (tool calling) |
 
 ## Status
 
 | Phase | Scope | State |
 |---|---|---|
-| 0 | Architecture, schema, acceptance criteria | ✅ complete, awaiting review |
-| 1 | Database + deterministic seed data | ⏳ |
-| 2 | Quote → Project automation (idempotency) | ⏳ |
+| 0 | Architecture, schema, acceptance criteria | ✅ |
+| 1 | Database + canonical data import (dates normalised to 2026-09-29) | ✅ awaiting review |
+| 2 | Airtable Quote Accepted → n8n → Postgres → Project → Drive → audit → Airtable | ⏳ |
 | 3 | Reliability lab + exception queue | ⏳ |
 | 4 | AI Operations Copilot (GREEN/AMBER/RED tools) | ⏳ |
 | 5 | Supplier quote → PO | ⏳ |
 | 6 | Xero integration (mock → Demo Company) | ⏳ |
 | 7 | OpenTakeoff experiment (optional) | ⏳ |
 
-## Read in this order
+## Run it
 
-1. [docs/architecture.md](docs/architecture.md): how it fits together and why
-2. [docs/data-model.md](docs/data-model.md): ERD, integrity rules, state machines
-3. [docs/acceptance-criteria.md](docs/acceptance-criteria.md): definition of done per phase, and the test matrix
-4. [docs/data-audit.md](docs/data-audit.md): what's wrong with the source CSV and how the seed will fix it
-5. [docs/decisions.md](docs/decisions.md): ADRs, three marked *needs review*
-
-## Phase 0 checks you can run
+Requires Node 24 and Docker.
 
 ```bash
-# needs: npm i -D @electric-sql/pglite (added properly in Phase 1)
-node scripts/phase0-schema-check.mjs supabase/migrations/20260929000000_core_schema.sql
-node scripts/phase0-csv-audit.mjs data/source/RoofOps_Master_Synthetic_Operations.csv
+npm install
 ```
 
-## Stack
+```bash
+npm run db:up
+```
 
-Next.js · TypeScript · Tailwind · shadcn/ui · Supabase Postgres · n8n · Claude/OpenAI behind `LlmProvider` · Xero, Google Drive and Airtable behind REAL/MOCK adapters · Vitest · Playwright.
+```bash
+npm run db:load
+```
+
+```bash
+npm run check
+```
+
+`db:load` applies migrations and imports `data/normalised/` into Postgres 17 at `127.0.0.1:54322/roofops`; running it again is a no-op. `db:reset` rebuilds a local database from scratch. `npm test` runs on in-process PGlite; to also run every database suite against real Postgres:
+
+```bash
+TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres npm test
+```
+
+After changing a date rule, regenerate and re-verify the normalised data:
+
+```bash
+npm run data:normalise
+```
+
+## Layout
+
+```
+data/raw/                 canonical synthetic bundle, verbatim
+data/normalised/          dates normalised + change log + scenario manifest + hashes
+supabase/migrations/      schema (core, staging/import, operational views)
+src/normalise/            date rules, invariants, scenario manifest
+src/import/               importer + transform.sql (staging -> core)
+src/db/                   PGlite/Postgres port, migration runner
+src/events/               event envelope contract (zod)
+test/                     Vitest suites + fixtures (webhooks, HTTP failures)
+docs/                     architecture, data model, import, decisions, acceptance criteria
+```
+
+## Read in this order
+
+1. [docs/architecture.md](docs/architecture.md)
+2. [docs/data-import.md](docs/data-import.md): how the bundle was loaded, every date rule, known source discrepancies
+3. [docs/data-model.md](docs/data-model.md)
+4. [docs/acceptance-criteria.md](docs/acceptance-criteria.md)
+5. [docs/decisions.md](docs/decisions.md): ADRs; the open ones are marked ⚠
+6. [docs/data-audit.md](docs/data-audit.md): Phase 0 audit of the flat CSV (superseded by data-import.md)

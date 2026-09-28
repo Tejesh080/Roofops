@@ -1,4 +1,6 @@
-# Source data audit — `RoofOps_Master_Synthetic_Operations.csv`
+# Source data audit (Phase 0): `RoofOps_Master_Synthetic_Operations.csv`
+
+> **Superseded in Phase 1.** The canonical per-table bundle replaced this flat file, and dates were normalised under the rules in [data-import.md](data-import.md). The recommendation below to regenerate data was **not** adopted: IDs, names, amounts and scenarios come from the bundle unchanged.
 
 Audited: 2026-09-29 with `scripts/phase0-csv-audit.mjs` (reference date 2026-09-29).
 File: `data/source/RoofOps_Master_Synthetic_Operations.csv`, 65 rows × 60 columns, one row per quote, denormalised.

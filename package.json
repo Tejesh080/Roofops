@@ -18,7 +18,8 @@
     "db:load": "tsx scripts/db-load.ts",
     "db:reset": "tsx scripts/db-load.ts --reset",
     "check": "npm run lint && npm run typecheck && npm test",
-    "data:check": "tsx scripts/normalise-dates.ts --check"
+    "data:check": "tsx scripts/normalise-dates.ts --check",
+    "db:provision-n8n": "tsx scripts/provision-n8n-role.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

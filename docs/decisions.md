@@ -84,3 +84,22 @@ I recommend (a) for Phase 2, since it matches your flow ("Postgres idempotency c
 
 ### ADR-017: TypeScript 6.0 (not 7.0)
 **Status:** Accepted. TypeScript 7.0 (the native compiler) is out, but typescript-eslint 8.70 supports `<6.1`. Pinned to 6.0.3 until lint tooling catches up.
+
+### ADR-018: Real integrations only; no mock providers
+**Status:** Accepted (user direction, after Phase 1)
+**Decision:** every integration calls the real service. There are no mock providers or simulated success responses. If a service is unavailable, the capability is reported **BLOCKED**. Every external side effect is created, then read back independently, then verified before anything records it (`wf_complete_side_effect` requires `verified: true`; `external_links.verified_at`).
+**Consequence:** the Phase 0 mock-adapter design (§4 of the old architecture) is withdrawn. Placeholder IDs from the bundle were removed from the core model (migration 300). Tests of external behaviour are end-to-end against live services.
+
+### ADR-019: Hosted control layer on Supabase; n8n Cloud; local Docker for development only
+**Status:** Accepted (user direction)
+**Decision:** the live environment is Supabase Postgres 17 (Sydney, session pooler, TLS) plus a dedicated n8n Cloud workspace. Local Docker Postgres is used only for development and automated tests. The local database is never exposed via tunnels.
+
+### ADR-020: n8n reaches Postgres only through SECURITY DEFINER entry points (resolves ADR-001)
+**Status:** Accepted
+**Decision:** n8n's database login (`roofops_n8n`) is a member of `roofops_workflow`, which holds EXECUTE on exactly four functions and no table privileges. The functions have a pinned `search_path` and do all validation, idempotency and audit writing in one transaction.
+**Consequence:** a leaked n8n DB credential cannot read customer data or forge audit rows (verified by connecting as the role).
+
+### ADR-021: Global default privileges for functions
+**Status:** Accepted (found by the hosted exposure test)
+**Context:** Postgres grants EXECUTE on new functions to PUBLIC, and per-schema `ALTER DEFAULT PRIVILEGES … REVOKE` cannot remove a global default. So the Supabase `anon` role could execute new functions.
+**Decision:** revoke globally (`ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC`) and assert in every environment that no public-schema function grants EXECUTE to PUBLIC.

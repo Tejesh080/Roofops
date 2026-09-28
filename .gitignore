@@ -12,3 +12,5 @@ test-results/
 supabase/.temp/
 supabase/.branches/
 data/generated/
+credentials.json
+secrets/

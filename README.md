@@ -2,7 +2,7 @@
 
 **An operations and automation platform for a fictional Australian roofing contractor. Portfolio/interview project.**
 
-> ⚠ **SYNTHETIC DEMO DATA.** Every customer, supplier, address and amount is fictional. External integrations run in **MOCK** mode unless explicitly configured, and every stored integration ID records whether it is mock or real.
+> ⚠ **SYNTHETIC DEMO DATA, REAL INTEGRATIONS.** Every customer, supplier, address and amount is fictional. Every integration is a real service (Supabase, Airtable, n8n Cloud, Google Drive, Xero Demo Company, DeepSeek); anything not connected is reported **BLOCKED**, never simulated.
 
 RoofOps models the full job lifecycle (lead → quote → project → purchasing → field work → invoice → payment). Its focus is the parts that break in real operations: duplicate webhooks, rate limits, ambiguous writes, AI that may read but must not move money without approval, and an audit trail you can prove hasn't been edited.
 
@@ -23,11 +23,11 @@ RoofOps models the full job lifecycle (lead → quote → project → purchasing
 |---|---|---|
 | 0 | Architecture, schema, acceptance criteria | ✅ |
 | 1 | Database + canonical data import (dates normalised to 2026-09-29) | ✅ awaiting review |
-| 2 | Airtable Quote Accepted → n8n → Postgres → Project → Drive → audit → Airtable | ⏳ |
+| 2 | Airtable Quote Accepted → n8n → Postgres → Project → Drive → audit → Airtable | 🟡 partial: hosted DB, Airtable, workflow functions live; n8n and Drive BLOCKED ([status](docs/phase2-status.md)) |
 | 3 | Reliability lab + exception queue | ⏳ |
 | 4 | AI Operations Copilot (GREEN/AMBER/RED tools) | ⏳ |
 | 5 | Supplier quote → PO | ⏳ |
-| 6 | Xero integration (mock → Demo Company) | ⏳ |
+| 6 | Xero Demo Company integration | ⏳ |
 | 7 | OpenTakeoff experiment (optional) | ⏳ |
 
 ## Run it

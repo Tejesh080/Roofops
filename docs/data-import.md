@@ -63,12 +63,12 @@ Principle: a date changes **only** if it violates an invariant as of the demo da
 | `projects.schedule_risk / delay_reason` | `pm_risk_flag / delay_reason` | kept as the PM's own assessment; system risk is derived separately |
 | `projects.materials_status` | derived (`v_project_risk`, `v_projects_waiting_on_materials`) | kept verbatim in `staging.projects` |
 | `projects.compliance_photos_status` | `project_checklist_items (COMPLETION_PHOTOS)` | Complete → DONE, Missing / Not Due → OPEN |
-| `projects.drive_folder_status = Created` | `external_links (GOOGLE_DRIVE, is_mock = true)` | the bundle's storage is "Mock Drive" |
+| `projects.drive_folder_status = Created` | **not linked** (staging only) | the bundle's "Mock Drive" exists nowhere; real folders are created by the Phase 2 workflow |
 | `purchase_orders.po_value_aud` | one `SUMMARY` line, **ex-GST** | subtotal equals the source exactly; GST derived |
 | `purchase_orders.supplier_acknowledged` | derived from status | Yes ⇔ ACKNOWLEDGED / PARTIALLY_DELIVERED / DELIVERED (consistent across all 35 rows) |
 | `invoices.invoice_amount_aud` | one `SUMMARY` line, **GST-inclusive** | total equals the source exactly; GST = total ÷ 11 |
 | `invoices.paid_date` | `payments` row for the full amount | method `UNKNOWN`, source `IMPORT` |
-| `invoices.xero_invoice_id` (`DEMO-XERO-nnnn`) | `external_links (XERO, is_mock = true)`, `sync_status = SYNCED` | placeholders, not real Xero IDs |
+| `invoices.xero_invoice_id` (`DEMO-XERO-nnnn`) | **not linked** (staging only), `sync_status = NOT_SYNCED` | placeholders that exist in no Xero organisation (migration 300) |
 | `project_events` | `automation_events` (`event_key` = source ID) | `duplicate_of` → `causation_id`; source error class kept in metadata |
 | `processed_events` | `processed_events` (`consumer = legacy:<event_type>`) | |
 | `workflow_exceptions.error_class` | FK to the `error_classes` reference table | `retryable` comes from the reference policy |
@@ -91,5 +91,5 @@ Vocabulary is translated 1:1 (`'Materials Pending'` → `'MATERIALS_PENDING'`). 
 | K4 | 9 POs on **completed** projects are still Draft/Approved/Sent (never acknowledged) | Visible in `v_purchase_order_status`; excluded from active-project risk |
 | K5 | 5 quotes are `Draft` but have a sent date (Q-0033, 0038, 0039, 0046, 0065) | Loaded as-is (plausible: a new draft version after sending) |
 | K6 | The accepted quote with the failed project (Q-2026-0031) has **no** exception record | Detected instead by `v_accepted_quotes_without_project`, which is the better design anyway |
-| K7 | Two overdue invoices (INV-0025, INV-0032) and one draft have no Xero ID | Loaded as `NOT_SYNCED`, a useful reconciliation demo |
+| K7 | Bundle Xero IDs (`DEMO-XERO-nnnn`) and "Mock Drive" paths are placeholders | Not linked; all imported invoices are `NOT_SYNCED` and documents `NOT_STORED` until a real system confirms them |
 | K8 | 45 products have only 27 distinct names, and **15 names appear twice at the same supplier** with different SKUs and very different prices (e.g. SUP-006 "Insulation Blanket Classic Cream": PROD-0012 $12.39 vs PROD-0042 $54.05) | Kept 1:1 with the source IDs. This makes supplier-quote product matching (Module 4) ambiguous by name, so matching must use the supplier SKU, and name-only matches must go to human review. |

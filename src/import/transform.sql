@@ -133,10 +133,9 @@ select stable_uuid('project', project_id), 'COMPLETION_PHOTOS', 'Completion / co
        case compliance_photos_status when 'Complete' then actual_completion_date::date end, 10
 from staging.projects;
 
--- drive_folder_status = Created -> a MOCK Google Drive folder link (the bundle's storage is "Mock Drive")
-insert into external_links (provider, is_mock, entity_type, entity_id, external_type, external_id)
-select 'GOOGLE_DRIVE', true, 'project', stable_uuid('project', project_id), 'Folder', 'mock-drive:/RoofOps Demo/' || project_id || '/'
-from staging.projects where drive_folder_status = 'Created';
+-- drive_folder_status / storage paths in the bundle refer to a "Mock Drive" that does not exist.
+-- No external_links are created from them: a link is only recorded when a real object has been
+-- created and read back (Phase 2 workflow). The source values stay in staging.projects.
 
 -- ---- purchase orders (value carried as one SUMMARY line, ex-GST) ----
 insert into purchase_orders (id, po_number, supplier_id, project_id, record_origin, origin, status, line_amount_type,
@@ -157,7 +156,7 @@ insert into invoices (id, invoice_number, project_id, customer_id, record_origin
 select stable_uuid('invoice', i.invoice_id), i.invoice_id, stable_uuid('project', i.project_id), stable_uuid('customer', p.customer_id),
        'IMPORT',
        case i.invoice_status when 'Draft' then 'DRAFT' when 'Sent' then 'ISSUED' when 'Paid' then 'PAID' end,
-       case when i.xero_invoice_id <> '' then 'SYNCED' else 'NOT_SYNCED' end,
+       'NOT_SYNCED',   -- bundle Xero IDs are placeholders that exist in no Xero organisation
        'INCLUSIVE', i.invoice_date::date, i.due_date::date
 from staging.invoices i join staging.projects p on p.project_id = i.project_id;
 
@@ -172,10 +171,7 @@ select i.id, i.total_inc_gst, s.paid_date::date, 'UNKNOWN', 'IMPORT'
 from staging.invoices s join invoices i on i.invoice_number = s.invoice_id
 where s.invoice_status = 'Paid';
 
--- Xero IDs in the bundle are demo placeholders (DEMO-XERO-nnnn), so the links are MOCK.
-insert into external_links (provider, is_mock, entity_type, entity_id, external_type, external_id)
-select 'XERO', true, 'invoice', stable_uuid('invoice', invoice_id), 'Invoice', xero_invoice_id
-from staging.invoices where xero_invoice_id <> '';
+-- Bundle Xero IDs (DEMO-XERO-nnnn) are placeholders; kept in staging.invoices only.
 
 -- ---- documents / site notes ----
 insert into documents (id, document_number, document_type, title, file_name, mime_type, storage_provider, storage_ref,
@@ -183,7 +179,7 @@ insert into documents (id, document_number, document_type, title, file_name, mim
 select stable_uuid('document', document_id), document_id, upper(replace(document_type, ' ', '_')), document_type,
        file_name,
        case when file_name like '%.pdf' then 'application/pdf' end,   -- unknown extension -> NOT NULL violation -> import aborts
-       case storage_provider when 'Mock Drive' then 'MOCK_DRIVE' end,
+       case storage_provider when 'Mock Drive' then 'NOT_STORED' end,   -- metadata only; no file exists
        storage_path || file_name,
        upper(replace(review_status, ' ', '_')), uploaded_at::timestamptz, stable_uuid('project', project_id)
 from staging.documents;

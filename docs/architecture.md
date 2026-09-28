@@ -50,11 +50,11 @@ flowchart LR
   end
   DB[(Supabase Postgres<br/>system of record)]
   N8N[n8n<br/>orchestration, schedules, fan-out]
-  LLM[LLM provider<br/>Claude / OpenAI / Mock]
-  XERO[Xero Accounting API<br/>Real: Demo Company / Mock]
-  GDRIVE[Google Drive<br/>Real / Mock]
-  AT[Airtable<br/>Real / Mock]
-  MAIL[Email / notifications<br/>Real / Mock]
+  LLM[LLM provider<br/>DeepSeek]
+  XERO[Xero Accounting API<br/>Demo Company]
+  GDRIVE[Google Drive]
+  AT[Airtable]
+  MAIL[Email / notifications]
 
   OPS --> UI --> API --> DOM --> DB
   API --> WF --> DB
@@ -99,37 +99,24 @@ docs/                       this folder
 
 Dependency direction is strict: `app → application → domain`. `application → integrations` goes through interfaces only. `domain` imports nothing with side effects.
 
-## 4. Integration adapters: REAL and MOCK
+## 4. Integrations: real systems only
 
-Every external system sits behind an interface with two implementations, chosen at startup from environment variables:
+**There are no mock providers** (ADR-018). Every integration talks to the real service, or the capability is reported **BLOCKED**. Nothing is ever simulated as successful.
 
-```ts
-interface AccountingProvider {                 // XeroProvider
-  readonly mode: 'REAL' | 'MOCK';
-  upsertContact(input: ContactInput, key: IdempotencyKey): Promise<ExternalRef>;
-  createInvoice(input: InvoiceInput, key: IdempotencyKey): Promise<ExternalRef>;
-  findInvoiceByReference(ref: string): Promise<ExternalInvoice | null>;   // for reconciliation
-  getInvoice(id: string): Promise<ExternalInvoice>;
-}
-// XeroRealProvider  - OAuth2 + Xero Accounting API
-// XeroMockProvider  - in-memory/DB-backed, honours idempotency keys, emits realistic IDs
-```
+| Service | Role | Status (see docs/phase2-status.md) |
+|---|---|---|
+| Postgres 17, Supabase (Sydney) | control layer, live data | LIVE, loaded and verified |
+| Airtable base "RoofOps Demo" | staff-facing operations | LIVE, 228 records loaded and read back |
+| n8n Cloud (dedicated RoofOps workspace) | orchestration | BLOCKED: `N8N_BASE_URL` points at a shared workspace |
+| Google Drive (tejesht08, `drive.file` scope) | document store | BLOCKED: no Google OAuth2 credential in n8n |
+| Xero Demo Company | accounting source of truth | not started (Phase 5) |
+| DeepSeek (`deepseek-flash`) | copilot LLM | not started (Phase 6) |
 
-| Provider | Interface | Real | Mock | Env switch |
-|---|---|---|---|---|
-| Xero | `AccountingProvider` | Xero Demo Company via OAuth2 | `XeroMockProvider` | `MOCK_XERO` |
-| Google Drive | `DocumentStoreProvider` | Drive API v3, service account | `DriveMockProvider` | `MOCK_GOOGLE_DRIVE` |
-| Airtable | `AirtableSyncProvider` | Airtable Web API | `AirtableMockProvider` | `MOCK_AIRTABLE` |
-| Notifications | `NotificationProvider` | Gmail API / SMTP | `NotifyMockProvider` (inbox page) | `MOCK_NOTIFICATIONS` |
-| LLM | `LlmProvider` | Anthropic / OpenAI | `MockLlmProvider` (deterministic router) | `LLM_PROVIDER=anthropic\|openai\|mock` |
-| Workflow runner | `WorkflowRunner` | n8n | `LocalRunner` (in-process) | `WORKFLOW_RUNNER=local\|n8n` |
-
-**Honesty rules**
-
-- Every provider reports its `mode`. The UI header shows an **Integrations** badge per provider (`MOCK` in amber, `REAL` in green), and the global banner reads **SYNTHETIC DEMO DATA**.
-- Every external ID we store (`external_links`) has `is_mock`. A mock Xero invoice ID can never be mistaken for a real one.
-- Mocks must *behave* like the real service where it matters for correctness: they honour idempotency keys, return 429 with `Retry-After` when told to, and can "lose" a response after committing (ambiguous write).
-- **Fault injection** is a decorator (`FaultInjectingProvider`) that wraps any provider with a script such as `["429", "429", "ok"]` or `["commit_then_timeout"]`. It is only enabled when `DEMO_FAULT_INJECTION=true` and refuses to wrap a `REAL` provider.
+**Rules**
+- **Create, then read back, then verify.** A side effect is recorded (`external_links.verified_at`) only after an independent read of the external system confirms it. `wf_complete_side_effect()` refuses results without `verified: true`.
+- External identities are the system's own IDs (Airtable `rec…`, Drive file ID, Xero InvoiceID), never names.
+- Secrets: `.env` / `.env.local` (gitignored), `secrets/` (gitignored) for generated credentials, and n8n Credentials for OAuth. Exported n8n workflow JSON references credentials by ID/name only.
+- Failure testing uses real behaviour (e.g. a genuine client timeout, a real HTTP error from a real endpoint), not injected fake responses.
 
 ## 5. Events, audit, and why they are separate
 
@@ -299,7 +286,7 @@ The model chooses **which** tool to call and explains the results. **Code** exec
 sequenceDiagram
   participant U as User (role: PROJECT_MANAGER)
   participant C as Copilot service
-  participant L as LLM (Claude / OpenAI / Mock)
+  participant L as LLM (DeepSeek)
   participant G as Tool guard
   participant Q as Query/command layer
   U->>C: "Which projects are at risk next week and why?"
@@ -339,7 +326,7 @@ Site notes, supplier emails and supplier quote text are **untrusted data**. They
 
 ### Provider abstraction
 
-`LlmProvider.chat({ system, messages, tools }) → { text | toolCalls[] }`, with `AnthropicProvider`, `OpenAiProvider` and `MockLlmProvider`. The mock is a deterministic intent router (keyword/regex → tool call), so the demo and CI work with no API key. Every call is logged to `ai_tool_invocations` (tool, tier, input, decision, latency).
+Real DeepSeek (`DEEPSEEK_MODEL`, OpenAI-compatible API, server-side only) behind a thin `LlmClient`; if the API is unavailable the copilot reports it rather than answering. Every call is logged to `ai_tool_invocations` (tool, tier, input, decision, latency).
 
 ## 9. Supplier quote → PO (Module 4) data flow
 
@@ -405,7 +392,7 @@ Airtable is the **staff-facing operations layer** (ADR-006). Staff act in Airtab
 | Domain (state machines, money, permissions, risk, backoff) | Vitest unit | none |
 | Import, schema constraints, views, idempotency, audit | Vitest integration | **PGlite** (in-process Postgres 18) always; **real Postgres 17** too when `TEST_DATABASE_URL` is set (throwaway database per test). Implemented in Phase 1: 124 tests pass on both engines. |
 | True concurrency (two workers, same event) | Vitest integration | **Real Postgres** via Docker (Supabase local). PGlite has a single connection and would make the race test meaningless. |
-| Adapters | Vitest contract tests: the same suite runs against Mock and (opt-in, `RUN_REAL_INTEGRATION_TESTS=true`) Real | — |
+| Integrations | End-to-end tests against the real services: create, then read back, then verify (Airtable API, Drive files.get, Xero GET Invoices, n8n executions API) | hosted |
 | Demo path | Playwright | seeded DB |
 
 The Phase 0 constraint script became `test/schema.test.ts` in Phase 1.
@@ -425,5 +412,5 @@ The Phase 0 constraint script became `test/schema.test.ts` in Phase 1.
 3. **Audit hash-chain advisory lock** serialises audit writes. Fine at SMB volume, but a bottleneck at high write rates.
 4. **Xero 6-minute idempotency window** (see §7). Mitigated by reconcile-before-retry, but a reconcile query can itself be rate-limited.
 5. **Supplier quote extraction** will sometimes be wrong. Mitigated by schema validation, arithmetic cross-checks and mandatory human review, not by trusting the model.
-6. **Mock/real behavioural drift:** a mock can pass while the real API rejects. Mitigated by shared contract tests and an opt-in real test run against the Xero Demo Company.
+6. **Real-service drift:** vendors change APIs, scopes and limits (e.g. Xero's granular scopes since March 2026, Airtable's free-plan limit of 1,000 calls a month). Mitigated by read-back verification on every side effect and by E2E tests run against the live services before each demo.
 7. **Friendly ID gaps** appear when transactions roll back. That is acceptable, and documented for the accountants.

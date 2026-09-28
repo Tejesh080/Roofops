@@ -58,81 +58,47 @@ Scope revised by the user: load the **canonical synthetic data bundle** (no rege
 - ➡ Moved to **Phase 4**: permission-matrix tests (they belong with the copilot tool guard)
 - ➡ Not applicable: Next.js scaffold (no frontend this phase, per the user)
 
-## Phase 2: Module 1, Quote → Project
+## Phase 2: Real n8n + Airtable + Google Drive, Quote Accepted → Project (🟡 in progress)
 
-> To be re-baselined at the start of Phase 2 for the confirmed flow: **Airtable Quote Accepted → webhook/event → validation → Postgres idempotency check → create Project → material-review task → Drive adapter → audit log → update Airtable** (n8n orchestrates; see ADR-001 for how n8n reaches Postgres). The idempotency, concurrency and audit criteria below stand.
+Real services only (ADR-018). Each side effect: **create, then read back, then verify**.
 
-- [ ] `POST /api/events` validates the envelope (zod); rejects a missing field with 400 `VALIDATION_ERROR` and **no retry**
-- [ ] Steps 1–13 implemented; each writes a `workflow_run_steps` row
-- [ ] Idempotency key `quote.accepted:{quote}:v{version}`; claim/lease/takeover per architecture §6
-- [ ] Same event twice → one project; the second response returns the same `project_id` and logs `webhook.duplicate_ignored`
-- [ ] Different event, same business fact → one project
-- [ ] Same key, different payload → rejected
-- [ ] Two concurrent workers (real Postgres) → exactly one project, one checklist, one task, one outbox row per side effect
-- [ ] Crash after claim (lease expiry) → the second worker takes over and completes
-- [ ] Drive folder + PM notification via outbox, in mock mode; the UI labels them MOCK
-- [ ] Friendly project number issued; customer/property attached (composite FK)
-- [ ] Audit chain for the run: `quote.accepted` → `project.create` → `checklist.create` → `task.create` → `drive.folder_created` → `notify.sent`
-- [ ] Seeded Q-2026-0031 appears as an open exception; RETRY completes it
-- [ ] UI: Quotes list → "Mark accepted" → redirect to the new project (Playwright)
+**Done and verified**
+- [x] Hosted Postgres 17 (Supabase, Sydney): schema and data deployed; 50 hosted verification checks pass (counts, preservation, scenarios, constraints, security)
+- [x] Supabase Data API surface closed: `anon` and `authenticated` can read 0 tables/views and execute 0 functions (verified before and after the fix)
+- [x] Workflow control layer in Postgres (`wf_quote_accepted`, `wf_claim_side_effect`, `wf_complete_side_effect`, `wf_fail_side_effect`): validation, business-fact idempotency, project + checklist + material-review task, outbox, events, audit, in one transaction
+- [x] Duplicate safety proven on real Postgres: transport redelivery, semantic duplicate, and 3 concurrency races × 20 rounds (60 races): exactly one project, one task, one side-effect claim
+- [x] Validation failure (non-retryable, one exception even on redelivery) and transient failure (bounded backoff, then success) proven at the control layer
+- [x] Side effects cannot be recorded without `verified: true` read-back proof; a second Drive folder for one project is refused
+- [x] Least-privilege `roofops_n8n` login (hosted): EXECUTE on the 4 entry points only; table/function access denied (proven by connecting as the role)
+- [x] Airtable "RoofOps Demo" base: 6 tables, 228 synthetic records, all read back and matched to Postgres; record IDs stored as verified `external_links`
 
-## Phase 3: Reliability laboratory
+**Blocked (see docs/phase2-status.md)**
+- [ ] Dedicated RoofOps n8n Cloud workspace (`N8N_BASE_URL` points at a shared workspace)
+- [ ] Google OAuth2 (`drive.file`) credential in that workspace → real "RoofOps Demo" root folder, created and read back
+- [ ] Airtable credential for n8n (PAT scoped to the RoofOps Demo base) + Airtable webhook (push; the free plan's 1,000 calls a month rules out polling)
+- [ ] n8n workflow deployed via API; secrets referenced by credential only
+- [ ] E2E: accept quote in Airtable → n8n execution (read via API) → exactly one Postgres project → Drive folder (files.get) → Airtable project record + quote link (read back) → audit chain
+- [ ] E2E duplicate: re-trigger → still one project, one folder, one task; duplicate event explained in `automation_events`
+- [ ] E2E failures: one real transient failure (e.g. genuine client timeout on the Drive call, reconciled by search before retry) and one validation failure, both visible in `workflow_exceptions` and in Airtable `Automation Status`
 
-- [ ] Automation Health page shows, per workflow: last run, status, duration p50/p95, failure rate, retry count, exception count (definitions as in architecture §7)
-- [ ] Demo controls: duplicate webhook · HTTP 429 · HTTP 500 · network timeout · invalid JSON · missing required field · external service unavailable · ambiguous write result
-- [ ] 429: honours `Retry-After`; otherwise exponential backoff with jitter; the timeline shows each computed delay
-- [ ] 500: bounded retries (max 5), then DEAD_LETTERED + exception
-- [ ] Validation failures: 0 retries, immediate exception
-- [ ] Ambiguous write: reconcile (GET by reference) **before** any retry; tests cover "found → no second POST" and "not found → retry"
-- [ ] Exception queue: event ID, workflow, business record, error class, attempt count, created, last attempt, resolution status
-- [ ] RETRY / MARK RESOLVED / VIEW EVENT; RETRY pressed twice → one re-run (test)
-- [ ] Fault injection is refused when wrapping a REAL provider (test)
-- [ ] Circuit breaker: opens after N consecutive failures, half-opens after a cool-down (test with a fake clock)
+## Phase 3: Reliability / failure handling with real workflow behaviour
+- [ ] Exception queue actions (retry / resolve / view event) operate on real runs; retry is idempotent
+- [ ] Real rate-limit handling (Airtable 429 → 30 s wait; Xero `Retry-After`), timeouts and ambiguous writes reconciled by read-back
+- [ ] Automation Health metrics from real `workflow_runs` + n8n execution history
 
-## Phase 4: AI Operations Copilot
+## Phase 4: RoofOps frontend / dashboard
+- [ ] Next.js dashboard over the hosted DB (read models only via server); SYNTHETIC DEMO DATA banner; integration status (LIVE/BLOCKED) shown from real health checks
+- [ ] Playwright end-user tests for the demo path
 
-- [ ] `LlmProvider` with Anthropic, OpenAI and Mock implementations; the Mock is deterministic and used in CI
-- [ ] At least 10 GREEN tools, at least 4 AMBER, at least 4 RED, each with a zod schema, tier and required permission
-- [ ] Tool list sent to the model is filtered by the user's role; execution re-checks permission (both tested)
-- [ ] The model never sees credentials or SQL; tool results are capped and PII-minimised (test asserts no email/phone in results for non-contact tools)
-- [ ] RED tool call → PENDING approval only; there is no code path from the model to execution (test: every RED tool handler returns an approval, never a mutation)
-- [ ] Unauthorised RED attempt → `DENIED_PERMISSION` logged, no approval created
-- [ ] Approve → re-validates state and `record_version` → executes once (idempotency key) → audited
-- [ ] Reject → requires a reason → audited → nothing executed
-- [ ] Stale approval (target changed after the request) → refused
-- [ ] Answers show the underlying result table beside the explanation
-- [ ] Demo prompts return sensible, grounded answers: "Which projects are at risk next week and why?" and "Draft a purchase order for the highest-risk project."
+## Phase 5: Real Xero Demo Company
+- [ ] Generic OAuth2 credential (`offline_access accounting.contacts accounting.invoices`), Demo Company only
+- [ ] Contacts, invoice drafts, invoice lookup, invoice status; after create: GET → exists once, amount matches, contact matches, InvoiceID persisted
+- [ ] Duplicate send → one Xero invoice; ambiguous POST reconciled by Reference before retry (Xero idempotency keys last only 6 minutes)
 
-## Phase 5: Supplier quote → PO
+## Phase 6: Real DeepSeek Operations Copilot
+- [ ] Server-side DeepSeek (`DEEPSEEK_MODEL`), tool calling with GREEN/AMBER/RED tiers; the model never holds DB or external credentials
+- [ ] "Which projects are at risk next week?" → tool selected → answer matches `v_project_risk`
+- [ ] "Create the invoice for this completed job." → approval required → after approval a real Xero action → verified → audited
 
-- [ ] At least 6 synthetic supplier quote fixtures in inconsistent formats, covering: GST-inclusive, GST-exclusive, freight hidden in notes, description variants, 1 deliberate quantity error, 1 missing field
-- [ ] Extraction via `LlmProvider` with a JSON schema; malformed model output → `EXTRACTION_FAILED`, no crash (test with a recorded bad output)
-- [ ] Normalisation (ex-GST, units, freight) and all arithmetic done in code; mismatches flagged (test)
-- [ ] Product matching: SKU → alias → fuzzy *suggestion* (never auto-accepted below the threshold)
-- [ ] Comparison view: lowest landed cost · fastest delivery · best option meeting `required_by`
-- [ ] Human review is required; the output is a DRAFT PO only; there is no auto-issue path (test)
-- [ ] Duplicate "create PO from quote" → one PO (idempotency key)
-
-## Phase 6: Xero integration
-
-- [ ] `AccountingProvider` with `XeroMockProvider` (`MOCK_XERO=true`) and `XeroRealProvider`
-- [ ] Real provider built from current official docs: OAuth2 code flow, `xero-tenant-id`, token refresh, `Idempotency-Key`, 429/`Retry-After`
-- [ ] Workflow: invoice-ready → validate project → validate approved variations → draft → human approval → send → capture InvoiceID → update → audit → reconcile
-- [ ] Over-invoice without an approved variation → blocked (seeded scenario)
-- [ ] Integration identity = Xero IDs stored in `external_links`; never matched on names
-- [ ] Duplicate send → one Xero invoice (mock test; plus an opt-in real test against the Demo Company)
-- [ ] Ambiguous POST → reconcile by Reference before retrying, including when the key is older than 6 minutes (test with a fake clock)
-- [ ] The UI clearly shows MOCK vs REAL for every synced invoice
-
-## Phase 7: OpenTakeoff experiment (optional)
-
-- [ ] Investigate `opentakeoff-mcp` (Kentucky-ai/opentakeoff, Apache-2.0, first seen 2026-09) for suitability; report back before building anything
-- [ ] Load a public/sample plan; calibrate scale; measure area/length; record provenance (sheet, scale, points, who, when)
-- [ ] Estimator approval is mandatory before anything becomes `material_requirements` (source = TAKEOFF)
-- [ ] UI and docs state plainly: *assisted measurement, human-reviewed. Not an automatic estimate.*
-
-## Demo readiness (after Phase 4, re-checked after Phase 6)
-
-- [ ] `docs/demo-script.md`: 7 minutes, the 9 steps from the brief, with the exact records to use (from the seed manifest)
-- [ ] Playwright runs the whole script end-to-end against a fresh seed in mock mode
-- [ ] "SYNTHETIC DEMO DATA" banner on every page; integration mode badges visible
+## Phase 7: Supplier quote intelligence + optional OpenTakeoff
+- [ ] Extraction by DeepSeek, arithmetic in code, SKU-based matching (K8), human review, draft PO only

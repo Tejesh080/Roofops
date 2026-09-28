@@ -7,20 +7,29 @@ import { loadBundle } from '../src/data/bundle.js';
 import type { ScenarioManifest } from '../src/normalise/scenarios.js';
 import { importBundle, type ImportResult } from '../src/import/importer.js';
 import { DEMO_DATE } from '../src/config/demo.js';
-import { TARGETS, col, migratedDb } from './helpers/db.js';
+import { HOSTED, TARGETS, col, migratedDb, openHosted, type Target } from './helpers/db.js';
 
 const src = loadBundle('data/normalised');
 const manifest = JSON.parse(readFileSync('data/normalised/scenario-manifest.json', 'utf8')) as ScenarioManifest;
 const scenario = (k: string) => manifest[k]!.records;
 const money = (x: string | number) => Number(x).toFixed(2);
 
-describe.each(TARGETS)('bundle import [%s]', (target) => {
+const ALL: Target[] = HOSTED ? [...TARGETS, 'hosted'] : TARGETS;
+
+describe.each(ALL)('bundle import [%s]', (target) => {
   let db: Db;
   let first: ImportResult;
 
   beforeAll(async () => {
-    db = await migratedDb(target);
-    first = await importBundle(db);
+    if (target === 'hosted') {
+      // Hosted DB was loaded by `npm run db:load -- --hosted`; verify it as-is, never re-import or reset.
+      db = await openHosted();
+      const [b] = await db.query<{ id: string; dataset_sha256: string; row_counts: Record<string, number> }>('select id, dataset_sha256, row_counts from import_batches');
+      first = { status: 'IMPORTED', batchId: b!.id, datasetSha256: b!.dataset_sha256, rowCounts: b!.row_counts };
+    } else {
+      db = await migratedDb(target);
+      first = await importBundle(db);
+    }
   });
   afterAll(async () => { await db.close(); });
 
@@ -135,9 +144,12 @@ describe.each(TARGETS)('bundle import [%s]', (target) => {
       for (const e of emails) expect(e, e).toMatch(/@([a-z0-9-]+\.)*example\.(com|org|net)$/);
     });
 
-    it('marks integration identities as MOCK (the bundle IDs are demo placeholders)', async () => {
-      expect(await col(db, `select distinct is_mock::text v from external_links`)).toEqual(['true']);
-      expect(Number((await col(db, `select count(*) v from external_links where provider = 'XERO'`))[0])).toBe(src.invoices.rows.filter((i) => i.xero_invoice_id).length);
+    it('records NO external identities from bundle placeholders (real integrations only)', async () => {
+      // DEMO-XERO-nnnn and "Mock Drive" paths exist in no external system: kept in staging, never linked.
+      expect(await col(db, `select count(*)::text v from external_links where provider in ('XERO','GOOGLE_DRIVE') and external_id like any (array['DEMO-XERO-%','mock-drive:%'])`)).toEqual(['0']);
+      expect(await col(db, `select distinct sync_status v from invoices where record_origin = 'IMPORT'`)).toEqual(['NOT_SYNCED']);
+      expect(await col(db, `select distinct storage_provider v from documents`)).toEqual(['NOT_STORED']);
+      expect(Number((await col(db, `select count(*) v from staging.invoices where xero_invoice_id like 'DEMO-XERO-%'`))[0])).toBe(src.invoices.rows.filter((i) => i.xero_invoice_id).length);
     });
   });
 
@@ -226,7 +238,8 @@ describe.each(TARGETS)('bundle import [%s]', (target) => {
     });
 
     it('records the import in the audit trail and the chain verifies', async () => {
-      expect(await col(db, `select action v from audit_events`)).toEqual(['data.import']);
+      expect(await col(db, `select action v from audit_events where action like 'data.%' order by seq`))
+        .toEqual(target === 'hosted' ? ['data.import', 'data.correction'] : ['data.import']);   // hosted was loaded before the real-integrations correction
       expect(await col(db, `select coalesce(verify_audit_chain()::text, 'intact') v`)).toEqual(['intact']);
     });
 

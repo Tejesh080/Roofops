@@ -1,8 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { openPglite, openPostgres, type Db } from '../../src/db/db.js';
 import { migrate } from '../../src/db/migrate.js';
+import { hostedDbConfig } from '../../src/config/env.js';
 
-export type Target = 'pglite' | 'postgres';
+export type Target = 'pglite' | 'postgres' | 'hosted';
+
+/** RUN_HOSTED_TESTS=1 also verifies the already-loaded hosted database (read-only / rolled-back checks). */
+export const HOSTED = process.env.RUN_HOSTED_TESTS === '1';
+
+export async function openHosted(): Promise<Db> {
+  const c = hostedDbConfig();
+  return openPostgres(c.url, c.caPem ? { caPem: c.caPem } : undefined);
+}
 
 /** PGlite always; real Postgres too when TEST_DATABASE_URL points at a local server. */
 export const TARGETS: Target[] = process.env.TEST_DATABASE_URL ? ['pglite', 'postgres'] : ['pglite'];
@@ -11,7 +20,7 @@ export const TARGETS: Target[] = process.env.TEST_DATABASE_URL ? ['pglite', 'pos
  * A brand-new empty database. For Postgres, each call creates its own throwaway
  * database (test files run in parallel) and drops it on close.
  */
-export async function freshDb(target: Target): Promise<Db> {
+export async function freshDb(target: Target): Promise<Db & { url?: string }> {
   if (target === 'pglite') return openPglite();
   const adminUrl = new URL(process.env.TEST_DATABASE_URL!);
   if (!['127.0.0.1', 'localhost', '::1'].includes(adminUrl.hostname)) throw new Error(`TEST_DATABASE_URL must be local, got ${adminUrl.hostname}`);
@@ -24,6 +33,7 @@ export async function freshDb(target: Target): Promise<Db> {
   const db = await openPostgres(url.toString());
   return {
     ...db,
+    url: url.toString(),
     close: async () => {
       await db.close();
       const a = await openPostgres(adminUrl.toString());
@@ -33,7 +43,7 @@ export async function freshDb(target: Target): Promise<Db> {
   };
 }
 
-export async function migratedDb(target: Target): Promise<Db> {
+export async function migratedDb(target: Target): Promise<Db & { url?: string }> {
   const db = await freshDb(target);
   await migrate(db);
   return db;

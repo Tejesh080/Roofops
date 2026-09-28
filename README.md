@@ -25,7 +25,7 @@ RoofOps models the full job lifecycle (lead → quote → project → purchasing
 | 1 | Database + canonical data import (dates normalised to 2026-09-29) | ✅ awaiting review |
 | 2 | Airtable Quote Accepted → n8n → Postgres → Project → Drive → audit → Airtable | ✅ live and verified, awaiting review ([status](docs/phase2-status.md)) |
 | 3 | Approved project → **Xero Demo Company DRAFT invoice** (approval, persistent idempotency, read-back) | ✅ live and verified, awaiting review ([status](docs/phase3-status.md)) |
-| 4 | AI Operations Copilot (GREEN/AMBER/RED tools) | ⏳ |
+| 4 | **Operations Dashboard + DeepSeek Operations Copilot** (`web/`, http://127.0.0.1:3000) | ✅ working, awaiting review ([status](docs/phase4-status.md)) |
 | 5 | Supplier quote → PO | ⏳ |
 | 6 | Reliability lab + exception queue UI | ⏳ |
 | 7 | OpenTakeoff experiment (optional) | ⏳ |

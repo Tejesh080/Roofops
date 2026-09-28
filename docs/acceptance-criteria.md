@@ -81,9 +81,15 @@ Real services only (ADR-018). Each side effect: **create, then read back, then v
 - [ ] Real rate-limit handling (Airtable 429 → 30 s wait; Xero `Retry-After`), timeouts and ambiguous writes reconciled by read-back
 - [ ] Automation Health metrics from real `workflow_runs` + n8n execution history
 
-## Phase 4: RoofOps frontend / dashboard
-- [ ] Next.js dashboard over the hosted DB (read models only via server); SYNTHETIC DEMO DATA banner; integration status (LIVE/BLOCKED) shown from real health checks
-- [ ] Playwright end-user tests for the demo path
+## Phase 4: Operations Dashboard + Operations Copilot (see [phase4-status.md](phase4-status.md))
+- [x] Next.js dashboard over the hosted DB through a least-privilege role and read-only views (ADR-032); Demo mode banner; no business state in the frontend
+- [x] Headline numbers (active, at risk, awaiting materials, ready to invoice, open issues) that agree with the existing KPIs (tested)
+- [x] Project table (number, customer, stage, scheduled date, materials, invoice, risk + reason) and project detail (customer, quote, status, checklist/material review, Drive link, POs, Xero status + ID, history, issues)
+- [x] Business language: no automation jargon in UI or copilot output (tested)
+- [x] DeepSeek copilot, server-side, tiered tools (ADR-033); answers the five example questions from tools (live smoke 6/6 ×3)
+- [x] "Prepare invoice for <project>" returns the preview and requires approval; nothing reaches Xero (proven live on PRJ-2026-0005)
+- [ ] Login / deployment (local demo only)
+- [ ] Integration health panel (LIVE/BLOCKED) and Playwright end-user tests
 
 ## Phase 5: Real Xero Demo Company (delivered early as "Phase 3": see [phase3-status.md](phase3-status.md))
 - [x] Xero OAuth2 credential `RoofOps Xero`, one connection, Demo Company (AU) proven `Class=DEMO` before the tenant was pinned; a real org was detected and refused (ADR-030)

@@ -14,3 +14,4 @@ supabase/.branches/
 data/generated/
 credentials.json
 secrets/
+*.tsbuildinfo

@@ -150,3 +150,12 @@ I recommend (a) for Phase 2, since it matches your flow ("Postgres idempotency c
 **Status:** Accepted (migration 900)
 **Context:** replaying the Approve event for PRJ-2026-0004 was correctly ignored, but `04` wrote Invoice Status "Duplicate ignored", overwriting "Xero draft created".
 **Decision:** `wf_invoice_prepare`/`wf_invoice_decide` wrap the unchanged migration-800 logic (renamed `*_core`, not callable by n8n) and add `xero_state` (verified external links, sync status, Xero number) to `ALREADY_INVOICED`/`ALREADY_PROCESSED`. `04` then keeps "Xero draft created" with the real IDs and says the duplicate was ignored in the preview text.
+
+### ADR-032: The dashboard reads curated views through its own least-privilege role
+**Status:** Accepted (migrations 1000, 1100)
+**Decision:** the web server connects as `roofops_web` (member of `roofops_dashboard`). It has `SELECT` on the `v_dashboard_*` views plus `v_purchase_order_status` and `v_invoice_balances`, and `EXECUTE` on `wf_invoice_prepare` (the preview-only entry point n8n uses). It has no table access and no other workflow function. Business rules stay in SQL: "ready to invoice" is `invoice_final_preview`'s own verdict, and "awaiting materials" and "at risk" come from the existing views, so the table, headline numbers and copilot always agree.
+**Consequence:** the frontend holds no business state and can't drift from the workflows. A compromised web server could read the dashboard and ask for a preview, but could never approve, invoice or write.
+
+### ADR-033: Copilot tools are named, tiered and server-side
+**Status:** Accepted
+**Decision:** DeepSeek gets only tool results from seven named functions, never SQL or credentials. GREEN tools read. AMBER `prepare_invoice` creates a preview only, and only when the user explicitly asks. RED actions (approve, send, pay) are not exposed: approval stays with a finance approver in the existing Airtable → n8n → Xero flow. The invoice preview shown to the user is a structured card from the database, not model text.

@@ -1,0 +1,35 @@
+import fs from 'fs';
+const txt = fs.readFileSync(process.argv[2],'utf8').trim();
+const [h,...lines] = txt.split(/\r?\n/);
+const cols = h.split(',');
+const rows = lines.map(l=>{const v=l.split(',');const o={};cols.forEach((c,i)=>o[c]=v[i]??'');return o;});
+const TODAY='2026-09-29';
+const uniq = k => new Set(rows.map(r=>r[k]).filter(Boolean)).size;
+console.log('rows',rows.length,'customers',uniq('customer_id'),'properties',uniq('property_id'),'quotes',uniq('quote_id'),'projects',uniq('project_id'),'pos',uniq('po_id'),'suppliers',uniq('supplier_id'),'invoices(listed)',uniq('invoice_id'));
+const sum=k=>rows.reduce((a,r)=>a+(+r[k]||0),0);
+console.log('invoice_count sum',sum('invoice_count'),'project_event_count sum',sum('project_event_count'));
+const st={}; rows.forEach(r=>{st[r.quote_status]=(st[r.quote_status]||0)+1}); console.log('quote status',st);
+const ps={}; rows.filter(r=>r.project_id).forEach(r=>{ps[r.project_status]=(ps[r.project_status]||0)+1}); console.log('project status',ps);
+const tags={}; rows.forEach(r=>r.edge_case_tags.split(';').filter(Boolean).forEach(t=>(tags[t]=(tags[t]||[])).push(r.record_id))); console.log('tags',tags);
+const issues=[];
+for(const r of rows){ if(!r.project_id) continue;
+  if(r.invoice_paid_date && r.invoice_paid_date < r.quote_accepted_date) issues.push([r.record_id,'invoice paid before quote accepted',r.invoice_paid_date,r.quote_accepted_date]);
+  if(r.invoice_paid_date && r.invoice_paid_date > TODAY) issues.push([r.record_id,'invoice paid date in future',r.invoice_paid_date]);
+  if(r.project_status!=='Completed' && r.planned_completion_date < TODAY) issues.push([r.record_id,`active (${r.project_status}) but planned completion passed, risk=${r.schedule_risk}`,r.planned_completion_date]);
+  if(r.project_status==='Completed' && !['Acknowledged','Delivered','Partially Delivered'].includes(r.po_status)) issues.push([r.record_id,`completed project but PO ${r.po_status}, supplier_ack=${r.supplier_acknowledged}`]);
+  if(+r.total_invoiced_aud > +r.quote_amount_aud + 0.01) issues.push([r.record_id,'invoiced exceeds accepted quote (no variation data)',r.total_invoiced_aud,r.quote_amount_aud]);
+  if(r.invoice_status==='Paid' && r.invoice_count==='1' && +r.outstanding_invoice_aud>0) issues.push([r.record_id,'paid single invoice but outstanding>0']);
+  if(r.po_status==='Draft' && /po\.(approved|sent)/.test(r.last_event_type)) issues.push([r.record_id,`PO Draft but last event ${r.last_event_type}`]);
+  if(r.project_status==='Planning' && r.last_event_type==='job.completed') issues.push([r.record_id,'Planning but last event job.completed']);
+  if(r.invoice_status!=='Paid' && r.last_event_type==='invoice.paid') issues.push([r.record_id,'invoice unpaid but last event invoice.paid']);
+  if(r.edge_case_tags.includes('UNRESOLVED_AUTOMATION_EXCEPTION') && r.open_exception_count==='0') issues.push([r.record_id,'tagged unresolved exception but open_exception_count=0, health='+r.automation_health]);
+  if(r.inspection_date > r.quote_created_date) issues.push([r.record_id,'inspection after quote created']);
+}
+for (const r of rows) if (r.edge_case_tags.includes('ACCEPTED_QUOTE_PROJECT_CREATION_FAILED') && r.open_exception_count==='0') issues.push([r.record_id,'project creation failed but no exception recorded']);
+const overdue = rows.filter(r=>r.invoice_status==='Sent' && r.invoice_due_date && r.invoice_due_date<TODAY).map(r=>r.record_id+':'+r.invoice_id);
+console.log('overdue as of today',overdue);
+issues.forEach(i=>console.log(i.join(' | ')));
+// customer/property consistency
+const cust={}; rows.forEach(r=>{const k=r.customer_id; const sig=r.customer_name+'|'+r.customer_email+'|'+r.customer_phone; (cust[k]=cust[k]||new Set()).add(sig)}); Object.entries(cust).filter(([k,s])=>s.size>1).forEach(([k,s])=>console.log('customer inconsistent',k,[...s]));
+const prop={}; rows.forEach(r=>{const sig=r.property_address+'|'+r.customer_id+'|'+r.property_type+'|'+r.storeys; (prop[r.property_id]=prop[r.property_id]||new Set()).add(sig)}); Object.entries(prop).filter(([k,s])=>s.size>1).forEach(([k,s])=>console.log('property inconsistent',k,[...s]));
+const phones={}; rows.forEach(r=>{(phones[r.customer_phone]=phones[r.customer_phone]||new Set()).add(r.customer_id)}); Object.entries(phones).filter(([k,s])=>s.size>1).forEach(([k,s])=>console.log('shared phone',k,[...s]));

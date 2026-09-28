@@ -109,6 +109,56 @@ if (problems.length) throw new Error('Airtable webhook ' + w.id + ': ' + problem
 return [{ json: { verified: true, action: prior.exists ? 'REFRESHED' : 'CREATED', webhook_id: w.id, expires: w.expirationTime, enabled: w.isHookEnabled, cursor_for_next_payload: w.cursorForNextPayload, notification_url: w.notificationUrl } }];` } },
   output: [{ verified: true }] });
 
+// --- Second webhook (Phase 3): Projects.Invoice Action -> [RoofOps] 04 ---
+const NOTIFY_INVOICE = 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/project-invoice-events';
+const listInvoiceHooks = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'List Airtable Webhooks (Invoice)',
+  parameters: { method: 'GET', url: HOOKS, authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi', options: RAW },
+  credentials: AIRTABLE }, output: [{ statusCode: 200, body: { webhooks: [] } }] });
+const decideInvoiceHook = node({ type: 'n8n-nodes-base.code', version: 2, config: { name: 'Decide Invoice Webhook Action',
+  parameters: { mode: 'runOnceForAllItems', jsCode: `
+const NOTIFY = 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/project-invoice-events';
+const r = $input.first().json;
+if (r.statusCode !== 200) throw new Error('Airtable webhook list failed: HTTP ' + r.statusCode + ' ' + JSON.stringify(r.body).slice(0, 300));
+const ours = (r.body.webhooks || []).filter(function (w) { return w.notificationUrl === NOTIFY; });
+if (ours.length > 1) throw new Error(ours.length + ' Airtable webhooks point at ' + NOTIFY + '; delete the extras before continuing');
+return [{ json: { exists: ours.length === 1, webhook_id: ours.length ? ours[0].id : null, notify: NOTIFY } }];` } }, output: [{ exists: false }] });
+const invoiceHookExists = ifElse({ version: 2.3, config: { name: 'Invoice Webhook Exists?', parameters: { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'loose' },
+  conditions: [{ leftValue: expr('{{ $json.exists }}'), rightValue: true, operator: { type: 'boolean', operation: 'true', singleValue: true } }], combinator: 'and' } } } });
+const refreshInvoiceHook = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Refresh Invoice Webhook',
+  parameters: { method: 'POST', url: expr(HOOKS + '/{{ $json.webhook_id }}/refresh'), authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi', options: RAW },
+  credentials: AIRTABLE }, output: [{ statusCode: 200 }] });
+// Watches ONLY Projects.Invoice Action (the workflow's own status writes never re-trigger it).
+const createInvoiceHook = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Create Invoice Webhook',
+  parameters: { method: 'POST', url: HOOKS, authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi',
+    sendBody: true, contentType: 'json', specifyBody: 'json',
+    jsonBody: JSON.stringify({ notificationUrl: NOTIFY_INVOICE, specification: { options: {
+      filters: { dataTypes: ['tableData'], recordChangeScope: 'tblvUPIoebC3zoacv', watchDataInFieldIds: ['fldYnINTdtOckOzK4'], changeTypes: ['update'] },
+      includes: { includeCellValuesInFieldIds: ['fldhhnQXlbuFaveK3', 'fldc4T0AgU3zCmANC', 'fldYnINTdtOckOzK4'], includePreviousCellValues: true } } } }),
+    options: RAW }, credentials: AIRTABLE }, output: [{ statusCode: 200 }] });
+const readInvoiceHooks = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Read Back Invoice Webhook',
+  parameters: { method: 'GET', url: HOOKS, authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi', options: RAW },
+  credentials: AIRTABLE }, output: [{ statusCode: 200, body: { webhooks: [] } }] });
+const verifyInvoiceHook = node({ type: 'n8n-nodes-base.code', version: 2, config: { name: 'Verify Invoice Webhook',
+  parameters: { mode: 'runOnceForAllItems', jsCode: `
+const NOTIFY = 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/project-invoice-events';
+const prior = $('Decide Invoice Webhook Action').first().json;
+const change = prior.exists ? $('Refresh Invoice Webhook').first().json : $('Create Invoice Webhook').first().json;
+if (change.statusCode !== 200) throw new Error((prior.exists ? 'refresh' : 'create') + ' failed: HTTP ' + change.statusCode + ' ' + JSON.stringify(change.body.error || change.body).slice(0, 300));
+const r = $input.first().json;
+if (r.statusCode !== 200) throw new Error('webhook read-back failed: HTTP ' + r.statusCode);
+const ours = (r.body.webhooks || []).filter(function (w) { return w.notificationUrl === NOTIFY; });
+if (ours.length !== 1) throw new Error('expected exactly 1 webhook for ' + NOTIFY + ', found ' + ours.length);
+const w = ours[0];
+const f = ((w.specification || {}).options || {}).filters || {};
+const problems = [];
+if (!w.isHookEnabled) problems.push('hook is disabled');
+if (!w.expirationTime || new Date(w.expirationTime) <= new Date()) problems.push('hook is expired');
+if (f.recordChangeScope !== 'tblvUPIoebC3zoacv') problems.push('scope is not the Projects table');
+if (JSON.stringify(f.watchDataInFieldIds || []) !== JSON.stringify(['fldYnINTdtOckOzK4'])) problems.push('does not watch Invoice Action only');
+if (problems.length) throw new Error('Airtable webhook ' + w.id + ': ' + problems.join('; '));
+return [{ json: { verified: true, action: prior.exists ? 'REFRESHED' : 'CREATED', webhook_id: w.id, expires: w.expirationTime, enabled: w.isHookEnabled, notification_url: w.notificationUrl } }];` } },
+  output: [{ verified: true }] });
+
 export default workflow('roofops-setup', '[RoofOps] 00 Setup & Maintenance')
   .add(manual).to(findRoot)
   .add(daily).to(findRoot)
@@ -116,4 +166,8 @@ export default workflow('roofops-setup', '[RoofOps] 00 Setup & Maintenance')
   .add(manual).to(listHooks)
   .add(daily).to(listHooks)
   .add(listHooks).to(decideHook).to(hookExists.onTrue(refreshHook.to(readHooks)).onFalse(createHook.to(readHooks)))
-  .add(readHooks).to(verifyHook);
+  .add(readHooks).to(verifyHook)
+  .add(manual).to(listInvoiceHooks)
+  .add(daily).to(listInvoiceHooks)
+  .add(listInvoiceHooks).to(decideInvoiceHook).to(invoiceHookExists.onTrue(refreshInvoiceHook.to(readInvoiceHooks)).onFalse(createInvoiceHook.to(readInvoiceHooks)))
+  .add(readInvoiceHooks).to(verifyInvoiceHook);

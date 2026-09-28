@@ -30,7 +30,10 @@ export const AT = {
     table: 'tblvUPIoebC3zoacv',
     f: { number: 'fldhhnQXlbuFaveK3', quote: 'fld08eKCeuDCsJLjz', customer: 'fldG4mPoV6sUkA9rM', status: 'fldi2Qwz1dAh2tcTE', pm: 'fldnZcRBxG7hTebD5',
          plannedStart: 'fld8rf6RZLgfs6Ron', plannedCompletion: 'fldvZtiassZEgLMAN', actualStart: 'fldIje5e0a72cBfVD', actualCompletion: 'fldWKRobTLlOjeN9j',
-         materialTask: 'fld93YzhrpOVIviRY', driveFolder: 'fldgVDT29UOOOtlqO', roofopsId: 'fldc4T0AgU3zCmANC' },
+         materialTask: 'fld93YzhrpOVIviRY', driveFolder: 'fldgVDT29UOOOtlqO', roofopsId: 'fldc4T0AgU3zCmANC',
+         // Phase 3: invoice approval UI (Invoice Action is the staff "button"; the rest is written by [RoofOps] 04)
+         invoiceAction: 'fldYnINTdtOckOzK4', invoiceStatus: 'fldPuGgo27oWLKB5R', invoicePreview: 'fldt9KIOPXh3c3pGU',
+         invoiceAmount: 'fld5JDnWI3RFehQxA', xeroInvoiceNumber: 'fldgkN0Vm6k1MZLJp', xeroInvoiceId: 'fld3sDI9LIX8Voo4u' },
   },
   purchaseOrders: {
     table: 'tbluIbl4zpMiAlMVw',

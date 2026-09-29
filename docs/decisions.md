@@ -168,3 +168,43 @@ I recommend (a) for Phase 2, since it matches your flow ("Postgres idempotency c
 ### ADR-035: Demo reset only reverses what is fully internal
 **Status:** Accepted
 **Decision:** `npm run demo:reset` only withdraws *pending* invoice previews on the designated demo project (PENDING → CANCELLED, audited, idempotent). Anything that reached an external system (Airtable records, Drive folders, Xero drafts) is never deleted: those scenarios are reported as ALREADY RUN, or rehearsed with the next unused synthetic quote, by `npm run demo:status`.
+
+### ADR-036: State machines are data in Postgres, enforced by triggers
+**Status:** Accepted (migration 1200)
+**Context:** legal status changes were implicit in each `wf_*` function; a direct SQL update could set anything (PRJ-2026-0001 showed how far Airtable and RoofOps could drift apart).
+**Decision:** `state_machine_states` / `state_transitions` define 10 machines (project, quote, purchase order, invoice, invoice sync, approval, workflow exception, task, checklist item, outbox). One trigger function, `enforce_state_machine()`, refuses any other change on the real tables with a `check_violation`; `project_transition_guard()` adds business guards (e.g. Completed → Cancelled only while no final invoice exists). Tests are generated from the same rows. XState was evaluated and rejected: a second definition in TypeScript could disagree with the one the database enforces.
+**Consequence:** Cancelled and Closed are terminal; reopening means a new job. Even an operator's SQL can't create an illegal state.
+
+### ADR-037: One validated entry point for every Airtable edit, driven by an ownership contract
+**Status:** Accepted (migrations 1200, 1300; n8n 06)
+**Decision:** a base-wide Airtable webhook (all cell values plus previous values) feeds n8n 06, which calls `wf_airtable_change` once per changed record, in transaction order. The function:
+- identifies the record by its recorded Airtable link, never by name, and locks the row;
+- is idempotent per Airtable transaction;
+- ignores changes older than the last applied one (stale);
+- refuses an edit made against a value RoofOps no longer holds (compare-and-set: no last-write-wins);
+- then acts by the field's owner in `field_contract`: apply through the entity handler (state machine and guards), revert, or defer (quote acceptance stays with n8n 01).
+
+It returns the exact Airtable corrections (including a RoofOps Sync note). n8n writes them, reads them back, and records the proof. Unverified corrections are re-issued on redelivery, recomputed from canonical state.
+**Consequence:** Airtable is an editing surface, never a second source of truth. 01 and 04 are unchanged.
+
+### ADR-038: Reconciliation replays, never picks a winner
+**Status:** Accepted (migrations 1200, 1500; n8n 07)
+**Decision:** nightly, and on demand (`npm run reconcile`, token-gated, hash stored in Postgres), n8n 07 reads every Airtable table and checks every verified Drive folder and Xero draft (read-only, pinned Demo tenant). Drift is handled by ownership:
+- a missed staff edit is replayed through `wf_airtable_change`, so the same rules apply;
+- RoofOps-owned drift is written back and verified;
+- anything ambiguous or missing becomes a named exception (`REQUIRES_HUMAN`, `EXTERNAL_MISSING`, `UNKNOWN`).
+
+Observe mode records findings without changing anything. The same run refreshes expiring webhooks, re-creates a missing one, and wakes any consumer with unread payloads.
+**Consequence:** a lost webhook costs latency, not data. Airtable Free-plan cost is about 8 API calls per run.
+
+### ADR-039: Health and freshness come only from recorded checks
+**Status:** Accepted (migrations 1200, 1400, 1600; n8n 08)
+**Decision:**
+- n8n 08, every 30 minutes, runs safe reads against Drive, Xero and DeepSeek. Xero only counts as healthy when the pinned Demo tenant is connected.
+- 07 records Airtable and webhook health nightly.
+- `/health` derives states from those records. A service that hasn't been checked within its interval is **Unknown**, never Healthy.
+- Every Copilot tool result carries `_meta` (canonical source, read time, last reconciliation, verified). When Airtable was last seen disagreeing, the Copilot states both values, RoofOps first, and doesn't choose.
+
+### ADR-040: AI regression is deterministic and grounded in the database
+**Status:** Accepted
+**Decision:** Promptfoo (dev-only, pinned, telemetry and sharing off) runs the real `/api/copilot`. JavaScript assertions check the structured output (tools, tiers, cards) against ground truth read from Postgres at run time: exact status, exact ready-to-invoice list, no unknown identifiers or amounts, no SQL, no secret values, and refusals for approve/send/pay. No model grades the model.

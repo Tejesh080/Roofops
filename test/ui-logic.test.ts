@@ -51,7 +51,8 @@ const row = (over: Partial<ProjectRow>): ProjectRow => ({
   material_status: 'CONFIRMATION_OVERDUE', waiting_on_materials: true, material_eta: '2026-08-20', purchase_orders: 1, invoice_status: 'PROGRESS_INVOICED',
   invoice_blocker: null, invoice_amount_inc_gst: null, final_invoice_number: null, final_invoice_sync: null, xero_invoice_id: null, xero_invoice_number: null,
   pending_approval_number: null, outstanding_inc_gst: 0, has_overdue_invoice: false, open_exceptions: 0, drive_folder_url: null, airtable_record_id: null,
-  needs_attention: true, ...over,
+  needs_attention: true, status_changed_at: null, airtable_status_seen: null, airtable_status_seen_at: null, status_out_of_sync: false,
+  drift_fields: 0, last_reconciled_at: null, ...over,
 });
 
 describe('business interpretations', () => {

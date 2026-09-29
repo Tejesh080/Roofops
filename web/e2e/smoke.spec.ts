@@ -40,9 +40,10 @@ test('overview: metric cards filter the table; attention panel answers "what nee
 
 test('risk reasons are revealed on hover/focus, not as red prose in the table', async ({ page }) => {
   await page.goto('/?view=at_risk');
-  const risk = page.getByRole('button', { name: /At risk: Start date passed, Supplier confirmation overdue/ });
+  // PO-2026-0011 was confirmed by the supplier through Airtable in the Phase 6 live E2E, so assert the reasons that still hold.
+  const risk = page.getByRole('button', { name: /At risk: Start date passed/ }).first();
   await risk.focus();
-  await expect(page.getByRole('tooltip')).toContainText('Supplier confirmation overdue');
+  await expect(page.getByRole('tooltip')).toContainText('Start date passed');
 });
 
 test('PRJ-2026-0011: needs-attention panel with the next step', async ({ page }) => {
@@ -50,8 +51,7 @@ test('PRJ-2026-0011: needs-attention panel with the next step', async ({ page })
   await expect(page.getByRole('heading', { name: 'PRJ-2026-0011' })).toBeVisible();
   const attn = page.locator('section.attn');
   await expect(attn).toContainText('Start date passed');
-  await expect(attn).toContainText('Supplier confirmation overdue');
-  await expect(attn).toContainText('PO-2026-0011');
+  await expect(attn).toContainText('Flagged by project manager');
   await expect(page.getByLabel('Project health')).toContainText('Delayed');
 });
 

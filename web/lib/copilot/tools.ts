@@ -9,9 +9,10 @@
  *                    in the existing Airtable → n8n → Xero workflow)
  */
 import {
-  PROJECT_FILTERS, PROJECT_NUMBER, getChecklist, getExceptions, getInvoices, getKpis, getProject, getPurchaseOrders, getTimeline,
-  listProjects, prepareInvoice, type PreparedInvoice, type ProjectFilter, type ProjectRow, type Query,
+  PROJECT_FILTERS, PROJECT_NUMBER, getChecklist, getConsistency, getDrift, getExceptions, getInvoices, getKpis, getLatestReconciliation, getProject,
+  getPurchaseOrders, getServiceChecks, getTimeline, listProjects, prepareInvoice, type PreparedInvoice, type ProjectFilter, type ProjectRow, type Query,
 } from '../queries.ts';
+import { SERVICES, consistencyLine, serviceState } from '../health.ts';
 import {
   EXCEPTION_KIND, EXCEPTION_STATUS, INVOICE_LINE_STATUS, INVOICE_STATUS, MATERIAL_STATUS, PO_STATUS, PROJECT_STAGE, RISK_REASON,
   actorName, label, outcomeLabel, plainIssue, plainReason, timelineTitle,
@@ -40,6 +41,19 @@ function normaliseProject(v: unknown): string {
   return m.length === 3 ? `PRJ-${m[1]}-${m[2]!.padStart(4, '0')}` : `PRJ-2026-${m[1]!.padStart(4, '0')}`;
 }
 
+/**
+ * Freshness and agreement with Airtable, as facts. The model may only repeat these; it never decides which system is right.
+ * RoofOps (Postgres) is canonical; Airtable's last observed value is reported only when it differs.
+ */
+export function syncOf(p: ProjectRow) {
+  if (!p.status_out_of_sync) return { in_sync: true };
+  return { in_sync: false, roofops_canonical_status: label(PROJECT_STAGE, p.status).text, airtable_currently_reports: p.airtable_status_seen,
+           airtable_seen_at: p.airtable_status_seen_at, last_reconciliation: p.last_reconciled_at ?? 'never',
+           what_happens_next: 'The Airtable change is checked against the business rules at the next sync; RoofOps keeps its status until then.' };
+}
+export const freshness = (p: ProjectRow) => ({ canonical_source: 'postgres', status_updated_at: p.status_changed_at, last_reconciled_at: p.last_reconciled_at,
+  verified: p.last_reconciled_at !== null && !p.status_out_of_sync && p.drift_fields === 0 });
+
 const brief = (p: ProjectRow) => ({
   project: p.project_number, customer: p.customer_name, stage: label(PROJECT_STAGE, p.status).text,
   ...(p.is_active ? { scheduled_start: p.planned_start_date, planned_finish: p.planned_completion_date }
@@ -48,6 +62,7 @@ const brief = (p: ProjectRow) => ({
   materials: label(MATERIAL_STATUS, p.material_status).text, invoice: label(INVOICE_STATUS, p.invoice_status).text,
   at_risk: p.is_active && p.risk_level === 'HIGH', risk_reasons: p.risk_reasons.map((r) => RISK_REASON[r] ?? r),
   open_issues: p.open_exceptions,
+  ...(p.status_out_of_sync ? { airtable_sync: syncOf(p) } : {}),
 });
 
 export const TOOLS: Record<string, ToolDef> = {
@@ -113,6 +128,7 @@ export const TOOLS: Record<string, ToolDef> = {
                                                      overdue: i.is_overdue })) },
         checklist: checklist.map((c) => ({ item: c.title, status: c.status === 'DONE' ? 'done' : c.status.toLowerCase(), due: c.due_on })),
         google_drive_folder: p.drive_folder_url ? 'yes' : 'none',
+        airtable_sync: syncOf(p), _meta: freshness(p),
         open_issues: exc.map((e) => ({ id: e.exception_number, what: EXCEPTION_KIND[e.error_class] ?? e.error_class, detail: plainIssue(e.error_message) })),
       } };
     },
@@ -131,6 +147,22 @@ export const TOOLS: Record<string, ToolDef> = {
                                final_invoice_amount_inc_gst: p.final_invoice_number ? p.invoice_amount_inc_gst : null },
         events: t.map((e) => ({ when: e.occurred_at, what: timelineTitle(e.kind), by: actorName(e.actor, e.channel),
                                                            outcome: outcomeLabel(e.kind, e.status).text, note: plainReason(e.reason) })) } };
+    },
+  },
+
+  system_health: {
+    tier: 'GREEN',
+    description: 'Are the connected systems healthy and in sync? Services (database, Airtable, change alerts, automation engine, Google Drive, Xero, DeepSeek), '
+      + 'how many records agree between RoofOps and Airtable / Drive / Xero, anything out of sync, and when the last full check ran.',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    run: async (_a, { query }) => {
+      const [checks, cons, drift, run] = await Promise.all([getServiceChecks(query), getConsistency(query), getDrift(query), getLatestReconciliation(query)]);
+      return { data: {
+        services: SERVICES.map((d) => { const c = checks.find((x) => x.service === d.service); return { service: d.name, state: serviceState(c, d), last_checked: c?.checked_at ?? 'never' }; }),
+        consistency: cons.map((c) => ({ system: c.system === 'GOOGLE_DRIVE' ? 'Google Drive' : c.system === 'XERO' ? 'Xero' : 'Airtable', ...consistencyLine(c) })),
+        out_of_sync_now: drift.slice(0, 20).map((d) => ({ record: d.business_key, field: d.field, roofops: d.canonical_value, airtable: d.airtable_value, seen: d.observed_at })),
+        last_full_check: run ? { at: run.finished_at, mode: run.mode === 'observe' ? 'check only' : 'check and repair', findings: run.findings, need_a_person: run.needs_person } : 'never',
+      } };
     },
   },
 
@@ -156,9 +188,10 @@ export const TOOLS: Record<string, ToolDef> = {
       const p = await getProject(query, n);
       if (!p) return { data: { error: `No project ${n}` } };
       // Don't file a rejection for something we can already explain: say why it isn't ready.
-      if (['NOT_READY', 'FULLY_INVOICED', 'PAYMENT_OVERDUE', 'PROGRESS_INVOICED', 'NOT_YET_DUE'].includes(p.invoice_status)) {
+      if (p.status !== 'COMPLETED' || ['NOT_READY', 'FULLY_INVOICED', 'PAYMENT_OVERDUE', 'PROGRESS_INVOICED', 'NOT_YET_DUE'].includes(p.invoice_status)) {
         return { data: { project: n, prepared: false, invoice_status: label(INVOICE_STATUS, p.invoice_status).text,
-                         reason: p.invoice_blocker ?? (p.is_active ? `${n} is still ${label(PROJECT_STAGE, p.status).text.toLowerCase()}; only completed jobs get a final invoice` : 'Nothing left to invoice') } };
+                         reason: p.status === 'CANCELLED' ? `${n} is cancelled; a cancelled job is never final-invoiced (earlier invoices stay as they are)`
+                           : p.invoice_blocker ?? (p.is_active ? `${n} is still ${label(PROJECT_STAGE, p.status).text.toLowerCase()}; only completed jobs get a final invoice` : 'Nothing left to invoice') } };
       }
       const r = await prepareInvoice(query, n, requestId, 'dashboard:copilot');
       const status_text = r.outcome === 'PREVIEW_READY' ? 'Prepared: awaiting approval'

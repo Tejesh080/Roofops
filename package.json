@@ -21,7 +21,12 @@
     "data:check": "tsx scripts/normalise-dates.ts --check",
     "db:provision-n8n": "tsx scripts/provision-n8n-role.ts",
     "demo:status": "tsx scripts/demo.ts status",
-    "demo:reset": "tsx scripts/demo.ts reset"
+    "demo:reset": "tsx scripts/demo.ts reset",
+    "integrity:check": "tsx scripts/integrity-check.ts",
+    "reconcile": "tsx scripts/reconcile.ts",
+    "contract:export": "tsx scripts/export-contract.ts",
+    "ai:eval": "tsx scripts/ai-eval.ts",
+    "security:check": "tsx scripts/security-check.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

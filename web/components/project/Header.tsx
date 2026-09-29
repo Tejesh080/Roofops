@@ -22,6 +22,13 @@ export function ProjectHeader({ p }: { p: ProjectRow }) {
           <div className="who">{p.customer_name}</div>
           <div className="where">{p.site_address}</div>
           <div className="where">{JOB_TYPE(p.job_type)}{p.project_manager ? ` · PM ${p.project_manager}` : ''}</div>
+          {p.status_out_of_sync && (
+            <div className="sync-note" role="status">
+              <strong>Out of sync with Airtable.</strong> RoofOps status: {label(PROJECT_STAGE, p.status).text}. Airtable currently shows: {p.airtable_status_seen}
+              {p.airtable_status_seen_at ? ` (seen ${p.airtable_status_seen_at})` : ''}. The change is checked against the business rules at the next sync
+              {p.last_reconciled_at ? `; last full check ${p.last_reconciled_at}` : ''}. <Link href="/health">System health</Link>
+            </div>
+          )}
         </div>
         <div className="badges">
           {p.drive_folder_url && <a className="btn btn-sm" href={p.drive_folder_url} target="_blank" rel="noreferrer"><FolderOpen size={14} aria-hidden /> Google Drive</a>}

@@ -2,7 +2,7 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['node_modules/**', 'coverage/**', 'scripts/phase0-*.mjs', 'n8n/**', 'web/**'] },
+  { ignores: ['node_modules/**', 'coverage/**', 'scripts/phase0-*.mjs', 'n8n/**', 'web/**', 'promptfoo/**'] },
   js.configs.recommended,
   ...tseslint.configs.strictTypeChecked,
   {

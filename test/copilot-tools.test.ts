@@ -24,7 +24,7 @@ describe.each(TARGETS)('Operations Copilot tools, as the dashboard role [%s]', (
   it('offers read tools and one prepare tool; no tool can approve, send, pay or write', () => {
     expect(Object.fromEntries(Object.entries(TOOLS).map(([k, t]) => [k, t.tier]))).toEqual({
       business_overview: 'GREEN', list_projects: 'GREEN', what_needs_attention_today: 'GREEN', get_project: 'GREEN',
-      get_project_history: 'GREEN', list_open_issues: 'GREEN', prepare_invoice: 'AMBER',
+      get_project_history: 'GREEN', system_health: 'GREEN', list_open_issues: 'GREEN', prepare_invoice: 'AMBER',
     });
     expect(toolSchemas().map((s) => s.function.name).join(' ')).not.toMatch(/approve|send|pay|delete|update|sql|query/i);
   });

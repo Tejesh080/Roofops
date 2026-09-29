@@ -107,6 +107,12 @@ const TIMELINE: Record<string, string> = {
   'xero.invoice.draft_created': 'Draft invoice created in Xero and checked', 'xero.create_draft_invoice.verified': 'Xero draft invoice verified',
   'automation.retry_scheduled': 'Temporary problem, retry scheduled', 'automation.failed': 'Automation stopped safely after retries',
   'exception.retry_queued': 'Retry requested by staff', 'exception.fold_duplicate': 'Duplicate alert merged',
+  'airtable.record_changed': 'Change made in Airtable', 'airtable.writeback.verified': 'Airtable corrected and checked',
+  'airtable.edit_reverted': 'Airtable edit put back (managed by RoofOps)', 'project.status.changed': 'Project status changed',
+  'project.planned_start_date.changed': 'Planned start changed', 'project.planned_completion_date.changed': 'Planned finish changed',
+  'project.project_manager.changed': 'Project manager changed', 'approval.withdrawn': 'Invoice preview withdrawn',
+  'purchase_order.status.changed': 'Purchase order status changed', 'purchase_order.expected_delivery_date.changed': 'Delivery date changed',
+  'purchase_order.supplier_reference.changed': 'Supplier reference changed', 'quote.status.changed': 'Quote status changed',
 };
 
 export function timelineTitle(kind: string): string {
@@ -121,6 +127,7 @@ export function actorName(actor: string | null, channel: string | null): string 
   if (actor === 'xero' || actor.startsWith('xero.')) return 'Xero';
   if (/@\d+$/.test(actor) || /^(n8n|drive\.|airtable|google-drive)/.test(actor)) return 'RoofOps automation';
   if (actor.startsWith('operator:')) return 'Operations team';
+  if (actor === 'reconciliation' || actor === 'airtable_sync') return 'RoofOps sync check';
   if (actor.startsWith('migration:') || actor.startsWith('import')) return 'Data import';
   if (channel === 'airtable') return `${actor} (via Airtable)`;
   return actor;
@@ -130,6 +137,8 @@ export function actorName(actor: string | null, channel: string | null): string 
 export function plainReason(reason: string | null): string | null {
   if (!reason) return null;
   if (/transport redelivery/i.test(reason)) return 'The same request arrived again; nothing was done twice';
+  reason = reason.replace(/\s*\[(airtable|reconcile):[^\]]*\]/g, '').trim();
+  if (!reason) return null;
   const semantic = /^semantic duplicate:\s*(.*)$/i.exec(reason);
   if (semantic) return `Asked again: ${semantic[1]}; nothing was done twice`;
   const requeued = /re-queued .* after (\d+) attempts/i.exec(reason);

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BellRing, FolderKanban, LayoutDashboard, Package, Presentation, Receipt, Workflow, type LucideIcon } from 'lucide-react';
+import { BellRing, FolderKanban, HeartPulse, LayoutDashboard, Package, Presentation, Receipt, Workflow, type LucideIcon } from 'lucide-react';
 
 interface Item { href: string; text: string; icon: LucideIcon; count?: number }
 
@@ -15,6 +15,7 @@ export function Sidebar({ counts }: { counts: { attention: number; automation: n
     { href: '/materials', text: 'Materials', icon: Package },
     { href: '/finance', text: 'Finance', icon: Receipt },
     { href: '/automation', text: 'Automation', icon: Workflow, count: counts.automation },
+    { href: '/health', text: 'System health', icon: HeartPulse },
   ];
   const on = (href: string) => (href === '/' ? path === '/' : path.startsWith(href));
   const link = (i: Item) => (

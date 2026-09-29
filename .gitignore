@@ -18,3 +18,7 @@ secrets/
 web/e2e/.auth/
 web/test-results/
 web/playwright-report/
+
+# Promptfoo run artefacts (regenerated each run)
+promptfoo/ground-truth.json
+promptfoo/results.json

@@ -29,6 +29,8 @@ const MIRROR: Record<string, string> = {
   'invoice.preview_prepared': 'invoice.preview_prepared', 'invoice.create': 'invoice.created',
   'xero.invoice.draft_created': 'xero.create_draft_invoice.verified', 'approval.approve': 'invoice.approved',
 };
+// Changes made in Airtable: the automation event carries the plain note ("✓ Status: Completed → Cancelled applied").
+const AIRTABLE_CHANGE = /^(project|quote|purchase_order)\.[a-z_]+\.changed$|^airtable\.edit_reverted$/;
 const RETRY = new Set(['automation.retry_scheduled', 'automation.failed']);
 const SERVICE_OF: Record<string, string> = {
   'drive.project_folder.verified': 'Google Drive', 'airtable.project_writeback.verified': 'Airtable', 'xero.create_draft_invoice.verified': 'Xero',
@@ -50,9 +52,11 @@ function single(e: TimelineEntry, project: string): TimelineGroup {
 
 export function groupTimeline(entriesNewestFirst: TimelineEntry[], project: string): TimelineGroup[] {
   const asc = [...entriesNewestFirst].sort((a, b) => ms(a) - ms(b) || (a.source === 'EVENT' ? -1 : 1));
-  const events = asc.filter((e) => e.source === 'EVENT');
-  const kept = asc.filter((e) => {
-    const mirror = e.source === 'AUDIT' ? MIRROR[e.kind] : undefined;
+  // An Airtable echo that changed nothing (RoofOps' own write coming back) is not history.
+  const visible = asc.filter((e) => !(e.kind === 'airtable.record_changed' && e.status === 'INFO'));
+  const events = visible.filter((e) => e.source === 'EVENT');
+  const kept = visible.filter((e) => {
+    const mirror = e.source === 'AUDIT' ? (MIRROR[e.kind] ?? (AIRTABLE_CHANGE.test(e.kind) ? 'airtable.record_changed' : undefined)) : undefined;
     return !mirror || !events.some((v) => v.kind === mirror && Math.abs(ms(v) - ms(e)) <= 180_000);
   });
 

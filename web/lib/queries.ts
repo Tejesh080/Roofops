@@ -23,6 +23,9 @@ export interface ProjectRow {
   final_invoice_number: string | null; final_invoice_sync: string | null; xero_invoice_id: string | null; xero_invoice_number: string | null;
   pending_approval_number: string | null; outstanding_inc_gst: number; has_overdue_invoice: boolean;
   open_exceptions: number; drive_folder_url: string | null; airtable_record_id: string | null; needs_attention: boolean;
+  /** Freshness: canonical status comes from Postgres; Airtable's last observed value is shown only when it disagrees. */
+  status_changed_at: string | null; airtable_status_seen: string | null; airtable_status_seen_at: string | null;
+  status_out_of_sync: boolean; drift_fields: number; last_reconciled_at: string | null;
 }
 
 const PROJECT_COLUMNS = `
@@ -31,7 +34,11 @@ const PROJECT_COLUMNS = `
   planned_start_date::text, planned_completion_date::text, actual_start_date::text, actual_completion_date::text,
   risk_level, risk_reasons, delay_reason, material_status, waiting_on_materials, material_eta::text, purchase_orders::int,
   invoice_status, invoice_blocker, invoice_amount_inc_gst::text, final_invoice_number, final_invoice_sync, xero_invoice_id, xero_invoice_number,
-  pending_approval_number, outstanding_inc_gst::text, has_overdue_invoice, open_exceptions::int, drive_folder_url, airtable_record_id, needs_attention`;
+  pending_approval_number, outstanding_inc_gst::text, has_overdue_invoice, open_exceptions::int, drive_folder_url, airtable_record_id, needs_attention,
+  to_char(status_changed_at at time zone 'Australia/Brisbane', 'YYYY-MM-DD HH24:MI') status_changed_at, airtable_status_seen,
+  to_char(airtable_status_seen_at at time zone 'Australia/Brisbane', 'YYYY-MM-DD HH24:MI') airtable_status_seen_at,
+  coalesce(airtable_status_seen is not null and airtable_status_seen <> sm_label('project', status), false) status_out_of_sync, drift_fields::int,
+  to_char(last_reconciled_at at time zone 'Australia/Brisbane', 'YYYY-MM-DD HH24:MI') last_reconciled_at`;
 
 const num = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
 
@@ -40,6 +47,7 @@ function toProject(r: Record<string, unknown>): ProjectRow {
     ...(r as unknown as ProjectRow),
     quote_version: num(r.quote_version), quote_total_inc_gst: num(r.quote_total_inc_gst), invoice_amount_inc_gst: num(r.invoice_amount_inc_gst),
     outstanding_inc_gst: Number(r.outstanding_inc_gst ?? 0), purchase_orders: Number(r.purchase_orders ?? 0), open_exceptions: Number(r.open_exceptions ?? 0),
+    drift_fields: Number(r.drift_fields ?? 0), status_out_of_sync: r.status_out_of_sync === true,
     risk_reasons: Array.isArray(r.risk_reasons) ? (r.risk_reasons as string[]) : [],
   };
 }
@@ -173,4 +181,54 @@ export async function listOverdueInvoices(q: Query): Promise<(InvoiceLine & { pr
       amount_paid::text, outstanding::text, is_overdue, days_past_due from v_invoice_balances where is_overdue order by days_past_due desc`);
   return rows.map((r) => ({ ...(r as unknown as InvoiceLine), project_number: String(r.project_number), total_inc_gst: Number(r.total_inc_gst),
                             amount_paid: Number(r.amount_paid), outstanding: Number(r.outstanding) }));
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// System health (Phase 6). Every figure comes from a recorded check or a reconciliation run; nothing is assumed.
+// ---------------------------------------------------------------------------------------------------------------
+export interface ServiceCheck { service: string; ok: boolean | null; checked_at: string | null; last_ok_at: string | null; age_seconds: number | null;
+  consecutive_failures: number; detail: Record<string, unknown> | null }
+export const getServiceChecks = (q: Query) =>
+  q<ServiceCheck>(`select service, ok, to_char(checked_at at time zone 'Australia/Brisbane', 'YYYY-MM-DD HH24:MI') checked_at,
+                          to_char(last_ok_at at time zone 'Australia/Brisbane', 'YYYY-MM-DD HH24:MI') last_ok_at, age_seconds, consecutive_failures::int, detail
+                   from v_system_health`);
+
+export interface Consistency { system: string; checked: number; drift_found: number; repaired: number; needs_person: number; drift_now: number | null; linked: number; checked_at: string | null }
+export const getConsistency = (q: Query) =>
+  q<Consistency>(`select system, checked, drift_found, repaired, needs_person, drift_now, linked,
+                         to_char(checked_at at time zone 'Australia/Brisbane', 'YYYY-MM-DD HH24:MI') checked_at from v_consistency`);
+
+export interface ReconciliationRun { run_key: string; trigger: string; mode: string; finished_at: string; findings: number; needs_person: number;
+  webhooks: { url: string; state: string; hours_left?: number; unread_payloads?: number; last_notification_at?: string | null }[] }
+export async function getLatestReconciliation(q: Query): Promise<ReconciliationRun | null> {
+  const [r] = await q<ReconciliationRun>(`select run_key, trigger, mode, to_char(finished_at at time zone 'Australia/Brisbane', 'YYYY-MM-DD HH24:MI') finished_at,
+      findings::int, needs_person::int, coalesce(summary -> 'webhooks', '[]'::jsonb) webhooks from v_reconciliation_latest`);
+  return r ?? null;
+}
+
+export interface Finding { system: string; entity_ref: string | null; field: string | null; expected: string | null; actual: string | null;
+  classification: string; action: string; detail: string | null }
+export const getLatestFindings = (q: Query) =>
+  q<Finding>(`select system, entity_ref, field, expected, actual, classification, action, detail from v_reconciliation_findings_latest
+              order by (classification in ('REQUIRES_HUMAN','EXTERNAL_MISSING','UNKNOWN')) desc, system, entity_ref`);
+
+export interface DriftRow { business_key: string; entity_type: string; field: string; canonical_value: string | null; airtable_value: string | null; observed_at: string }
+export const getDrift = (q: Query) =>
+  q<DriftRow>(`select business_key, entity_type, field, canonical_value, airtable_value,
+                      to_char(observed_at at time zone 'Australia/Brisbane', 'YYYY-MM-DD HH24:MI') observed_at from v_state_drift order by business_key, field`);
+
+export interface ChannelActivity { channel: string; last_event_at: string | null; events_24h: number; problems_24h: number }
+export const getChannelActivity = (q: Query) =>
+  q<ChannelActivity>(`select channel, to_char(last_event_at at time zone 'Australia/Brisbane', 'YYYY-MM-DD HH24:MI') last_event_at, events_24h, problems_24h
+                      from v_integration_activity`);
+
+export interface IntegrityRow { entity: string; check_key: string; status: 'PASS' | 'FAIL' | 'WARNING'; failing: number; detail: string; refs: string[] | null }
+export const getIntegrity = (q: Query) =>
+  q<IntegrityRow>(`select entity, check_key, status, failing, detail, refs from integrity_check()`);
+
+export async function getBacklog(q: Query): Promise<{ open_exceptions: number; dead_letters: number }> {
+  const [r] = await q<{ open_exceptions: number; dead_letters: number }>(`select
+      (select count(*) from v_dashboard_exceptions where resolution_status in ('OPEN', 'RETRY_QUEUED'))::int open_exceptions,
+      (select coalesce(sum(failing), 0) from integrity_check() where entity = 'side_effect' and check_key = 'dead_letters')::int dead_letters`);
+  return r ?? { open_exceptions: 0, dead_letters: 0 };
 }

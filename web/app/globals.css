@@ -426,3 +426,16 @@ details.tech summary svg { transition: transform .15s; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
+
+/* Phase 6: sync notice and System Health */
+.sync-note { margin-top: 10px; padding: 9px 12px; border-radius: var(--r-md, 10px); font-size: 13px; line-height: 1.5;
+  color: var(--warn); background: var(--warn-bg); border: 1px solid var(--warn-line); max-width: 720px; }
+.sync-note a { color: inherit; text-decoration: underline; }
+.svc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.svc { border: 1px solid var(--border); border-radius: var(--r-lg, 12px); padding: 14px 15px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.svc .svc-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.svc .svc-name { font-weight: 600; font-size: 14px; }
+.svc .svc-note { font-size: 12.5px; color: var(--muted); }
+.cons-value { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.inv-row { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 10px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.inv-row:last-child { border-bottom: 0; }

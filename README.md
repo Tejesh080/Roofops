@@ -27,8 +27,9 @@ RoofOps models the full job lifecycle (lead → quote → project → purchasing
 | 3 | Approved project → **Xero Demo Company DRAFT invoice** (approval, persistent idempotency, read-back) | ✅ live and verified, awaiting review ([status](docs/phase3-status.md)) |
 | 4 | **Operations Dashboard + DeepSeek Operations Copilot** (`web/`, http://127.0.0.1:3000) | ✅ working, awaiting review ([status](docs/phase4-status.md)) |
 | 4b | **UI polish, interview readiness, auth, demo reset, Vercel-ready** | ✅ awaiting review ([status](docs/phase5-status.md), [demo sequence](docs/phase5-status.md#7-minute-interview-sequence)) |
+| 6 | **State integrity, reconciliation, System Health, AI regression** (every Airtable edit validated; drift repaired or escalated) | ✅ live and verified ([status](docs/phase6-status.md), [ownership map](docs/system-ownership-map.md)) |
 | 5 | Supplier quote → PO | ⏳ |
-| 6 | Reliability lab + exception queue UI | ⏳ |
+| — | Reliability lab + exception queue UI | partly delivered by Phase 6 (`/health`, reconciliation) |
 | 7 | OpenTakeoff experiment (optional) | ⏳ |
 
 ## Run it
@@ -62,6 +63,17 @@ After changing a date rule, regenerate and re-verify the normalised data:
 ```bash
 npm run data:normalise
 ```
+
+## Operate it (hosted)
+
+| Command | Purpose |
+|---|---|
+| `npm run integrity:check` | executable business rules: PASS / WARNING / FAIL per entity |
+| `npm run reconcile` (`-- --dry-run`) | Airtable / Drive / Xero ↔ Postgres check and repair via n8n 07 |
+| `npm run demo:status` / `demo:reset` | interview scenarios |
+| `npm run security:check` | database privilege audit |
+| `npm run ai:eval` | Copilot regression (Promptfoo; web app running) |
+| `npm run contract:export` | regenerate [source-of-truth](docs/source-of-truth.md) and [state machines](docs/state-machines.md) |
 
 ## Layout
 

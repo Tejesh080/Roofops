@@ -10,8 +10,12 @@
 import { writeFileSync } from 'node:fs';
 import { openPostgres } from '../src/db/db.js';
 import { hostedDbConfig } from '../src/config/env.js';
+import { SESSION_COOKIE, signSession } from '../web/lib/session.ts';
 
 const base = process.argv[2] ?? 'http://127.0.0.1:3000';
+// The API requires a signed session: sign one locally with the same AUTH_SECRET the server uses (never printed).
+process.loadEnvFile('web/.env.local');
+const cookie = `${SESSION_COOKIE}=${await signSession('copilot-smoke')}`;
 const cfg = hostedDbConfig();
 const db = await openPostgres(cfg.url, cfg.caPem ? { caPem: cfg.caPem } : undefined);
 const col = async (sql: string) => (await db.query<{ v: string }>(sql)).map((r) => r.v);
@@ -42,7 +46,7 @@ const results = [];
 let failed = 0;
 for (const c of CASES) {
   const t0 = Date.now();
-  const res = await fetch(`${base}/api/copilot`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+  const res = await fetch(`${base}/api/copilot`, { method: 'POST', headers: { 'Content-Type': 'application/json', cookie },
     body: JSON.stringify({ messages: [{ role: 'user', content: c.q }] }) });
   const body = (await res.json()) as { reply?: string; steps?: { tool: string; tier: string; ok: boolean }[]; cards?: { data: { outcome: string; approval_number?: string } }[]; model?: string; error?: string };
   const reply = body.reply ?? '';

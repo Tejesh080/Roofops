@@ -15,3 +15,6 @@ data/generated/
 credentials.json
 secrets/
 *.tsbuildinfo
+web/e2e/.auth/
+web/test-results/
+web/playwright-report/

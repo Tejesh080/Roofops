@@ -15,7 +15,12 @@ function pool(): pg.Pool {
   if (!globalForPool.roofopsPool) {
     const connectionString = process.env.DASHBOARD_DATABASE_URL;
     if (!connectionString) throw new Error('DASHBOARD_DATABASE_URL is not set (run scripts/provision-dashboard-role.ts)');
-    globalForPool.roofopsPool = new pg.Pool({ connectionString, ssl: { rejectUnauthorized: false }, max: 4, idleTimeoutMillis: 30_000 });
+    // Encrypted always. Certificate verification when DASHBOARD_DB_CA_PEM (Supabase root CA, PEM text) is set.
+    const ca = process.env.DASHBOARD_DB_CA_PEM?.replace(/\\n/g, '\n');
+    globalForPool.roofopsPool = new pg.Pool({
+      connectionString, ssl: ca ? { ca, rejectUnauthorized: true } : { rejectUnauthorized: false },
+      max: Number(process.env.DASHBOARD_DB_POOL_MAX ?? 4), idleTimeoutMillis: 10_000, connectionTimeoutMillis: 10_000,
+    });
   }
   return globalForPool.roofopsPool;
 }

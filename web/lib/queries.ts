@@ -101,10 +101,11 @@ export async function getInvoices(q: Query, p: string): Promise<InvoiceLine[]> {
   return rows.map((r) => ({ ...(r as unknown as InvoiceLine), total_inc_gst: Number(r.total_inc_gst), amount_paid: Number(r.amount_paid), outstanding: Number(r.outstanding) }));
 }
 
-export interface TimelineEntry { source: 'EVENT' | 'AUDIT'; occurred_at: string; kind: string; status: string | null; error_class: string | null;
+export interface TimelineEntry { source: 'EVENT' | 'AUDIT'; occurred_at: string; occurred_iso: string; kind: string; status: string | null; error_class: string | null;
   actor: string | null; reference: string | null; reason: string | null; external_reference: string | null; channel: string | null }
 export const getTimeline = (q: Query, p: string, limit = 60) =>
-  q<TimelineEntry>(`select source, to_char(occurred_at at time zone 'Australia/Brisbane', 'YYYY-MM-DD HH24:MI') occurred_at, kind, status, error_class,
+  q<TimelineEntry>(`select source, to_char(occurred_at at time zone 'Australia/Brisbane', 'YYYY-MM-DD HH24:MI') occurred_at,
+                           to_char(occurred_at at time zone 'Australia/Brisbane', 'YYYY-MM-DD"T"HH24:MI:SS') occurred_iso, kind, status, error_class,
                            actor, reference, reason, external_reference, channel
                     from v_dashboard_project_timeline where project_number = $1
                     order by v_dashboard_project_timeline.occurred_at desc, source limit $2`, [p, limit]);
@@ -143,4 +144,33 @@ export async function prepareInvoice(q: Query, projectNumber: string, requestId:
                   actor_id: actor, occurred_at: new Date().toISOString(), payload: { project_number: projectNumber } };
   const [r] = await q<{ r: PreparedInvoice }>(`select wf_invoice_prepare($1::jsonb, 'dashboard') as r`, [JSON.stringify(event)]);
   return r!.r;
+}
+
+export interface OpenOrder extends PurchaseOrder { project_number: string; customer_name: string; planned_start_date: string | null;
+  project_status: string; risk_level: string; after_start: boolean }
+/** Undelivered purchase orders on active projects, problems first. */
+export async function listOpenOrders(q: Query): Promise<OpenOrder[]> {
+  const rows = await q<Record<string, unknown>>(`select o.po_number, o.supplier_name, o.status, o.po_date::text, o.expected_delivery_date::text, o.total_inc_gst::text,
+      o.supplier_acknowledged, coalesce(o.ack_overdue, false) ack_overdue, o.project_number, d.customer_name, d.planned_start_date::text,
+      d.status project_status, d.risk_level, coalesce(o.expected_delivery_date > d.planned_start_date, false) after_start
+    from v_purchase_order_status o join v_dashboard_projects d on d.project_number = o.project_number
+    where d.is_active and o.status not in ('DELIVERED', 'CANCELLED')
+    order by coalesce(o.ack_overdue, false) desc, coalesce(o.expected_delivery_date > d.planned_start_date, false) desc, d.planned_start_date nulls last, o.po_number`);
+  return rows.map((r) => ({ ...(r as unknown as OpenOrder), total_inc_gst: Number(r.total_inc_gst) }));
+}
+
+export interface ActivityEntry extends TimelineEntry { project_number: string }
+/** Latest automation activity across all projects (events only; audit rows are shown per project). */
+export const recentActivity = (q: Query, limit = 25) =>
+  q<ActivityEntry>(`select project_number, source, to_char(occurred_at at time zone 'Australia/Brisbane', 'YYYY-MM-DD HH24:MI') occurred_at,
+                          to_char(occurred_at at time zone 'Australia/Brisbane', 'YYYY-MM-DD"T"HH24:MI:SS') occurred_iso, kind, status, error_class,
+                          actor, reference, reason, external_reference, channel
+                   from v_dashboard_project_timeline where source = 'EVENT' and occurred_at > now() - interval '30 days'
+                   order by v_dashboard_project_timeline.occurred_at desc limit $1`, [limit]);
+
+export async function listOverdueInvoices(q: Query): Promise<(InvoiceLine & { project_number: string })[]> {
+  const rows = await q<Record<string, unknown>>(`select invoice_number, project_number, status, sync_status, issue_date::text, due_date::text, total_inc_gst::text,
+      amount_paid::text, outstanding::text, is_overdue, days_past_due from v_invoice_balances where is_overdue order by days_past_due desc`);
+  return rows.map((r) => ({ ...(r as unknown as InvoiceLine), project_number: String(r.project_number), total_inc_gst: Number(r.total_inc_gst),
+                            amount_paid: Number(r.amount_paid), outstanding: Number(r.outstanding) }));
 }

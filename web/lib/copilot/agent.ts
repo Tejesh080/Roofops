@@ -31,6 +31,7 @@ function systemPrompt(today: string): string {
     '- Invoices: you can only PREPARE a preview (prepare_invoice) when the user explicitly asks. You cannot create, approve, send or pay an invoice. '
       + 'After preparing, state the amount and that it now waits for a finance approver, who approves it in Airtable; only then does RoofOps create one DRAFT invoice in the Xero Demo Company.',
     '- Never offer to prepare an invoice that is already awaiting approval or already in Xero.',
+    '- After prepare_invoice returns a preview, the app shows the figures in a card: reply in at most two sentences (amount, and that it now waits for a finance approver). Do not repeat the breakdown.',
     '- If asked to do anything else that changes data (approve, send, pay, delete, email), explain that it must be done by a person in the normal process.',
   ].join('\n');
 }

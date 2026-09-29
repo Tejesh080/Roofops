@@ -88,8 +88,11 @@ Real services only (ADR-018). Each side effect: **create, then read back, then v
 - [x] Business language: no automation jargon in UI or copilot output (tested)
 - [x] DeepSeek copilot, server-side, tiered tools (ADR-033); answers the five example questions from tools (live smoke 6/6 ×3)
 - [x] "Prepare invoice for <project>" returns the preview and requires approval; nothing reaches Xero (proven live on PRJ-2026-0005)
-- [ ] Login / deployment (local demo only)
-- [ ] Integration health panel (LIVE/BLOCKED) and Playwright end-user tests
+- [x] Login: signed session, verified in proxy and in every page/API (ADR-034); Vercel-ready (deploy needs `vercel login`)
+- [x] Design system, app shell, copilot drawer, grouped automation history, business-first issues, demo guide (Phase 5)
+- [x] `npm run demo:status` / `demo:reset`: audited, idempotent, internal-only (ADR-035)
+- [x] Playwright end-user tests (real login, real data, real DeepSeek)
+- [ ] Integration health panel (LIVE/BLOCKED)
 
 ## Phase 5: Real Xero Demo Company (delivered early as "Phase 3": see [phase3-status.md](phase3-status.md))
 - [x] Xero OAuth2 credential `RoofOps Xero`, one connection, Demo Company (AU) proven `Class=DEMO` before the tenant was pinned; a real org was detected and refused (ADR-030)

@@ -40,7 +40,7 @@ export const INVOICE_STATUS: Record<string, Label> = {
   FULLY_INVOICED: L('Fully invoiced', 'good'),
   NOT_READY: L('Not ready to invoice', 'bad'),
   PAYMENT_OVERDUE: L('Payment overdue', 'bad'),
-  PROGRESS_INVOICED: L('Deposit / progress invoiced', 'neutral'),
+  PROGRESS_INVOICED: L('Progress invoiced', 'neutral'),
   NOT_YET_DUE: L('Not yet due', 'neutral'),
 };
 

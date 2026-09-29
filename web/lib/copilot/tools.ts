@@ -81,9 +81,9 @@ export const TOOLS: Record<string, ToolDef> = {
         at_risk: rows.filter((p) => p.is_active && p.risk_level === 'HIGH').map(brief),
         invoices_awaiting_approval: rows.filter((p) => p.invoice_status === 'AWAITING_APPROVAL').map((p) => ({ project: p.project_number, customer: p.customer_name, amount_inc_gst: p.invoice_amount_inc_gst })),
         ready_to_invoice: rows.filter((p) => p.invoice_status === 'READY_TO_INVOICE').map((p) => ({ project: p.project_number, customer: p.customer_name, amount_inc_gst: p.invoice_amount_inc_gst,
-                                                                                                    state: 'not prepared yet; nobody has been asked to approve it' })),
+                                                                                                    state: 'not prepared yet' })),
         overdue_payments: rows.filter((p) => p.has_overdue_invoice).map((p) => ({ project: p.project_number, customer: p.customer_name, outstanding_inc_gst: p.outstanding_inc_gst })),
-        open_automation_issues: exc.map((e) => ({ id: e.exception_number, project_or_quote: e.project_number ?? e.business_reference,
+        open_automation_issues: exc.map((e) => ({ project_or_quote: e.project_number ?? e.business_reference,
                                                    status: label(EXCEPTION_STATUS, e.resolution_status).text,
                                                    what: EXCEPTION_KIND[e.error_class] ?? e.error_class, detail: plainIssue(e.error_message), since: e.first_failed_at })),
       } };

@@ -1,5 +1,5 @@
 {
-  "ran_at": "2026-09-28T23:51:50.004Z",
+  "ran_at": "2026-09-29T00:40:13.312Z",
   "base": "http://127.0.0.1:3000",
   "truth": {
     "atRisk": [
@@ -33,7 +33,7 @@
       "PRJ-2026-0002"
     ],
     "prj5": [
-      "APR-2026-0002|17831.91"
+      "APR-2026-0004|17831.91"
     ]
   },
   "before": {
@@ -51,80 +51,80 @@
       "question": "Which projects need attention today?",
       "ok": true,
       "http": 200,
-      "ms": 3014,
+      "ms": 2820,
       "model": "deepseek-flash",
       "tools": [
         "what_needs_attention_today"
       ],
       "missing": [],
       "cards": [],
-      "reply": "Here's what needs a person today (2026-09-29):\n\n**At-risk jobs (6)**\n- PRJ-2026-0020 – Zoe Dawson: past the planned finish date, and the project manager flagged a risk.\n- PRJ-2026-0015 – Charlie Stewart: start date passed but work hasn't started, and the project manager flagged a risk.\n- PRJ-2026-0011 – Ethan Morgan: start date passed, work hasn't started, and the supplier hasn't confirmed the order.\n- PRJ-2026-0010 – Grace Reed: supplier delivery is after the planned start.\n- PRJ-2026-0013 – Lucas Foster: materials arrive after the planned start, and the project manager flagged a risk.\n- PRJ-2026-0018 – Matilda Walsh: supplier hasn't confirmed the order.\n\n**Automation issues (4)**\n- EXC-0016 – PRJ-2026-0007: needs attention, missing completion documents, so the invoice waits.\n- EXC-0017 – PRJ-2026-0031: needs attention, still in Planning, and only a completed project can be final-invoiced.\n- EXC-0013 – Q-2026-0035: needs attention, the quote is Lost, and only a sent quote can be accepted.\n- EXC-0003 – PRJ-2026-0008: needs attention, the supplier service timed out.\n\n**Invoices waiting for approval (1)**\n- PRJ-2026-0005 – Jack Walker: $17,831.91.\n\n**Jobs ready to invoice (2)** – not prepared yet; nobody has been asked to approve them.\n- PRJ-2026-0002 – Mia Campbell: $15,155.98.\n- PRJ-2026-0001 – Oliver Grant: $30,886.06.\n\n**Overdue payments (2)**\n- PRJ-2026-0025 – Oscar Wright: $3,518.67 outstanding.\n- PRJ-2026-0002 – Mia Campbell: $10,103.98 outstanding.\n\nWant me to prepare a preview invoice for either ready-to-invoice job, or open any of these projects for detail?"
+      "reply": "Here's what needs a person today (2026-09-29):\n\n**At-risk jobs (6)**\n- PRJ-2026-0020 – Zoe Dawson: past the planned finish date; project manager flagged a risk.\n- PRJ-2026-0015 – Charlie Stewart: start date passed, work not started; project manager flagged a risk.\n- PRJ-2026-0011 – Ethan Morgan: start date passed, work not started; supplier hasn't confirmed the order; project manager flagged a risk.\n- PRJ-2026-0010 – Grace Reed: supplier delivery is after the planned start.\n- PRJ-2026-0013 – Lucas Foster: materials arrive after the planned start; project manager flagged a risk.\n- PRJ-2026-0018 – Matilda Walsh: supplier hasn't confirmed the order.\n\n**Invoices awaiting approval (1)**\n- PRJ-2026-0005 – Jack Walker: $17,831.91 inc GST.\n\n**Ready to invoice (2, not prepared yet)**\n- PRJ-2026-0002 – Mia Campbell: $15,155.98 inc GST.\n- PRJ-2026-0001 – Oliver Grant: $30,886.06 inc GST.\n\n**Overdue payments (2)**\n- PRJ-2026-0025 – Oscar Wright: $3,518.67 inc GST outstanding.\n- PRJ-2026-0002 – Mia Campbell: $10,103.98 inc GST outstanding.\n\n**Open automation issues (4, all \"Needs attention\")**\n- PRJ-2026-0007: missing completion documents; invoice waits until they're uploaded.\n- PRJ-2026-0031: not allowed in its current state (still Planning; only a completed project can be final-invoiced).\n- Q-2026-0035: not allowed in its current state (quote is Lost; only a sent quote can be accepted).\n- PRJ-2026-0008: a connected service didn't answer in time (supplier service timed out)."
     },
     {
       "question": "Why is PRJ-2026-0011 at risk?",
       "ok": true,
       "http": 200,
-      "ms": 2033,
+      "ms": 4306,
       "model": "deepseek-flash",
       "tools": [
-        "get_project"
+        "get_project",
+        "get_project_history"
       ],
       "missing": [],
       "cards": [],
-      "reply": "PRJ-2026-0011 (Ethan Morgan, extension roof at 81 Ironbark Court, Bundaberg West) is at risk for three reasons:\n\n- The scheduled start date (2026-09-27) has passed and work hasn't started — no actual start recorded. Planned finish is 2026-10-01.\n- The supplier hasn't confirmed the order. PO-2026-0011 to Pacific Fasteners Demo was sent, expected delivery 2026-08-20, and that supplier confirmation is overdue. Delay note: \"Supplier confirmation outstanding\".\n- The project manager, Lachlan Reed, flagged a risk.\n\nAlso worth noting: the completion/compliance photos checklist item is still open, and the deposit/progress invoice INV-2026-0011 ($4,876.80) is paid with nothing owing. There are no open automation issues on this job."
+      "reply": "**PRJ-2026-0011 (Ethan Morgan) is flagged at risk for three reasons:**\n\n- The scheduled start date (27 Sep 2026) has passed and work hasn't actually started — no start recorded.\n- The materials supplier hasn't confirmed the order. Purchase order PO-2026-0011 to Pacific Fasteners Demo was sent, with an expected delivery of 20 Aug 2026, and that confirmation is now overdue.\n- The project manager, Lachlan Reed, has flagged a risk on the job.\n\nOther details: site is 81 Ironbark Court, Bundaberg West; planned finish is 1 Oct 2026. The job is progress invoiced (INV-2026-0011, $4,876.80, paid), with no final invoice prepared yet. One checklist item is still open — completion/compliance photos. There are no open automation issues logged against this project."
     },
     {
       "question": "Which projects are waiting on materials?",
       "ok": true,
       "http": 200,
-      "ms": 2666,
+      "ms": 2675,
       "model": "deepseek-flash",
       "tools": [
         "list_projects"
       ],
       "missing": [],
       "cards": [],
-      "reply": "**16 projects are waiting on materials** — 5 of them are flagged at risk.\n\nAt risk (worth chasing first):\n- **PRJ-2026-0015** – Charlie Stewart: part delivered; start date has passed and work hasn't started, plus a project manager flag.\n- **PRJ-2026-0011** – Ethan Morgan: supplier hasn't confirmed; start date passed, work not started, plus a project manager flag.\n- **PRJ-2026-0010** – Grace Reed: confirmed by supplier, but delivery lands after the planned start.\n- **PRJ-2026-0013** – Lucas Foster: order being prepared; materials arrive after the planned start, plus a project manager flag.\n- **PRJ-2026-0018** – Matilda Walsh: supplier hasn't confirmed.\n\nThe other 11 are on track but still waiting: PRJ-2026-0025 (Oscar Wright – payment overdue), PRJ-2026-0019 (Thomas Bryant), PRJ-2026-0023 (Leo Hayes), PRJ-2026-0027 (Harrison Carter), PRJ-2026-0014 (Ruby Murray), PRJ-2026-0022 (Amelia Brooks), PRJ-2026-0026 (Charlotte Lawson), PRJ-2026-0009 (Liam Cooper), PRJ-2026-0030 (Emily Ward), PRJ-2026-0017 (William Turner) and PRJ-2026-0029 (Archie Scott).\n\nNone of these have open automation issues. Want me to pull the full picture on any of the at-risk ones?"
+      "reply": "16 projects are currently waiting on materials. Five of them are flagged **at risk**:\n\n- PRJ-2026-0015 – Charlie Stewart: part delivered, start date passed with work not started, project manager flagged a risk\n- PRJ-2026-0011 – Ethan Morgan: supplier hasn't confirmed, start date passed with work not started, project manager flagged a risk\n- PRJ-2026-0010 – Grace Reed: confirmed by supplier, but the supplier delivery is after the planned start\n- PRJ-2026-0013 – Lucas Foster: order being prepared, materials arrive after the planned start, project manager flagged a risk\n- PRJ-2026-0018 – Matilda Walsh: supplier hasn't confirmed\n\nThe other 11 are waiting but not flagged at risk: PRJ-2026-0025 (Oscar Wright), PRJ-2026-0019 (Thomas Bryant), PRJ-2026-0023 (Leo Hayes), PRJ-2026-0027 (Harrison Carter), PRJ-2026-0014 (Ruby Murray), PRJ-2026-0022 (Amelia Brooks), PRJ-2026-0026 (Charlotte Lawson), PRJ-2026-0009 (Liam Cooper), PRJ-2026-0030 (Emily Ward), PRJ-2026-0017 (William Turner) and PRJ-2026-0029 (Archie Scott).\n\nWant me to pull the full detail on any of the at-risk ones?"
     },
     {
       "question": "Which projects are ready to invoice?",
       "ok": true,
       "http": 200,
-      "ms": 2373,
+      "ms": 2391,
       "model": "deepseek-flash",
       "tools": [
         "list_projects"
       ],
       "missing": [],
       "cards": [],
-      "reply": "Two projects are ready to invoice:\n\n- **PRJ-2026-0002** — Mia Campbell — completed 17 June 2026, job complete. Amount $15,155.98 inc GST.\n- **PRJ-2026-0001** — Oliver Grant — completed 25 June 2026, job complete. Amount $30,886.06 inc GST.\n\nNeither is at risk and neither has open issues. Just say the word if you'd like me to prepare a preview invoice for either one."
+      "reply": "Two projects are marked \"Ready to invoice\" (not prepared yet):\n\n- **PRJ-2026-0002** – Mia Campbell – completed 2026-06-17 – amount $15,155.98 inc GST – no open issues\n- **PRJ-2026-0001** – Oliver Grant – completed 2026-06-25 – amount $30,886.06 inc GST – no open issues\n\nBoth are finished jobs with materials complete and nothing flagged at risk. Say the word if you'd like me to prepare a preview invoice for either one."
     },
     {
       "question": "What happened to PRJ-2026-0004?",
       "ok": true,
       "http": 200,
-      "ms": 4578,
+      "ms": 2573,
       "model": "deepseek-flash",
       "tools": [
-        "get_project_history",
-        "get_project"
+        "get_project_history"
       ],
       "missing": [],
       "cards": [],
-      "reply": "PRJ-2026-0004 (Ella Thompson, 32 Paperbark Lane, Ashfield) is finished and its final invoice is now sitting as a draft in Xero.\n\n- Job: roof restoration, actual start 2026-05-25, finished 2026-06-01; stage is Completed and it is not at risk, with no open issues.\n- Quote Q-2026-0004 was accepted 2026-05-12 for $20,949.27 inc GST.\n- Payments: a payment was received 2026-06-19. Earlier invoices INV-2026-0004 ($4,189.85) and INV-2026-0034 ($2,094.93) are both Paid, with nothing owing.\n- Final invoice: on 2026-09-29 a preview was prepared, then approved by the Demo Finance Approver, and a draft invoice RO-INV-2026-0039 for $14,664.49 inc GST was created and checked in the Xero Demo Company. It has not been sent to the customer yet.\n- Two repeat requests for the same invoice preview and approval arrived at 08:59 and 09:00 — both were duplicate ignored safely, so nothing was done twice.\n- Materials: PO-2026-0004 to Bundaberg Sheet Metal Demo is sent to supplier with confirmation overdue; PO-2026-0034 is part delivered.\n- Completion/compliance photos are uploaded. No Google Drive folder is linked.\n\nSince the invoice is already in Xero as a draft, I can't prepare it again — sending it to the customer would need to be done by a person in the normal process."
+      "reply": "**PRJ-2026-0004 (Ella Thompson) — completed job, now has a draft invoice in Xero.**\n\n- Finished on site 2026-06-01 and the job is complete; not at risk, no open issues.\n- Quote was accepted on 2026-06-02 and a payment was received on 2026-06-19.\n- Final invoice preview was prepared on 2026-09-29 08:53, then approved by the Demo Finance Approver, and RoofOps created final invoice INV-2026-0039 for $14,664.49 (incl. GST).\n- Xero then created DRAFT invoice RO-INV-2026-0039 in the Xero Demo Company and checked it.\n- A few repeat requests around 08:59 were duplicates ignored safely — nothing was done twice."
     },
     {
       "question": "Prepare invoice for PRJ-2026-0005",
       "ok": true,
       "http": 200,
-      "ms": 2848,
+      "ms": 2993,
       "model": "deepseek-flash",
       "tools": [
         "get_project"
       ],
       "missing": [],
       "cards": [],
-      "reply": "I can't prepare this one — PRJ-2026-0005 (Jack Walker) already has its final invoice waiting for approval, so no new preview should be raised.\n\n- Status: the invoice is **Awaiting approval** (approval record APR-2026-0002).\n- Amount: $17,831.91 including GST, for the completed leak repair at 39 Sugar Mill Way, Avenell Heights.\n- It hasn't reached Xero yet — a finance approver needs to approve it in Airtable first; only then does RoofOps create one DRAFT invoice in the Xero Demo Company.\n\nIf you'd like, I can prepare a preview for a different completed project that isn't already awaiting approval."
+      "reply": "I can't prepare that one — PRJ-2026-0005 (Jack Walker) already has a final invoice prepared and it's waiting for a finance approver, so there's nothing new to raise.\n\n- Status: Awaiting approval (approval reference APR-2026-0004), amount $17,831.91 incl. GST.\n- It has not yet reached Xero (no Xero invoice number), so it will be created there only after a finance approver approves it in Airtable.\n- Once approved, RoofOps creates one DRAFT invoice in the Xero Demo Company.\n\nIf you want, a finance approver can pick up APR-2026-0004 in Airtable."
     }
   ]
 }

@@ -159,3 +159,12 @@ I recommend (a) for Phase 2, since it matches your flow ("Postgres idempotency c
 ### ADR-033: Copilot tools are named, tiered and server-side
 **Status:** Accepted
 **Decision:** DeepSeek gets only tool results from seven named functions, never SQL or credentials. GREEN tools read. AMBER `prepare_invoice` creates a preview only, and only when the user explicitly asks. RED actions (approve, send, pay) are not exposed: approval stays with a finance approver in the existing Airtable → n8n → Xero flow. The invoice preview shown to the user is a structured card from the database, not model text.
+
+### ADR-034: Interview-demo authentication: signed session, verified everywhere
+**Status:** Accepted
+**Decision:** a single demo login (`DEMO_USERNAME`/`DEMO_PASSWORD`, constant-time comparison, throttled) issues an HMAC-signed, HttpOnly session cookie (`AUTH_SECRET`). The proxy gates every route, and each page and the copilot API re-verify the session themselves, so a proxy bypass exposes nothing. Missing configuration fails closed.
+**Consequence:** safe enough to put the demo on a public URL. Not a user system: per-person accounts would replace it for real use.
+
+### ADR-035: Demo reset only reverses what is fully internal
+**Status:** Accepted
+**Decision:** `npm run demo:reset` only withdraws *pending* invoice previews on the designated demo project (PENDING → CANCELLED, audited, idempotent). Anything that reached an external system (Airtable records, Drive folders, Xero drafts) is never deleted: those scenarios are reported as ALREADY RUN, or rehearsed with the next unused synthetic quote, by `npm run demo:status`.

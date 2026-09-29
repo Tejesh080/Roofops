@@ -315,15 +315,17 @@ describe.each(TARGETS)('state integrity [%s]', (target) => {
     });
   });
 
+  /** What an n8n 07 read of the Airtable table would return if in sync, with `patch` applied. */
+  const snapshot = async (table: string, patch: (id: string, f: Record<string, unknown>) => void) => {
+    const rows = await db.query<{ record_id: string; expected: Record<string, unknown> }>(`select record_id, expected from v_airtable_expected where table_id = $1`, [table]);
+    return rows.map((r) => {
+      const f = Object.fromEntries(Object.entries(r.expected).map(([k, v]) => [k, v !== null && typeof v === 'object' && !Array.isArray(v) ? null : v]));
+      patch(r.record_id, f);
+      return { id: r.record_id, fields: f };
+    });
+  };
+
   describe('reconciliation', () => {
-    const snapshot = async (table: string, patch: (id: string, f: Record<string, unknown>) => void) => {
-      const rows = await db.query<{ record_id: string; expected: Record<string, unknown> }>(`select record_id, expected from v_airtable_expected where table_id = $1`, [table]);
-      return rows.map((r) => {
-        const f = Object.fromEntries(Object.entries(r.expected).map(([k, v]) => [k, v !== null && typeof v === 'object' && !Array.isArray(v) ? null : v]));
-        patch(r.record_id, f);
-        return { id: r.record_id, fields: f };
-      });
-    };
     it('a missed webhook (PRJ-2026-0020 Cancelled in Airtable) is observed, then repaired through the same validation', async () => {
       const id20 = await rec(db, 'project', 'PRJ-2026-0020');
       const id12 = await rec(db, 'project', 'PRJ-2026-0012');
@@ -369,6 +371,43 @@ describe.each(TARGETS)('state integrity [%s]', (target) => {
       expect(r).toMatchObject({ drift: 1 });
       expect(await one(db, `select classification v from reconciliation_findings f join reconciliation_runs r on r.id = f.run_id where r.run_key = $1`, [run.run_key])).toBe('REQUIRES_HUMAN');
       expect(await one(db, `select status v from quotes where quote_number = 'Q-2026-0064'`)).toBe('SENT');
+      await call(db, 'wf_reconcile_finish', run.run_key, {}, []);
+    });
+    it('AC-01: an Airtable read taken before a webhook edit never reverts that edit (re-checked next run instead)', async () => {
+      await db.exec(`update reconciliation_runs set started_at = started_at - interval '5 minutes'`);
+      const run = await call(db, 'wf_reconcile_start', 'schedule', 'repair');
+      const id28 = await rec(db, 'project', 'PRJ-2026-0028');
+      const read = await snapshot(T.projects, () => {});   // n8n 07 reads the Projects table: in sync
+      // While 07 is still reading, staff move the finish and put the job on hold; n8n 06 applies both.
+      expect((await project(db, 'PRJ-2026-0028', { [F.pEnd]: '2026-12-18' }, { previous: { [F.pEnd]: '2026-10-01' } })).outcome).toBe('APPLIED');
+      expect((await project(db, 'PRJ-2026-0028', { [F.pStatus]: 'On Hold' }, { previous: { [F.pStatus]: 'In Progress' } })).outcome).toBe('APPLIED');
+      const r = await call(db, 'wf_reconcile_airtable', run.run_key, T.projects, read);
+      expect(await one(db, `select status || ' ' || planned_completion_date v from projects where project_number = 'PRJ-2026-0028'`)).toBe('ON_HOLD 2026-12-18');
+      expect((r.corrections as unknown as { id: string }[]).find((c) => c.id === id28)).toBeUndefined();
+      expect(await col(db, `select f.field || ':' || f.classification || '/' || f.action v from reconciliation_findings f
+                             join reconciliation_runs x on x.id = f.run_id where x.run_key = $1 order by 1`, [run.run_key]))
+        .toEqual(['Planned Completion:STALE_EVENT/NONE', 'Status:STALE_EVENT/NONE']);
+      // The old read is not recorded as what Airtable shows now: no hidden divergence, no false drift.
+      expect(await col(db, `select field v from v_state_drift where business_key = 'PRJ-2026-0028'`)).toEqual([]);
+      // The staff member's next edit applies (before the fix it was refused as a conflict with the reverted value).
+      expect((await project(db, 'PRJ-2026-0028', { [F.pEnd]: '2026-12-22' }, { previous: { [F.pEnd]: '2026-12-18' }, current: { [F.pStatus]: 'On Hold' } })).outcome).toBe('APPLIED');
+      await call(db, 'wf_reconcile_finish', run.run_key, {}, []);
+    });
+    it('AC-01: a replayed missed edit is dated by the Airtable read, so a later staff edit is not treated as stale', async () => {
+      await db.exec(`update reconciliation_runs set started_at = started_at - interval '5 minutes'`);
+      const run = await call(db, 'wf_reconcile_start', 'schedule', 'repair');
+      await db.query(`update reconciliation_runs set started_at = started_at - interval '1 minute' where run_key = $1`, [run.run_key]);
+      await force(db, `update projects set updated_at = updated_at - interval '1 hour' where project_number = 'PRJ-2026-0027'`);
+      const id27 = await rec(db, 'project', 'PRJ-2026-0027');
+      // Airtable shows a finish date whose webhook RoofOps never received: the repair run replays it.
+      const r = await call(db, 'wf_reconcile_airtable', run.run_key, T.projects, await snapshot(T.projects, (id, f) => { if (id === id27) f[F.pEnd] = '2026-10-12'; }));
+      expect(r).toMatchObject({ drift: 1 });
+      expect(await one(db, `select planned_completion_date::text v from projects where project_number = 'PRJ-2026-0027'`)).toBe('2026-10-12');
+      // A staff edit made after 07 read the table (30 s after the run started) arrives late, after the replay.
+      const at = await one(db, `select (started_at + interval '30 seconds')::text v from reconciliation_runs where run_key = $1`, [run.run_key]);
+      const late = await project(db, 'PRJ-2026-0027', { [F.pEnd]: '2026-10-14' }, { previous: { [F.pEnd]: '2026-10-12' }, at });
+      expect(late.outcome).toBe('APPLIED');
+      expect(await one(db, `select planned_completion_date::text v from projects where project_number = 'PRJ-2026-0027'`)).toBe('2026-10-14');
       await call(db, 'wf_reconcile_finish', run.run_key, {}, []);
     });
   });
@@ -428,6 +467,84 @@ describe.each(TARGETS)('state integrity [%s]', (target) => {
         expect([first.outcome, (await second).outcome]).toEqual(['APPLIED', 'REJECTED']);
         expect(await one(db, `select status v from projects where project_number = 'PRJ-2026-0019'`)).toBe('CANCELLED');
       } finally { await b.close(); }
+    });
+
+    /** True once the backend `pid` is blocked on a lock (checked from a third connection). */
+    const waitingOnLock = async (pid: string) => {
+      const w = await openPostgres(db.url!);
+      try {
+        for (let i = 0; i < 100; i += 1) {
+          if (await one(w, `select count(*) v from pg_stat_activity where pid = $1 and wait_event_type = 'Lock'`, [Number(pid)]) === '1') return true;
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        return false;
+      } finally { await w.close(); }
+    };
+    const pgNow = () => one(db, `select clock_timestamp()::text v`);
+
+    it('AC-01 race: reconciliation with an older Airtable read waits for a concurrent staff edit, then defers it; the next run is normal', async () => {
+      const recon = await openPostgres(db.url!);
+      try {
+        const reconPid = (await one(recon, `select pg_backend_pid()::text v`))!;
+        await db.exec(`update reconciliation_runs set started_at = started_at - interval '5 minutes'`);
+        const run = await call(db, 'wf_reconcile_start', 'schedule', 'repair');
+        const id23 = await rec(db, 'project', 'PRJ-2026-0023');
+        const read = await snapshot(T.projects, () => {});            // A: 07 reads Airtable (finish 2026-10-08)
+        await db.exec('begin');                                        // B: a valid staff edit through n8n 06, not yet committed
+        expect((await project(db, 'PRJ-2026-0023', { [F.pEnd]: '2026-10-10' }, { previous: { [F.pEnd]: '2026-10-08' }, at: await pgNow() })).outcome).toBe('APPLIED');
+        const reconciling = call(recon, 'wf_reconcile_airtable', run.run_key, T.projects, read);   // A: continues with the older read
+        expect(await waitingOnLock(reconPid)).toBe(true);
+        await db.exec('commit');
+        const r = await reconciling;                                   // resolves: no deadlock
+        expect(await one(db, `select planned_completion_date::text v from projects where project_number = 'PRJ-2026-0023'`)).toBe('2026-10-10');
+        expect(r).toMatchObject({ ok: true, rechecked_next_run: 1 });
+        expect((r.corrections as unknown as { id: string }[]).find((c) => c.id === id23)).toBeUndefined();
+        expect(await col(db, `select f.field || ':' || f.classification || '/' || f.action v from reconciliation_findings f
+                               join reconciliation_runs x on x.id = f.run_id where x.run_key = $1 and f.entity_ref = 'PRJ-2026-0023'`, [run.run_key]))
+          .toEqual(['Planned Completion:STALE_EVENT/NONE']);
+        expect(await col(db, `select field v from v_state_drift where business_key = 'PRJ-2026-0023'`)).toEqual([]);
+        await call(db, 'wf_reconcile_finish', run.run_key, {}, []);
+
+        // Next run: a fresh read is compared normally. Airtable here also shows a later missed edit, which is replayed.
+        await db.exec(`update reconciliation_runs set started_at = started_at - interval '5 minutes'`);
+        const next = await call(db, 'wf_reconcile_start', 'schedule', 'repair');
+        const r2 = await call(recon, 'wf_reconcile_airtable', next.run_key, T.projects, await snapshot(T.projects, (id, f) => { if (id === id23) f[F.pEnd] = '2026-10-12'; }));
+        expect(r2).toMatchObject({ drift: 1, rechecked_next_run: 0 });
+        expect(await col(db, `select f.classification || '/' || f.action v from reconciliation_findings f join reconciliation_runs x on x.id = f.run_id
+                               where x.run_key = $1 and f.entity_ref = 'PRJ-2026-0023'`, [next.run_key])).toEqual(['SAFE_AUTO_REPAIR/APPLIED_TO_POSTGRES']);
+        expect(await one(db, `select planned_completion_date::text v from projects where project_number = 'PRJ-2026-0023'`)).toBe('2026-10-12');
+        await call(db, 'wf_reconcile_finish', next.run_key, {}, []);
+      } finally { await recon.close(); }
+    });
+
+    it('AC-01 race, inverse: reconciliation holds the row first; a concurrent staff edit waits, then applies on top of the replay', async () => {
+      const recon = await openPostgres(db.url!);
+      try {
+        const staffPid = (await one(db, `select pg_backend_pid()::text v`))!;
+        await db.exec(`update reconciliation_runs set started_at = started_at - interval '5 minutes'`);
+        const run = await call(db, 'wf_reconcile_start', 'schedule', 'repair');
+        const id21 = await rec(db, 'project', 'PRJ-2026-0021');
+        // A: Airtable shows a finish date (2026-10-30) whose webhook RoofOps never received; the repair replays it and
+        // keeps the row locked until it commits.
+        const read = await snapshot(T.projects, (id, f) => { if (id === id21) f[F.pEnd] = '2026-10-30'; });
+        await recon.exec('begin');
+        const r = await call(recon, 'wf_reconcile_airtable', run.run_key, T.projects, read);
+        expect(r).toMatchObject({ drift: 1, rechecked_next_run: 0 });
+        // B: staff (whose Airtable shows 2026-10-30) move it to 2026-11-02 while A is still open: B waits for A.
+        const staff = project(db, 'PRJ-2026-0021', { [F.pEnd]: '2026-11-02' }, { previous: { [F.pEnd]: '2026-10-30' }, at: await pgNow() });
+        expect(await waitingOnLock(staffPid)).toBe(true);
+        await recon.exec('commit');
+        // Deterministic: the replay commits first, then the staff edit is checked against it and applies. Newest value wins.
+        expect((await staff).outcome).toBe('APPLIED');
+        expect(await one(db, `select planned_completion_date::text v from projects where project_number = 'PRJ-2026-0021'`)).toBe('2026-11-02');
+        expect(await col(db, `select f.classification || '/' || f.action v from reconciliation_findings f join reconciliation_runs x on x.id = f.run_id
+                               where x.run_key = $1 and f.entity_ref = 'PRJ-2026-0021'`, [run.run_key])).toEqual(['SAFE_AUTO_REPAIR/APPLIED_TO_POSTGRES']);
+        expect(await col(db, `select field v from v_state_drift where business_key = 'PRJ-2026-0021'`)).toEqual([]);
+        await call(db, 'wf_reconcile_finish', run.run_key, {}, []);
+      } finally {
+        await recon.exec('rollback').catch(() => undefined);
+        await recon.close();
+      }
     });
   });
 });

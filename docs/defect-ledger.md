@@ -9,7 +9,7 @@ instruction).
 
 | ID | Severity | Hypothesis | Reproduced? | Reproduction evidence | Root cause | Violated invariant | Regression test | Fix | Integration verification | Live verification needed? | Status |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| AC-01 | P0 | The reconciler replays an Airtable read that is older than a webhook edit, reverting the staff member's edit | **Yes**, offline (PGlite and Postgres 17) | Probe `ws07/p2_stale_snapshot.mts` plus 2 failing tests (below) | Replays had no observation time and were exempt from the webhook path's stale and compare-and-set checks | An Airtable read is evidence only if canonical has not changed since the read | `test/state-integrity.test.ts:376`, `:396`, plus race tests `:485`, `:520` (two Postgres connections) | Migration `20260930000000_reconcile_never_replays_stale_reads.sql` | Migration chain clean from zero; 314 tests pass on PGlite and Postgres 17; lint, typecheck clean; integrity 0 FAIL on canonical local and hosted; **deployed to hosted**; hosted dry-run 0 drift | **Yes**: a repair run on hosted, then the live synthetic test (§11) | **Deployed, live verification blocked**: the permission classifier denied the hosted repair run |
+| AC-01 | P0 | The reconciler replays an Airtable read that is older than a webhook edit, reverting the staff member's edit | **Yes**, offline (PGlite and Postgres 17) | Probe `ws07/p2_stale_snapshot.mts` plus 2 failing tests (below) | Replays had no observation time and were exempt from the webhook path's stale and compare-and-set checks | An Airtable read is evidence only if canonical has not changed since the read | `test/state-integrity.test.ts:376`, `:396`, plus race tests `:485`, `:520` (two Postgres connections) | Migration `20260930000000_reconcile_never_replays_stale_reads.sql` | Migration chain clean from zero; 314 tests pass on PGlite and Postgres 17; lint, typecheck clean; integrity 0 FAIL on canonical local and hosted; **deployed to hosted**; hosted dry-run 0 drift | Done 2026-10-01 (§12): hosted repair run, then the controlled live test on PRJ-2026-0029, with [evidence/ac01-live-verification.json](../evidence/ac01-live-verification.json) | **FIXED** |
 | AC-02 | P0 | A missing or reshaped Airtable field is replayed as a staff edit | – | – | – | – | – | – | – | – | Not started |
 | AC-10 | P0 | 06 applies its own stale correction back as a staff edit | – | – | – | – | – | – | – | – | Not started |
 | AC-03 | P0 | Airtable Approve is not bound to the row or preview the approver saw | – | – | – | – | – | – | – | – | Not started |
@@ -286,3 +286,55 @@ permission classifier denied it. Nothing was retried or worked around. Still out
   If 07 happens to reach PRJ-2026-0029 before the locked rows, the run reproduces the inverse timing instead; that is
   still a valid outcome, and it will be reported as such.
 - **Commit:** not made. AC-01 is committed only when everything above is green.
+
+(Superseded by §12: the owner approved the steps above, and they were carried out on 2026-10-01.)
+
+### 12. Live verification (2026-10-01): AC-01 FIXED
+
+Performed on hosted Supabase, n8n Cloud and the production Airtable base (synthetic data), as planned in §11, before
+any AC-02 change reached hosted. Raw evidence (run rows, the finding, events, audit rows, lock-holder log, value
+fingerprints) is in [evidence/ac01-live-verification.json](../evidence/ac01-live-verification.json).
+
+**Step 5: reconciliation checks.** Times are UTC on 2026-09-30, i.e. 1 Oct Brisbane.
+
+| Run | Mode | Result |
+|---|---|---|
+| `RECON-20261001-051040-4f57` | observe | 231/231, Drive 3/3, Xero 1/1, 0 drift, 0 findings. Run first, because hosted did not yet have the AC-02 guards and a repair run is only safe with no drift. |
+| `RECON-20261001-051257-4e82` | **repair** | 0 drift, 0 findings, nothing written. The fingerprint of 173 canonical date and reference values (projects, POs, quotes, customers) is identical before and after: `89d72adf…` |
+
+**Step 6: controlled live test on PRJ-2026-0029** (`recVc7DCnAIOVG3Gm`, Planning, no invoices, in no demo scenario):
+
+1. **19:15:17** A separate hosted session locks the 32 other project rows (`FOR UPDATE`; it later rolls back and writes
+   nothing).
+2. **19:15:29** The real 07 repair run `RECON-20261001-051529-3d92` starts and reads Airtable: PRJ-2026-0029 shows
+   2026-11-05. By 19:15:36, `pg_stat_activity` shows its `wf_reconcile_airtable` waiting on a lock in the Projects
+   table.
+3. **19:15:46** A staff edit in Airtable (Planned Completion 2026-11-05 → 2026-11-07) is applied by n8n 06:
+   - event `airtable:…txn…` `SUCCEEDED/APPLIED`;
+   - audit `usr7uCnNO15fCefbH` 11-05 → 11-07.
+4. **19:15:59** The locks are released, and 07 continues with its older read.
+
+**Result:** the pre-fix behaviour would have replayed 2026-11-05 over the staff edit. Instead:
+
+| Check | Result |
+|---|---|
+| 07's finding for the record | `STALE_EVENT / NONE`, expected (canonical, re-read under the lock) **2026-11-07**, actual (07's read) 2026-11-05, "re-checked next run". Its `created_at` 19:15:31 is the transaction start (`now()`), taken before the lock wait |
+| Reconciler replays of PRJ-2026-0029 | **0**. Only the staff edit and, later, the restore exist as events and audit rows |
+| Postgres | 2026-11-07 |
+| Airtable, read back independently | 2026-11-07, and no RoofOps Sync note (nothing was written back) |
+| Dashboard `/projects/PRJ-2026-0029` | "7 Nov 2026", with no out-of-sync notice |
+| Copilot, "What is the planned completion date of PRJ-2026-0029?" | "planned completion date is **7 November 2026**" (tool `get_project`) |
+| Run summary | 231 checked, 0 drift (the stale re-check is not counted as drift), `drift_now` 0, all 3 webhooks OK, 0 unread |
+| Next run `RECON-20261001-052016-4ce4` (observe) | **0 findings**, 0 drift |
+| `npm run integrity:check` | 23 PASS, 3 WARNING, 0 FAIL, including `hash_chain_intact`. The warnings are the known PRJ-2026-0001 open PO, Q-2026-0031, and open exceptions |
+
+**Step 6.6: restore.**
+- **19:20:42** Planned Completion was set back to 2026-11-05 in Airtable and applied by 06 (`APPLIED`).
+- The final dry-run `RECON-20261001-052233-a246` found 0 drift and 0 findings; integrity was 23 / 3 / 0.
+- The value fingerprint is again `89d72adf…`, so hosted is exactly as it was before the exercise.
+
+Timing note: 07 reached PRJ-2026-0029 after the edit, the case the fix exists for. The inverse order (07 first, then
+the staff edit) is covered by the two-connection test `:520`.
+
+**AC-01 is FIXED.**
+

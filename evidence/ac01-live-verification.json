@@ -1,0 +1,336 @@
+{
+ "defect": "AC-01",
+ "environment": "hosted Supabase + n8n Cloud + production Airtable base (synthetic data)",
+ "record": "PRJ-2026-0029 (recVc7DCnAIOVG3Gm)",
+ "lock_holder_log": [
+  "2026-09-30T19:15:17.630Z LOCKED 32 project rows (all but PRJ-2026-0029)",
+  "2026-09-30T19:15:59.043Z RELEASING after 41 s (signal)",
+  "2026-09-30T19:15:59.122Z RELEASED (rolled back, nothing written)"
+ ],
+ "runs": [
+  {
+   "run_key": "RECON-20261001-051040-4f57",
+   "trigger": "manual",
+   "mode": "observe",
+   "status": "COMPLETED",
+   "started_at": "2026-09-30T19:10:40.534Z",
+   "finished_at": "2026-09-30T19:10:50.126Z",
+   "airtable": {
+    "tables": [
+     {
+      "drift": 0,
+      "records": 40,
+      "table_id": "tblHKX79FJFHn5FDc",
+      "fields_checked": 360
+     },
+     {
+      "drift": 0,
+      "records": 6,
+      "table_id": "tbloPJwCIcdIZQFVK",
+      "fields_checked": 36
+     },
+     {
+      "drift": 0,
+      "records": 52,
+      "table_id": "tblSYcCqId9wTMg3c",
+      "fields_checked": 520
+     },
+     {
+      "drift": 0,
+      "records": 35,
+      "table_id": "tbluIbl4zpMiAlMVw",
+      "fields_checked": 315
+     },
+     {
+      "drift": 0,
+      "records": 33,
+      "table_id": "tblvUPIoebC3zoacv",
+      "fields_checked": 463
+     },
+     {
+      "drift": 0,
+      "records": 65,
+      "table_id": "tblzenPRNVV5O7lZP",
+      "fields_checked": 1040
+     }
+    ]
+   },
+   "findings": 0
+  },
+  {
+   "run_key": "RECON-20261001-051257-4e82",
+   "trigger": "manual",
+   "mode": "repair",
+   "status": "COMPLETED",
+   "started_at": "2026-09-30T19:12:57.183Z",
+   "finished_at": "2026-09-30T19:13:03.815Z",
+   "airtable": {
+    "tables": [
+     {
+      "drift": 0,
+      "records": 40,
+      "table_id": "tblHKX79FJFHn5FDc",
+      "fields_checked": 360
+     },
+     {
+      "drift": 0,
+      "records": 6,
+      "table_id": "tbloPJwCIcdIZQFVK",
+      "fields_checked": 36
+     },
+     {
+      "drift": 0,
+      "records": 52,
+      "table_id": "tblSYcCqId9wTMg3c",
+      "fields_checked": 520
+     },
+     {
+      "drift": 0,
+      "records": 35,
+      "table_id": "tbluIbl4zpMiAlMVw",
+      "fields_checked": 315
+     },
+     {
+      "drift": 0,
+      "records": 33,
+      "table_id": "tblvUPIoebC3zoacv",
+      "fields_checked": 463
+     },
+     {
+      "drift": 0,
+      "records": 65,
+      "table_id": "tblzenPRNVV5O7lZP",
+      "fields_checked": 1040
+     }
+    ]
+   },
+   "findings": 0
+  },
+  {
+   "run_key": "RECON-20261001-051529-3d92",
+   "trigger": "manual",
+   "mode": "repair",
+   "status": "COMPLETED",
+   "started_at": "2026-09-30T19:15:29.940Z",
+   "finished_at": "2026-09-30T19:16:02.215Z",
+   "airtable": {
+    "tables": [
+     {
+      "drift": 0,
+      "records": 40,
+      "table_id": "tblHKX79FJFHn5FDc",
+      "fields_checked": 360
+     },
+     {
+      "drift": 0,
+      "records": 6,
+      "table_id": "tbloPJwCIcdIZQFVK",
+      "fields_checked": 36
+     },
+     {
+      "drift": 0,
+      "records": 52,
+      "table_id": "tblSYcCqId9wTMg3c",
+      "fields_checked": 520
+     },
+     {
+      "drift": 0,
+      "records": 35,
+      "table_id": "tbluIbl4zpMiAlMVw",
+      "fields_checked": 315
+     },
+     {
+      "drift": 0,
+      "records": 33,
+      "table_id": "tblvUPIoebC3zoacv",
+      "fields_checked": 463
+     },
+     {
+      "drift": 0,
+      "records": 65,
+      "table_id": "tblzenPRNVV5O7lZP",
+      "fields_checked": 1040
+     }
+    ]
+   },
+   "findings": 1
+  },
+  {
+   "run_key": "RECON-20261001-052016-4ce4",
+   "trigger": "manual",
+   "mode": "observe",
+   "status": "COMPLETED",
+   "started_at": "2026-09-30T19:20:16.080Z",
+   "finished_at": "2026-09-30T19:20:24.638Z",
+   "airtable": {
+    "tables": [
+     {
+      "drift": 0,
+      "records": 40,
+      "table_id": "tblHKX79FJFHn5FDc",
+      "fields_checked": 360
+     },
+     {
+      "drift": 0,
+      "records": 6,
+      "table_id": "tbloPJwCIcdIZQFVK",
+      "fields_checked": 36
+     },
+     {
+      "drift": 0,
+      "records": 52,
+      "table_id": "tblSYcCqId9wTMg3c",
+      "fields_checked": 520
+     },
+     {
+      "drift": 0,
+      "records": 35,
+      "table_id": "tbluIbl4zpMiAlMVw",
+      "fields_checked": 315
+     },
+     {
+      "drift": 0,
+      "records": 33,
+      "table_id": "tblvUPIoebC3zoacv",
+      "fields_checked": 463
+     },
+     {
+      "drift": 0,
+      "records": 65,
+      "table_id": "tblzenPRNVV5O7lZP",
+      "fields_checked": 1040
+     }
+    ]
+   },
+   "findings": 0
+  },
+  {
+   "run_key": "RECON-20261001-052233-a246",
+   "trigger": "manual",
+   "mode": "observe",
+   "status": "COMPLETED",
+   "started_at": "2026-09-30T19:22:33.304Z",
+   "finished_at": "2026-09-30T19:22:40.261Z",
+   "airtable": {
+    "tables": [
+     {
+      "drift": 0,
+      "records": 40,
+      "table_id": "tblHKX79FJFHn5FDc",
+      "fields_checked": 360
+     },
+     {
+      "drift": 0,
+      "records": 6,
+      "table_id": "tbloPJwCIcdIZQFVK",
+      "fields_checked": 36
+     },
+     {
+      "drift": 0,
+      "records": 52,
+      "table_id": "tblSYcCqId9wTMg3c",
+      "fields_checked": 520
+     },
+     {
+      "drift": 0,
+      "records": 35,
+      "table_id": "tbluIbl4zpMiAlMVw",
+      "fields_checked": 315
+     },
+     {
+      "drift": 0,
+      "records": 33,
+      "table_id": "tblvUPIoebC3zoacv",
+      "fields_checked": 463
+     },
+     {
+      "drift": 0,
+      "records": 65,
+      "table_id": "tblzenPRNVV5O7lZP",
+      "fields_checked": 1040
+     }
+    ]
+   },
+   "findings": 0
+  }
+ ],
+ "controlled_run_finding": [
+  {
+   "system": "AIRTABLE",
+   "entity_ref": "PRJ-2026-0029",
+   "external_id": "recVc7DCnAIOVG3Gm",
+   "field": "Planned Completion",
+   "expected": "2026-11-07",
+   "actual": "2026-11-05",
+   "classification": "STALE_EVENT",
+   "action": "NONE",
+   "detail": "RoofOps changed this record after the run read Airtable; the read is out of date and is re-checked next run",
+   "created_at": "2026-09-30T19:15:31.942Z"
+  }
+ ],
+ "prj29_events": [
+  {
+   "event_key": "airtable:achrbwFiSoL4y5RXM:txn80:recVc7DCnAIOVG3Gm",
+   "source": "airtable",
+   "actor_id": "usr7uCnNO15fCefbH",
+   "status": "SUCCEEDED",
+   "occurred_at": "2026-09-30T19:15:46.551Z",
+   "recorded_at": "2026-09-30T19:15:46.551Z",
+   "outcome": "APPLIED",
+   "reason": "✓ Planned Completion: 2026-11-05 → 2026-11-07 applied"
+  },
+  {
+   "event_key": "airtable:achrbwFiSoL4y5RXM:txn81:recVc7DCnAIOVG3Gm",
+   "source": "airtable",
+   "actor_id": "usr7uCnNO15fCefbH",
+   "status": "SUCCEEDED",
+   "occurred_at": "2026-09-30T19:20:42.226Z",
+   "recorded_at": "2026-09-30T19:20:42.226Z",
+   "outcome": "APPLIED",
+   "reason": "✓ Planned Completion: 2026-11-07 → 2026-11-05 applied"
+  }
+ ],
+ "prj29_audit": [
+  {
+   "seq": "84",
+   "actor_id": "usr7uCnNO15fCefbH",
+   "action": "project.planned_completion_date.changed",
+   "before_state": {
+    "planned_completion_date": "2026-11-05"
+   },
+   "after_state": {
+    "planned_completion_date": "2026-11-07"
+   },
+   "occurred_at": "2026-09-30T19:15:46.551Z"
+  },
+  {
+   "seq": "87",
+   "actor_id": "usr7uCnNO15fCefbH",
+   "action": "project.planned_completion_date.changed",
+   "before_state": {
+    "planned_completion_date": "2026-11-07"
+   },
+   "after_state": {
+    "planned_completion_date": "2026-11-05"
+   },
+   "occurred_at": "2026-09-30T19:20:42.226Z"
+  }
+ ],
+ "value_fingerprints": {
+  "before_repair": {
+   "taken_at": "2026-09-30T19:11:45.291Z",
+   "sha256": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6",
+   "values": 173
+  },
+  "after_repair": {
+   "taken_at": "2026-09-30T19:13:08.337Z",
+   "sha256": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6",
+   "values": 173
+  },
+  "after_live_test_and_restore": {
+   "taken_at": "2026-09-30T19:22:49.049Z",
+   "sha256": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6",
+   "values": 173
+  }
+ }
+}

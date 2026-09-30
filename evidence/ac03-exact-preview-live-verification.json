@@ -1,0 +1,131 @@
+{
+ "follow_up": "AC-03: an Airtable decision binds to the exact preview 04 wrote to the row and read back",
+ "migration": {
+  "file": "supabase/migrations/20261001020000_invoice_decision_bound_to_exact_preview.sql",
+  "checksum_prefix": "50dc7fdf",
+  "applied_to_hosted_alone": true
+ },
+ "n8n_04": {
+  "workflow": "YpmpJxQtSIBGSx6Z",
+  "previous_active_version": "cd0b7552-5ba1-4ca4-97af-5321f610def0",
+  "active_version": "fee94016-d2e6-45ed-ab7d-85a58713abe2",
+  "changes": [
+   "Compose writes Postgres's preview_marker (\"PREVIEW APR-… · #<16 hex of payload_hash>\")",
+   "new Record Preview Shown In Postgres after Verify (wf_invoice_preview_verified with the read-back text)",
+   "new Read Row Before Decide; Decide sends the row's Invoice Preview text as displayed_preview"
+  ]
+ },
+ "live_test": {
+  "record": "PRJ-2026-0005 (recyDSiQ5Ot1tdbVu)",
+  "steps": [
+   {
+    "step": "Airtable: Invoice Action = Prepare (txn98)",
+    "result": "APR-2026-0010 PENDING $17,831.91 at 22:28:35Z; the row shows \"PREVIEW APR-2026-0010 · #29299f54aa2fb08a …\"; 04 read it back and wf_invoice_preview_verified recorded it at 22:28:37Z (verified)"
+   },
+   {
+    "step": "The Invoice Preview text on the row is edited to \"Amount: $1,000.00 inc GST\" (a person tampering), then Invoice Action = Approve (txn101)",
+    "result": "REJECTED INVALID_STATE: \"This row does not show APR-2026-0010 ($17,831.91 inc GST) exactly as prepared …\". No FINAL invoice, no Xero outbox row, APR-2026-0010 still PENDING, exception EXC-0019"
+   },
+   {
+    "step": "Invoice Action = Prepare (txn103)",
+    "result": "ALREADY_PENDING: 04 wrote the true preview back (same APR, same marker); the first verified showing (22:28:37Z) is kept"
+   },
+   {
+    "step": "Invoice Action = Reject invoice (txn105): the accepting path of the binding without any Xero write",
+    "result": "REJECTED_BY_APPROVER: the row showed exactly APR-2026-0010, verified before the click. Nothing sent to Xero"
+   },
+   {
+    "step": "Approve for real",
+    "result": "not done: it would create a real Xero Demo Company draft; the accepting path is proven by the Reject above and offline by the guards"
+   }
+  ],
+  "final_state": {
+   "approvals": [
+    {
+     "approval_number": "APR-2026-0010",
+     "status": "REJECTED",
+     "amount": "17831.91",
+     "decision_reason": "Rejected in Airtable by <the approver>",
+     "created_utc": "22:28:35",
+     "shown": [
+      {
+       "event": "airtable:achAHQLGW3ueCycSt:txn103:recyDSiQ5Ot1tdbVu",
+       "record": "recyDSiQ5Ot1tdbVu",
+       "presented_utc": "22:28:37"
+      }
+     ]
+    }
+   ],
+   "finals": [],
+   "outbox": [],
+   "events": [
+    [
+     "txn98",
+     "invoice.preview_prepared",
+     "SUCCEEDED",
+     null,
+     "22:28:35"
+    ],
+    [
+     "txn98",
+     "invoice.prepare_requested",
+     "SUCCEEDED",
+     null,
+     "22:28:35"
+    ],
+    [
+     "txn101",
+     "invoice.approved",
+     "REJECTED",
+     "INVALID_STATE",
+     "22:29:45"
+    ],
+    [
+     "txn103",
+     "invoice.prepare_requested",
+     "SUCCEEDED",
+     null,
+     "22:32:36"
+    ],
+    [
+     "txn105",
+     "invoice.rejected",
+     "SUCCEEDED",
+     null,
+     "22:33:03"
+    ]
+   ],
+   "exceptions": [
+    "EXC-0019"
+   ]
+  },
+  "dry_run_after": [
+   "RECON-20261001-083334-7076  mode=observe  status=COMPLETED",
+   "│ 0       │ 'AIRTABLE'     │ 231     │ 0           │ 0        │ 0            │ 0         │ 231    │",
+   "│ 1       │ 'GOOGLE_DRIVE' │ 3       │ 0           │ 0        │ 0            │ null      │ 3      │",
+   "│ 2       │ 'XERO'         │ 1       │ 0           │ 0        │ 0            │ null      │ 1      │",
+   "No drift found.",
+   "│ 0       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/quote-events'           │ 'OK'  │ '163'      │ '0'    │",
+   "│ 1       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/project-invoice-events' │ 'OK'  │ '168'      │ '0'    │",
+   "│ 2       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/changes'                │ 'OK'  │ '168'      │ '0'    │"
+  ],
+  "integrity": [
+   "PASS    hash_chain_intact                  The audit trail hash chain verifies end to end",
+   "23 PASS, 3 WARNING, 0 FAIL  (hosted database)"
+  ],
+  "security": [
+   "PASS  workflow role: executable functions            18 items",
+   "all privilege checks pass"
+  ],
+  "value_fingerprint": {
+   "before_deploy": {
+    "count": 173,
+    "sha256": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6"
+   },
+   "after_deploy": {
+    "count": 173,
+    "sha256": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6"
+   }
+  }
+ }
+}

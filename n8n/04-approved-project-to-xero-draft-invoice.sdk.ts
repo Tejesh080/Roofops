@@ -82,9 +82,18 @@ const prepare = node({ type: 'n8n-nodes-base.postgres', version: 2.7, config: { 
     options: { queryReplacement: expr("{{ [ JSON.stringify($json.event), 'n8n:' + $execution.id, $json.project_record_id, $json.event.event_id ] }}") } },
   credentials: PG }, output: [{ r: { outcome: 'PREVIEW_READY' } }] });
 
+// AC-03: a decision carries the Invoice Preview text the row shows, read just before deciding.
+const readRow = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Read Row Before Decide',
+  retryOnFail: true, maxTries: 3, waitBetweenTries: 5000,
+  parameters: { method: 'GET', url: expr(PROJECTS + '/{{ $json.project_record_id }}'), authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi',
+    sendQuery: true, queryParameters: { parameters: [{ name: 'returnFieldsByFieldId', value: 'true' }] }, options: { timeout: 20000 } },
+  credentials: AIRTABLE }, output: [{ id: 'rec', fields: {} }] });
+
 const decide = node({ type: 'n8n-nodes-base.postgres', version: 2.7, config: { name: 'Decide Approval In Postgres',
   parameters: { operation: 'executeQuery', query: 'select wf_invoice_decide($1::jsonb, $2) as r, $3::text as project_record_id, $4::text as event_id',
-    options: { queryReplacement: expr("{{ [ JSON.stringify($json.event), 'n8n:' + $execution.id, $json.project_record_id, $json.event.event_id ] }}") } },
+    options: { queryReplacement: expr("{{ (() => { const d = $('Prepare Or Decide?').item.json; const shown = ($json.fields || {}).fldt9KIOPXh3c3pGU || ''; " +
+      "const ev = Object.assign({}, d.event, { payload: Object.assign({}, d.event.payload, { displayed_preview: shown }) }); " +
+      "return [ JSON.stringify(ev), 'n8n:' + $execution.id, d.project_record_id, d.event.event_id ]; })() }}") } },
   credentials: PG }, output: [{ r: { outcome: 'APPROVED' } }] });
 
 const advance = node({ type: 'n8n-nodes-base.postgres', version: 2.7, config: { name: 'Advance Payload Cursor', executeOnce: true,
@@ -135,7 +144,8 @@ const isSynced = xs.sync_status === 'SYNCED' && !!xs.xero_invoice_id;
 switch (j.outcome) {
   case 'PREVIEW_READY': case 'ALREADY_PENDING':
     status = 'Awaiting approval';
-    text = 'PREVIEW ' + r.approval_number + ' - awaiting approval by a finance approver\\n' + lines() + '\\nTo create it, set Invoice Action = Approve Xero draft invoice.';
+    // The marker (approval number and preview hash) comes from Postgres: an Approve binds to exactly this text (AC-03).
+    text = (r.preview_marker || ('PREVIEW ' + r.approval_number)) + ' - awaiting approval by a finance approver\\n' + lines() + '\\nTo create it, set Invoice Action = Approve Xero draft invoice.';
     f.fld5JDnWI3RFehQxA = Number(p.amount_inc_gst); break;
   case 'APPROVED': case 'ALREADY_PROCESSED':
     if (j.needs_xero && x.status === 'DONE') {
@@ -195,13 +205,20 @@ if (problems.length) throw new Error('Airtable project ' + want.project_record_i
 return { json: { verified: true, outcome: want.outcome, project: want.project_number, invoice_status: want.invoice_status, xero: want.xero || null, event_id: want.event_id } };` } },
   output: [{ verified: true }] });
 
+// AC-03: the verified read-back is what counts as "shown on this row" (only a preview with its exact marker and amount).
+const shown = node({ type: 'n8n-nodes-base.postgres', version: 2.7, config: { name: 'Record Preview Shown In Postgres',
+  parameters: { operation: 'executeQuery', query: 'select wf_invoice_preview_verified($1, $2, $3) as shown',
+    options: { queryReplacement: expr("{{ [ $('Compose Airtable Invoice Fields').item.json.event_id, $('Compose Airtable Invoice Fields').item.json.project_record_id, " +
+      "(($('Read Back Project Invoice Fields').item.json.fields || {}).fldt9KIOPXh3c3pGU) || '' ] }}") } },
+  credentials: PG }, output: [{ shown: { recorded: true } }] });
+
 export default workflow('roofops-approved-project-to-xero-draft', '[RoofOps] 04 Approved Project → Xero Draft Invoice')
   .add(ping).to(validatePing).to(loadCursor).to(listPayloads).to(extract).to(anyEvents
-    .onTrue(byKind.onCase(0, prepare).onCase(1, decide))
+    .onTrue(byKind.onCase(0, prepare).onCase(1, readRow.to(decide)))
     .onFalse(advance))
   .add(prepare).to(advance)
   .add(decide).to(advance)
   .add(prepare).to(normalise)
   .add(decide).to(normalise)
   .add(normalise).to(needsXero.onCase(0, runXero.to(compose)).onCase(1, compose))
-  .add(compose).to(writeFields).to(readFields).to(verify);
+  .add(compose).to(writeFields).to(readFields).to(verify).to(shown);

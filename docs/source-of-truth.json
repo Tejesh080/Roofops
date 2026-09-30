@@ -27,7 +27,7 @@
       "owner": "POSTGRES",
       "editable_in": "Airtable Invoice Action (04) / dashboard prepare",
       "change_path": "wf_invoice_prepare / wf_invoice_decide",
-      "validation": "state_transitions(approval); mapped approver; current hash; an Airtable decision binds to the sending record's project and to the preview a Prepare showed on that row before the decision",
+      "validation": "state_transitions(approval); mapped approver; current hash; an Airtable decision binds to the sending record's project and to the exact preview (marker, hash, amount) 04 wrote to that row and read back before the decision",
       "event_generated": "approval.approve",
       "downstream": "invoices, Xero",
       "readback": "—",
@@ -552,7 +552,7 @@
       "validation": "text",
       "event_generated": "—",
       "downstream": "Airtable only",
-      "readback": "04 read-back",
+      "readback": "04 read-back; wf_invoice_preview_verified records the verified preview",
       "reconcile": "IGNORE",
       "ai_visible": true,
       "value_type": "text"

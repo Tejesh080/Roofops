@@ -28,7 +28,7 @@ Airtable is a projection RoofOps writes and repairs. Google Drive and Xero hold 
 
 | Field | Canonical | Owner | Editable where | Change path | Validation | Event | Downstream | Read-back | Reconcile | AI |
 |---|---|---|---|---|---|---|---|---|---|---|
-| status | approvals.status | `POSTGRES` | Airtable Invoice Action (04) / dashboard prepare | wf_invoice_prepare / wf_invoice_decide | state_transitions(approval); mapped approver; current hash; an Airtable decision binds to the sending record's project and to the preview a Prepare showed on that row before the decision | approval.approve | invoices, Xero | — | `IGNORE` | yes |
+| status | approvals.status | `POSTGRES` | Airtable Invoice Action (04) / dashboard prepare | wf_invoice_prepare / wf_invoice_decide | state_transitions(approval); mapped approver; current hash; an Airtable decision binds to the sending record's project and to the exact preview (marker, hash, amount) 04 wrote to that row and read back before the decision | approval.approve | invoices, Xero | — | `IGNORE` | yes |
 
 ## automation
 
@@ -87,7 +87,7 @@ Airtable is a projection RoofOps writes and repairs. Google Drive and Xero hold 
 | Drive Folder<br>`fldgVDT29UOOOtlqO` | external_links GOOGLE_DRIVE Folder (verified) | `DRIVE` | none | 02 creates, 03 writes after read-back | must equal the verified folder URL | drive.project_folder.verified | dashboard, Copilot | 03 read-back; reconciliation (Drive + Airtable) | `REPAIR_AIRTABLE` | yes |
 | Invoice Action<br>`fldYnINTdtOckOzK4` | approvals / invoices (via 04) | `ACTION` | Airtable Projects.Invoice Action | webhook → n8n 04 → wf_invoice_prepare / wf_invoice_decide | mapped approver for Approve | invoice.prepare_requested / invoice.approved | approvals, invoices, Xero | 04 clears + read-back | `IGNORE` | yes |
 | Invoice Amount (inc GST)<br>`fld5JDnWI3RFehQxA` | invoices.total_inc_gst / preview amount | `WORKFLOW` | none | written by 04 | projection | — | Airtable only | 04 read-back; reconciliation | `PROJECTION` | yes |
-| Invoice Preview<br>`fldt9KIOPXh3c3pGU` | approvals.action_payload | `WORKFLOW` | none | written by 04 | text | — | Airtable only | 04 read-back | `IGNORE` | yes |
+| Invoice Preview<br>`fldt9KIOPXh3c3pGU` | approvals.action_payload | `WORKFLOW` | none | written by 04 | text | — | Airtable only | 04 read-back; wf_invoice_preview_verified records the verified preview | `IGNORE` | yes |
 | Invoice Status<br>`fldPuGgo27oWLKB5R` | approvals + invoices (derived) | `WORKFLOW` | none | written by 04; repaired by reconciliation when canonical state is stable | projection of canonical invoice state | — | Airtable only | 04 read-back; reconciliation | `PROJECTION` | yes |
 | Material Review Task<br>`fld93YzhrpOVIviRY` | tasks (MATERIAL_REVIEW) | `WORKFLOW` | none | written by 03 at project creation | n/a | task.create | Airtable only | 03 read-back | `IGNORE` | yes |
 | Project Number<br>`fldhhnQXlbuFaveK3` | projects.project_number | `POSTGRES` | none | created by wf_quote_accepted | unique PRJ-YYYY-NNNN | project.created | Airtable, Drive folder name, Xero reference | 03 read-back | `REPAIR_AIRTABLE` | yes |

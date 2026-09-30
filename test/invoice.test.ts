@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Db } from '../src/db/db.js';
 import { importBundle } from '../src/import/importer.js';
+import { InvoiceRows } from './helpers/airtable04.js';
 import { TARGETS, col, migratedDb } from './helpers/db.js';
 
 type Result = Record<string, unknown> & { outcome?: string };
@@ -15,7 +16,15 @@ function ev(eventId: string, type: string, project: string, actor = APPROVER, ex
   return { event_id: eventId, event_type: type, source: 'airtable', actor_id: actor, occurred_at: new Date(Date.now() + 1000).toISOString(),
            payload: { project_number: project, airtable_record_id: recFor(project), ...extra } };
 }
+/** The Airtable rows as n8n 04 leaves them; Airtable invoice events go through 04's real contract (test/helpers/airtable04.ts). */
+const rows = new InvoiceRows();
 async function call(db: Db, fn: string, ...args: unknown[]): Promise<Result> {
+  const e = args[0] as Parameters<InvoiceRows['send']>[1] & { source?: string };
+  if ((fn === 'wf_invoice_prepare' || fn === 'wf_invoice_decide') && args.length === 1 && e.source === 'airtable') return rows.send(db, e, 'n8n:test');
+  return callDirect(db, fn, ...args);
+}
+/** Straight to Postgres, without n8n 04 around it (validation of the function itself). */
+async function callDirect(db: Db, fn: string, ...args: unknown[]): Promise<Result> {
   const params = args.map((_, i) => `$${String(i + 1)}`).join(', ');
   const [r] = await db.query<{ r: Result }>(`select ${fn}(${params}) as r`, args.map((a) => (a !== null && typeof a === 'object' ? JSON.stringify(a) : a)));
   return r!.r;
@@ -84,7 +93,7 @@ describe.each(TARGETS)('Approved project -> Xero draft invoice control layer [%s
     });
 
     it('rejects a malformed event without touching anything', async () => {
-      const r = await call(db, 'wf_invoice_prepare', { ...ev('EVT-I-MAL', 'invoice.prepare_requested', 'PRJ-2026-0004'), actor_id: '' });
+      const r = await callDirect(db, 'wf_invoice_prepare', { ...ev('EVT-I-MAL', 'invoice.prepare_requested', 'PRJ-2026-0004'), actor_id: '' });
       expect(r).toMatchObject({ outcome: 'INVALID_EVENT', issues: ['actor_id: required (who asked)'] });
     });
   });
@@ -106,6 +115,8 @@ describe.each(TARGETS)('Approved project -> Xero draft invoice control layer [%s
     });
 
     it('approval creates ONE RoofOps FINAL invoice whose derived totals equal the preview, and queues ONE Xero draft', async () => {
+      // The refusal above replaced the preview on the row with "Not authorised": Prepare shows the same preview again.
+      expect(await call(db, 'wf_invoice_prepare', ev('EVT-I-PREP-4', 'invoice.prepare_requested', 'PRJ-2026-0004'))).toMatchObject({ outcome: 'ALREADY_PENDING' });
       const r = await call(db, 'wf_invoice_decide', ev('EVT-I-APR-1', 'invoice.approved', 'PRJ-2026-0004'));
       expect(r).toMatchObject({ outcome: 'APPROVED', decided_by: 'Demo Finance Approver', amount_inc_gst: 14664.49 });
       expect(await col(db, `select invoice_type || '|' || status || '|' || sync_status || '|' || total_inc_gst || '|' || gst_amount v from invoices where invoice_number = '${r.invoice_number as string}'`))

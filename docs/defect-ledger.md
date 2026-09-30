@@ -12,7 +12,7 @@ instruction).
 | AC-01 | P0 | The reconciler replays an Airtable read that is older than a webhook edit, reverting the staff member's edit | **Yes**, offline (PGlite and Postgres 17) | Probe `ws07/p2_stale_snapshot.mts` plus 2 failing tests (below) | Replays had no observation time and were exempt from the webhook path's stale and compare-and-set checks | An Airtable read is evidence only if canonical has not changed since the read | `test/state-integrity.test.ts:376`, `:396`, plus race tests `:485`, `:520` (two Postgres connections) | Migration `20260930000000_reconcile_never_replays_stale_reads.sql` | Migration chain clean from zero; 314 tests pass on PGlite and Postgres 17; lint, typecheck clean; integrity 0 FAIL on canonical local and hosted; **deployed to hosted**; hosted dry-run 0 drift | Done 2026-10-01 (§12): hosted repair run, then the controlled live test on PRJ-2026-0029, with [evidence/ac01-live-verification.json](../evidence/ac01-live-verification.json) | **FIXED** |
 | AC-02 | P0 | A missing or reshaped Airtable field is replayed as a staff edit | **Yes**, offline (PGlite and Postgres 17) | 5 failing tests that emulate real Airtable reads: keys omitted, dates as UTC instants, one field changed on 8 records (below) | The reconciler read an absent key as "blank", compared date instants as text and cast them to their UTC date, and had no notion of a field-level change | A field missing from a whole read is not evidence; a date is the Brisbane business day it denotes; one field changing on many records at once is not N staff edits | `test/state-integrity.test.ts:427`, `:449`, `:458`, `:473`, `:490`, plus bulk-edit tests `:511` (legitimate, via webhook) and `:535` (missed, ambiguous) | Migration `20260930010000_reconcile_field_shape_guards.sql` | Chain from zero on PostgreSQL 17.11; 328 tests pass on PGlite and Postgres 17; red without the fix, green with it; each part ablated turns its own tests red; lint, typecheck clean; local integrity 0 FAIL; grants checked | Done 2026-10-01 (§10–§11): deployed alone; hosted dry-run 0 drift, 0 findings; integrity 0 FAIL; proven cell by cell against an independent read of the real base, with [evidence/ac02-live-verification.json](../evidence/ac02-live-verification.json) | **FIXED** |
 | AC-10 | P0 | 06 applies its own stale correction back as a staff edit | **Yes**, offline (PGlite and Postgres 17), with a harness that replays 06's real batch order, Airtable's echo transactions and the cursor | Ping-pong: after one transient read-back failure and a staff edit, every run applied RoofOps's own write, flipping canonical, and the cursor never advanced. Related: a staff member's fix of their own refused edit was refused as a conflict (below) | A correction is computed when 06 processes an item but written after later items; a landed-but-overtaken write never verifies; its echo passes compare-and-set; compare-and-set judged the staff member's `previous` against canonical, not against what Airtable showed | A value RoofOps wrote is never applied back as a staff edit; after the staff member's last edit, Airtable and canonical converge and every run advances the cursor | `test/state-integrity.test.ts:628`, `:650`, `:663`, `:685`, guard `:707`, echo-window tests `:729`, `:747`, retention `:764`; harness `Airtable06` `:62` | Migration `20261001000000_roofops_writes_are_not_staff_edits.sql` (+ one line in n8n 06, not yet deployed) | Chain from zero; 344 tests pass on PGlite and Postgres 17; red without the fix (7 of 8; the guard stays green); each of 7 parts ablated turns its own tests red; lint, typecheck clean; local integrity 0 FAIL; grants and RLS checked | Done 2026-10-01 (§10–§11): deployed alone; dry-run 0 drift, integrity 0 FAIL, security all pass. The live test on PRJ-2026-0029 reproduced the stale write for real and it converged: the fix was applied, the echo ignored, the cursor consumed, 0 drift, the hash chain intact, and the value restored. [evidence/ac10-live-verification.json](../evidence/ac10-live-verification.json). The 06 `origin` line is live and verified (§12) | **FIXED** (origin propagation live 2026-10-01, §12) |
-| AC-03 | P0 | Airtable Approve is not bound to the row or preview the approver saw | **Yes**, offline (PGlite and Postgres 17), with events shaped exactly as n8n 04 sends them | 3 failing tests: an Approve approved a Copilot re-prepared preview never shown in Airtable, another project's preview (edited Project Number cell), and a preview prepared after the click | 04's decision names no approval; `wf_invoice_decide` found the project by the editable Project Number text and decided whatever was PENDING at processing time | An Airtable decision applies only to the sending record's project and to the preview a Prepare showed on that row before the decision; other sources must name the approval; a sent hash must match | `test/invoice-approval-binding.test.ts:68`, `:98`, `:117`, `:129`, guards `:85`, `:108` | Migration `20261001010000_invoice_decision_bound_to_row_and_preview.sql` (Postgres only; n8n unchanged) | Chain from zero; 356 tests pass on PGlite and Postgres 17; red without the fix (4 of 6; both guards green); each of 5 rules ablated turns its own test red; lint, typecheck clean; local integrity 0 FAIL; grants and RLS checked | Done 2026-10-01 (§10–§11): deployed alone; dry-run 0 drift, integrity 0 FAIL, security all pass. On PRJ-2026-0005 an Approve of a Copilot preview never shown on the row was refused, with nothing approved; Prepare then showed the same preview; the state was reset and 0 drift remained. [evidence/ac03-live-verification.json](../evidence/ac03-live-verification.json) | **FIXED** |
+| AC-03 | P0 | Airtable Approve is not bound to the row or preview the approver saw | **Yes**, offline (PGlite and Postgres 17), with events shaped exactly as n8n 04 sends them | 3 failing tests: an Approve approved a Copilot re-prepared preview never shown in Airtable, another project's preview (edited Project Number cell), and a preview prepared after the click | 04's decision names no approval; `wf_invoice_decide` found the project by the editable Project Number text and decided whatever was PENDING at processing time | An Airtable decision applies only to the sending record's project and to the preview a Prepare showed on that row before the decision; other sources must name the approval; a sent hash must match | `test/invoice-approval-binding.test.ts:68`, `:98`, `:117`, `:129`, guards `:85`, `:108` | Migration `20261001010000_invoice_decision_bound_to_row_and_preview.sql` (Postgres only; n8n unchanged) | Chain from zero; 356 tests pass on PGlite and Postgres 17; red without the fix (4 of 6; both guards green); each of 5 rules ablated turns its own test red; lint, typecheck clean; local integrity 0 FAIL; grants and RLS checked | Done 2026-10-01 (§10–§11): deployed alone; dry-run 0 drift, integrity 0 FAIL, security all pass. On PRJ-2026-0005 an Approve of a Copilot preview never shown on the row was refused, with nothing approved; Prepare then showed the same preview; the state was reset and 0 drift remained. [evidence/ac03-live-verification.json](../evidence/ac03-live-verification.json) | **FIXED** (exact-preview binding live 2026-10-01, §13) |
 | AC-05 | P0 | Voiding an invoice does not cancel its queued Xero write | – | – | – | – | – | – | – | – | Not started |
 | AC-06 | P0 | Unpinning the Xero tenant is not a kill switch | – | – | – | – | – | – | – | – | Not started |
 | AC-04 | P0 | A Xero draft that exists is recorded as never created | – | – | – | – | – | – | – | – | Not started |
@@ -1072,3 +1072,82 @@ displayed approval number (optional hardening).
    5. Otherwise `npm run demo:reset` withdraws the pending preview. Then run the dry-run and integrity checks
       (`hash_chain_intact`).
 3. **Commit:** migration, tests, contract docs, Copilot text, demo script and ledger, separately from other defects.
+
+### 13. Follow-up: bound to the exact preview on the row (2026-10-01, owner-instructed)
+
+**Why.** §7's "known limit" was real, and wider than timing. 20261001010000 counted a preview as shown when Postgres
+answered the Prepare and never looked at the row itself. Reproduced offline (a temporary shim let the new tests run
+against the old code; red run: 6 failed, each `expected { outcome: 'APPROVED' } to match { outcome: 'INVALID_STATE' }`).
+Each of these approved:
+
+- **`:147`** a preview 04 never wrote to the row (the Airtable write failed);
+- **`:157`** a preview whose text a person edited on the row after it was shown (another amount);
+- **`:188`** a preview a later outcome had already replaced on the row ("Not authorised").
+
+**Fix.** Migration `20261001020000_invoice_decision_bound_to_exact_preview.sql`, plus three small n8n 04 changes.
+
+1. **The marker.** `wf_invoice_prepare` returns `preview_marker` = `PREVIEW APR-… · #<first 16 hex of payload_hash>`,
+   and 04's Compose writes it as the first words of Invoice Preview.
+2. **A showing counts only when 04 proves it.** After the read-back, a new 04 step, "Record Preview Shown In
+   Postgres", calls `wf_invoice_preview_verified(event, record, read-back text)`. It records the preview as shown
+   (`approval_presentations.verified`, at the verified time) only if all of these hold:
+   - the text carries that approval's marker and exact amount line;
+   - the approval is PENDING;
+   - the row is linked to the approval's project;
+   - an Airtable Prepare on that same row returned that approval.
+
+   Nothing is recorded at prepare time any more.
+3. **A decision carries what the row shows.** A new 04 step, "Read Row Before Decide", reads the row, and Decide sends
+   its Invoice Preview text as `displayed_preview`. `wf_invoice_decide` approves or rejects only if every one of these
+   holds:
+   - the record maps to the canonical project (§7);
+   - the approval is still PENDING;
+   - a verified showing exists on that row, earlier than the click;
+   - the text shows exactly that approval's marker and amount.
+
+   The refusal names what to do next (Prepare shows it again, no new approval).
+
+**Tests.** `test/invoice-approval-binding.test.ts` has 10 tests, including the 3 above and `:168`: the read-back is
+refused for no preview, another amount, another hash, another row, or no such Prepare. The 04 contract is simulated
+once, in `test/helpers/airtable04.ts`, and used by the invoice, binding and demo tests. Existing fixtures changed as
+follows, with no assertion changed:
+
+- **`test/invoice.test.ts`:**
+  - Airtable events go through the 04 simulation;
+  - the malformed-event validation calls Postgres directly;
+  - after a "not a mapped approver" refusal, which replaces the preview on the row, the approver presses Prepare
+    again before approving, as the refusal says.
+- **`test/schema.test.ts`:** the new 04 entry point is added to the explicit workflow allow-list.
+
+**Ablations** (`test/invoice-approval-binding.test.ts`):
+
+| Ablation | Red |
+|---|---|
+| A: no check of the row's text at the decision | `:157`, `:188` |
+| B: showing recorded at prepare time | `:168` (`:147` stays refused by the text check: two independent defences) |
+| C: read-back not checked for marker and amount | `:168` |
+| D: read-back not tied to a Prepare on that row | `:168` |
+
+**Verification.**
+- Full suite 364 passed at this commit's stage; lint and typecheck clean.
+- Fresh PostgreSQL 17 chain: 22 applied and 0 skipped; a re-run applied 0.
+- Repo, local and hosted aligned through AC-03; the version is unique.
+
+**Deploy.** The migration went to hosted alone (checksum `50dc7fdf…`), then 04: active version `fee94016…` replaced
+`cd0b7552…`. The fingerprint was unchanged.
+
+**Live, on PRJ-2026-0005** ([evidence/ac03-exact-preview-live-verification.json](../evidence/ac03-exact-preview-live-verification.json)):
+
+| Step | Observed |
+|---|---|
+| Prepare | APR-2026-0010 prepared at 22:28:35Z. The row shows `PREVIEW APR-2026-0010 · #29299f54aa2fb08a` and $17,831.91. It was recorded as shown at 22:28:37Z, after 04's read-back |
+| The preview text is edited on the row to $1,000.00, then Approve | **Refused** "does not show APR-2026-0010 ($17,831.91 inc GST) exactly as prepared". No invoice and no Xero write; the approval still PENDING (EXC-0019) |
+| Prepare | `ALREADY_PENDING`: the true preview is back on the row |
+| Reject | `REJECTED_BY_APPROVER`. This is the binding's accepting path end to end: marker written, read-back verified, row read before deciding, text sent. It runs without any Xero write; a real Approve would create a Demo draft and was not requested |
+| After | Dry-run `RECON-20261001-083334-7076`: 0 drift. Integrity 0 FAIL, with the hash chain intact. Security all pass (the workflow role has 18 functions). Grants: only `roofops_workflow` can call `wf_invoice_preview_verified` |
+
+**Remaining limit.** A decision is bound to the text 04 reads from the row when it processes the decision (seconds
+after the click), together with a verified showing before the click. The webhook payload itself does not include the
+preview cell (Airtable webhook specs cannot be changed without recreating the webhook). If the row changed between
+the click and the read, the decision is refused, never widened: the read text must show exactly the pending approval,
+verified before the click.

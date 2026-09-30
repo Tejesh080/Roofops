@@ -8,6 +8,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Db } from '../src/db/db.js';
 import { importBundle } from '../src/import/importer.js';
+import { InvoiceRows } from './helpers/airtable04.js';
 import { TARGETS, col, migratedDb } from './helpers/db.js';
 
 type Result = Record<string, unknown> & { outcome?: string };
@@ -23,13 +24,16 @@ const row = async (db: Db, project: string) => (await db.query<{ rec: string; id
   `select l.external_id rec, p.id::text id from projects p join external_links l on l.provider = 'AIRTABLE' and l.entity_type = 'project'
      and l.external_type = 'Record' and l.entity_id = p.id where p.project_number = $1`, [project]))[0]!;
 
-/** What n8n 04 sends when someone sets Invoice Action on an Airtable Projects row. */
-async function airtable(db: Db, type: string, onRowOf: string, o: { cell?: string; at?: Date } = {}) {
+/** The Airtable rows as n8n 04 leaves them: what each row's Invoice Preview shows (test/helpers/airtable04.ts). */
+const rows = new InvoiceRows();
+
+/** What n8n 04 sends when someone sets Invoice Action on an Airtable Projects row, and 04's write-back afterwards. */
+async function airtable(db: Db, type: string, onRowOf: string, o: { cell?: string; at?: Date; actor?: string; writeFails?: boolean } = {}) {
   const r = await row(db, onRowOf);
   const id = `airtable:achINVOICEHOOK001:txn${String(++seq)}:${r.rec}`;
-  const event = { event_id: id, correlation_id: id, event_type: type, source: 'airtable', actor_id: APPROVER, actor_name: 'Demo Finance Approver',
-                  occurred_at: (o.at ?? new Date()).toISOString(), payload: { project_number: o.cell ?? onRowOf, airtable_record_id: r.rec, project_uuid: r.id } };
-  return call(db, type === 'invoice.prepare_requested' ? 'wf_invoice_prepare' : 'wf_invoice_decide', event, `n8n:${String(seq)}`);
+  return rows.send(db, { event_id: id, correlation_id: id, event_type: type, source: 'airtable', actor_id: o.actor ?? APPROVER, actor_name: 'Demo Finance Approver',
+    occurred_at: (o.at ?? new Date()).toISOString(), payload: { project_number: o.cell ?? onRowOf, airtable_record_id: r.rec, project_uuid: r.id } },
+  `n8n:${String(seq)}`, o.writeFails);
 }
 /** The dashboard / Copilot prepare_invoice tool (web/lib/queries.ts prepareInvoice). */
 const copilot = (db: Db, project: string) => call(db, 'wf_invoice_prepare', { event_id: `dashboard:copilot:${String(++seq)}`, event_type: 'invoice.prepare_requested',
@@ -136,5 +140,59 @@ describe.each(TARGETS)('AC-03: an Airtable Approve approves only the preview sho
       payload: { project_number: p, approval_number: pending, payload_hash: 'not-the-preview-hash' } }, 'ops');
     expect(wrongHash).toMatchObject({ outcome: 'INVALID_STATE', approval_number: pending, nothing_approved: true });
     expect([await finals(db, p), await xeroWrites(db, p), await approvals(db, p)]).toEqual([[], [], [`${pending!} PENDING`]]);
+  });
+
+  // Exact-preview binding: Postgres answering a Prepare is not the approver seeing it. Only the preview 04 wrote to the
+  // row and read back counts, and a decision must carry exactly that preview as the row shows it.
+  it('a preview Postgres answered but 04 never wrote to the row (the Airtable write failed) is not approvable', async () => {
+    const p = 'PRJ-2026-0004';
+    await withdraw(db, p);
+    const unseen = await airtable(db, 'invoice.prepare_requested', p, { writeFails: true });
+    expect(unseen).toMatchObject({ outcome: 'PREVIEW_READY' });
+    const r = await airtable(db, 'invoice.approved', p, { at: new Date(Date.now() + 1000) });
+    expect(r).toMatchObject({ outcome: 'INVALID_STATE', approval_number: unseen.approval_number, nothing_approved: true });
+    expect([await finals(db, p), await xeroWrites(db, p), await approvals(db, p).then((a) => a.at(-1))]).toEqual([[], [], `${unseen.approval_number as string} PENDING`]);
+  });
+
+  it('a preview whose text was edited on the row after it was shown (another amount) is not approvable', async () => {
+    const p = 'PRJ-2026-0005';
+    await withdraw(db, p);
+    const shown = await airtable(db, 'invoice.prepare_requested', p);
+    const rec = (await row(db, p)).rec;
+    rows.text.set(rec, rows.shown(rec).replace(/Amount: \$[\d,.]+ inc GST/, 'Amount: $1,000.00 inc GST'));   // a person edits the cell
+    const r = await airtable(db, 'invoice.approved', p, { at: new Date(Date.now() + 1000) });
+    expect(r).toMatchObject({ outcome: 'INVALID_STATE', approval_number: shown.approval_number, nothing_approved: true });
+    expect([await finals(db, p), await xeroWrites(db, p)]).toEqual([[], []]);
+  });
+
+  it('04\'s read-back is recorded as shown only when it shows the exact pending preview, from a Prepare on that same row', async () => {
+    const p = 'PRJ-2026-0004';
+    await withdraw(db, p);
+    const shown = await airtable(db, 'invoice.prepare_requested', p, { writeFails: true });   // nothing recorded yet
+    const [rec, other] = [(await row(db, p)).rec, (await row(db, 'PRJ-2026-0005')).rec];
+    const eventKey = (await col(db, `select e.event_key v from automation_events e where e.event_type = 'invoice.prepare_requested' and e.source = 'airtable'
+                                     and e.metadata ->> 'airtable_record_id' = $1 order by e.recorded_at desc limit 1`, [rec]))[0]!;
+    const good = `${String(shown.preview_marker)} - awaiting approval\nAmount: $14,664.49 inc GST  (GST $1,333.14)`;
+    const verified = async (key: string, r: string, text: string) =>
+      (await db.query<{ v: Result }>(`select wf_invoice_preview_verified($1, $2, $3) v`, [key, r, text]))[0]!.v;
+    expect(await verified(eventKey, rec, 'Not eligible: stale. Nothing was sent to Xero.')).toMatchObject({ recorded: false });            // no preview
+    expect(await verified(eventKey, rec, good.replace('$14,664.49', '$1,000.00'))).toMatchObject({ recorded: false });                // another amount
+    expect(await verified(eventKey, rec, good.replace(/#[0-9a-f]{16}/, '#0000000000000000'))).toMatchObject({ recorded: false });   // another hash
+    expect(await verified(eventKey, other, good)).toMatchObject({ recorded: false });                                                  // another row
+    expect(await verified('airtable:achINVOICEHOOK001:txn9999:x', rec, good)).toMatchObject({ recorded: false });                      // no such Prepare
+    expect(await col(db, `select count(*)::text v from approval_presentations where approval_id = (select id from approvals where approval_number = $1)`,
+                     [shown.approval_number])).toEqual(['0']);
+    expect(await verified(eventKey, rec, good)).toMatchObject({ recorded: true, approval_number: shown.approval_number });
+  });
+
+  it('when the row no longer shows the preview (a later outcome replaced it), Approve approves nothing', async () => {
+    const p = 'PRJ-2026-0002';
+    await withdraw(db, p);
+    const shown = await airtable(db, 'invoice.prepare_requested', p);
+    expect(await airtable(db, 'invoice.approved', p, { actor: 'usrSOMEONEELSE001', at: new Date(Date.now() + 1000) }))
+      .toMatchObject({ outcome: 'PERMISSION_DENIED' });                    // 04 now shows "Not authorised" on the row
+    const r = await airtable(db, 'invoice.approved', p, { at: new Date(Date.now() + 2000) });
+    expect(r).toMatchObject({ outcome: 'INVALID_STATE', approval_number: shown.approval_number, nothing_approved: true });
+    expect([await finals(db, p), await xeroWrites(db, p)]).toEqual([[], []]);
   });
 });

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Db } from '../src/db/db.js';
 import { importBundle } from '../src/import/importer.js';
 import { demoReset, demoStatus } from '../src/demo/scenarios.js';
+import { InvoiceRows } from './helpers/airtable04.js';
 import { TARGETS, col, migratedDb } from './helpers/db.js';
 
 const prepare = (db: Db, id: string, project: string) => db.query(`select wf_invoice_prepare($1::jsonb, 'test')`, [JSON.stringify({
@@ -48,11 +49,12 @@ describe.each(TARGETS)('interview demo status and reset [%s]', (target) => {
     await db.exec(`insert into external_links (provider, entity_type, entity_id, external_type, external_id, last_synced_at, verified_at)
                    select 'AIRTABLE', 'project', id, 'Record', 'recDEMOPRJ000005', now(), now() from projects where project_number = 'PRJ-2026-0005'`);
     const row = { project_number: 'PRJ-2026-0005', airtable_record_id: 'recDEMOPRJ000005' };
-    const [shown] = await db.query<{ r: { outcome: string } }>(`select wf_invoice_prepare($1::jsonb, 'test') r`, [JSON.stringify({ event_id: 'demo:t4p',
-      event_type: 'invoice.prepare_requested', source: 'airtable', actor_id: 'usr7uCnNO15fCefbH', occurred_at: new Date().toISOString(), payload: row })]);
-    expect(shown!.r.outcome).toBe('ALREADY_PENDING');
-    await db.query(`select wf_invoice_decide($1::jsonb, 'test')`, [JSON.stringify({ event_id: 'demo:t4', event_type: 'invoice.approved', source: 'airtable',
-      actor_id: 'usr7uCnNO15fCefbH', occurred_at: new Date(Date.now() + 1000).toISOString(), payload: row })]);
+    const rows = new InvoiceRows();                          // n8n 04 writes the preview to the row and reads it back
+    const shown = await rows.send(db, { event_id: 'demo:t4p', event_type: 'invoice.prepare_requested', source: 'airtable',
+      actor_id: 'usr7uCnNO15fCefbH', occurred_at: new Date().toISOString(), payload: row }, 'test');
+    expect(shown.outcome).toBe('ALREADY_PENDING');
+    expect(await rows.send(db, { event_id: 'demo:t4', event_type: 'invoice.approved', source: 'airtable',
+      actor_id: 'usr7uCnNO15fCefbH', occurred_at: new Date(Date.now() + 1000).toISOString(), payload: row }, 'test')).toMatchObject({ outcome: 'APPROVED' });
     expect(await finance(db)).toMatchObject({ status: 'ALREADY RUN', resettable: false });
     expect(await demoReset(db)).toEqual({ withdrawn: [], notes: [] });
     expect(await col(db, `select count(*)::text v from invoices i join projects p on p.id = i.project_id where p.project_number = 'PRJ-2026-0005' and i.invoice_type = 'FINAL'`)).toEqual(['1']);

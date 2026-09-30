@@ -118,20 +118,38 @@ const targets = node({ type: 'n8n-nodes-base.postgres', version: 2.7, config: { 
     options: { queryReplacement: expr("{{ [ $('Start Reconciliation Run').first().json.r.run_key ] }}") } }, credentials: PG },
   output: [{ t: { drive: [], xero: [] } }] });
 
-const findRoot = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Find Drive Root', executeOnce: true,
+// A network error comes out as an item too, so Postgres can decide on it like on any other answer.
+const findRoot = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Find Drive Root', executeOnce: true, onError: 'continueRegularOutput',
   parameters: { method: 'GET', url: 'https://www.googleapis.com/drive/v3/files', authentication: 'predefinedCredentialType', nodeCredentialType: 'googleDriveOAuth2Api',
     sendQuery: true, queryParameters: { parameters: [
       { name: 'q', value: "appProperties has { key='roofops_role' and value='root' } and mimeType='application/vnd.google-apps.folder' and trashed=false" },
       { name: 'fields', value: 'files(id)' }] }, options: RAW }, credentials: DRIVE }, output: [{ statusCode: 200, body: { files: [{ id: 'root' }] } }] });
 
+// Postgres decides: ok | retry after wait_seconds (Retry-After, else bounded exponential backoff with jitter, capped
+// attempts) | fail (a refusal, or retries exhausted). Only this one Drive call is repeated; nothing before it is redone.
+const decideDrive = node({ type: 'n8n-nodes-base.postgres', version: 2.7, config: { name: 'Decide Drive Answer',
+  parameters: { operation: 'executeQuery', query: 'select wf_drive_call_decision($1::int, $2::jsonb, $3::jsonb, $4::int) as d',
+    options: { queryReplacement: expr("{{ [ String($json.statusCode || 0), JSON.stringify($json.headers || {}), JSON.stringify($json.body || {}), String($runIndex + 1) ] }}") } },
+  credentials: PG }, output: [{ d: { action: 'ok', root_id: 'root' } }] });
+
+const driveRoute = switchCase({ version: 3.4, config: { name: 'Drive Answer',
+  parameters: { mode: 'expression', numberOutputs: 3, output: expr("{{ ({ ok: 0, retry: 1 })[$json.d.action] ?? 2 }}") } } });
+
+const waitDrive = node({ type: 'n8n-nodes-base.wait', version: 1.1, config: { name: 'Wait Before Drive Retry',
+  parameters: { resume: 'timeInterval', amount: expr('{{ $json.d.wait_seconds }}'), unit: 'seconds' } }, output: [{ d: { action: 'retry' } }] });
+
+// Drive stayed unavailable: record it (health, one exception per cause) and go on; Airtable's results are already in.
+const driveDown = node({ type: 'n8n-nodes-base.postgres', version: 2.7, config: { name: 'Record Drive Unavailable',
+  parameters: { operation: 'executeQuery', query: 'select wf_reconcile_drive_unavailable($1, $2::jsonb) as r',
+    options: { queryReplacement: expr("{{ [ $('Start Reconciliation Run').first().json.r.run_key, JSON.stringify($json.d) ] }}") } },
+  credentials: PG }, output: [{ r: { ok: true } }] });
+
 const driveItems = node({ type: 'n8n-nodes-base.code', version: 2, config: { name: 'Drive Folders To Read',
   parameters: { mode: 'runOnceForAllItems', jsCode: `
-const r = $input.first().json;
-const roots = (r.body && r.body.files) || [];
-if (r.statusCode !== 200 || roots.length !== 1) throw new Error('Drive root not found exactly once (HTTP ' + r.statusCode + ', ' + roots.length + ' roots); not comparing folders');
+const root = $input.first().json.d.root_id;
 const d = $('External Objects To Check').first().json.t.drive || [];
 if (d.length === 0) return [{ json: { folder_id: '__none__' } }];
-return d.map(function (x) { return { json: Object.assign({}, x, { expected_parent: roots[0].id }) }; });` } },
+return d.map(function (x) { return { json: Object.assign({}, x, { expected_parent: root }) }; });` } },
   output: [{ folder_id: 'f', project_number: 'PRJ', expected_parent: 'root' }] });
 
 const readFolder = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Read Drive Folder',
@@ -142,7 +160,8 @@ const readFolder = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, conf
 const recordDrive = node({ type: 'n8n-nodes-base.postgres', version: 2.7, config: { name: 'Record Drive Findings', executeOnce: true,
   parameters: { operation: 'executeQuery', query: "select wf_reconcile_external($1, 'DRIVE', $2::jsonb) as r",
     options: { queryReplacement: expr("{{ [ $('Start Reconciliation Run').first().json.r.run_key, JSON.stringify($('Drive Folders To Read').all().map((it, i) => { " +
-      "const res = $('Read Drive Folder').all()[i].json; const b = res.body || {}; return Object.assign({}, it.json, { http: res.statusCode, trashed: b.trashed === true, parents: b.parents || [] }); })" +
+      "const res = $('Read Drive Folder').all()[i].json; const b = res.body || {}; return Object.assign({}, it.json, { http: res.statusCode, trashed: b.trashed === true, parents: b.parents || [], " +
+      "reason: (((b.error || {}).errors || [])[0] || {}).reason || null }); })" +
       ".filter(x => x.folder_id !== '__none__')) ] }}") } },
   credentials: PG }, output: [{ r: { ok: true, verified: 0, drift: 0 } }] });
 
@@ -233,7 +252,11 @@ export default workflow('roofops-reconcile', '[RoofOps] 07 Reconcile & Webhook S
   .add(tables).to(listRecords).to(tagPage).to(group).to(reconcileTable).to(batches).to(anyCorrections
     .onTrue(patch.to(proof).to(checkProof).to(targets))
     .onFalse(targets))
-  .add(targets).to(findRoot).to(driveItems).to(readFolder).to(recordDrive).to(xeroItems).to(hasXero
+  .add(targets).to(findRoot).to(decideDrive).to(driveRoute
+    .onCase(0, driveItems.to(readFolder).to(recordDrive).to(xeroItems))
+    .onCase(1, waitDrive.to(findRoot))
+    .onCase(2, driveDown.to(xeroItems)))
+  .add(xeroItems).to(hasXero
     .onTrue(readInvoice.to(recordXero))
     .onFalse(recordXero))
   .add(recordXero).to(listHooks).to(checkHooks).to(finish).to(actions).to(route

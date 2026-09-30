@@ -1259,3 +1259,69 @@ Full suite 376 passed; lint and typecheck clean. Fresh chain: 24 applied, 0 skip
 | EMP-900 (Finance) resolves EXC-0018 and EXC-0019, with notes | Both RESOLVED by EMP-900. Two `exception.resolved` audit rows (USER EMP-900, OPEN → RESOLVED, with the note). Original failure text kept |
 | Repeat on EXC-0018 | Refused: "already RESOLVED by EMP-900". No second audit row |
 | After | 19 exception records, the same as before. Open exceptions back to the four pre-existing ones (EXC-0003, 0013, 0016, 0017). Integrity 0 FAIL, with the hash chain intact. Security all pass. Dry-run `RECON-20261001-090010-e1dd`: 0 drift. The Copilot reports no open issues on PRJ-2026-0005 |
+
+## Operational fix: daily 07 run lost to a Google Drive rate limit (2026-10-01, owner-instructed)
+
+**Diagnosis** (n8n executions 1847 and 1899, both the daily schedule, started 17:00:38Z).
+- **Where it failed.** Find Drive Root returned HTTP 403, and Drive Folders To Read threw "Drive root not found exactly
+  once (HTTP 403, 0 roots)".
+- **Google's answer:**
+  - `errors[0]`: `domain usageLimits`, `reason rateLimitExceeded`;
+  - ErrorInfo: `RATE_LIMIT_EXCEEDED`, quota `defaultPerMinutePerProject` = 12,000/min, consumer project
+    `498586711441`;
+  - no `Retry-After` header.
+- **What it is.** A true per-minute rate limit on the OAuth client's Google Cloud project. It is not a permission or
+  credential problem, despite the `PERMISSION_DENIED` status text.
+- **Probable cause.** The run makes one Drive search, so others using the same OAuth client project (most likely a
+  shared client) used up the budget at the top of the hour. Ad-hoc runs at other times verify Drive 3/3. The
+  project's owner cannot be confirmed from here.
+- **What was lost.** Airtable had already reconciled all six tables (0 drift). The Xero check, webhook supervision
+  and `wf_reconcile_finish` never ran, so the run stayed RUNNING until superseded.
+
+**Fix.** Migration `20261001050000_reconcile_drive_rate_limit_resilience.sql` and n8n 07. No business rule changed.
+- **`wf_drive_call_decision(status, headers, body, attempt)`** returns ok, retry after `wait_seconds`, or fail:
+  - retried: 429, 403 `rateLimitExceeded` / `userRateLimitExceeded` / `RATE_LIMIT_EXCEEDED`, 5xx, network errors;
+  - the wait: `Retry-After` (seconds or an HTTP date) when present, else 15 s × 2^(attempt−1) plus 0–15 s jitter,
+    capped at 120 s, for at most 4 attempts (`app_settings drive.retry_*`);
+  - not retried: 401 ("reconnect the credential"), a 403 permission refusal ("check the credential can read the
+    root"), a 403 daily quota, a missing root.
+- **The loop, in 07.** Find Drive Root (continues on error) → Decide Drive Answer → Drive Answer:
+  - ok: the folder checks;
+  - retry: Wait Before Drive Retry, then Find Drive Root again (only that call repeats; Airtable is never re-read);
+  - fail: Record Drive Unavailable, then Xero, webhooks and finish as usual.
+- **`wf_reconcile_drive_unavailable`** keeps the run. It records `summary.drive` = UNAVAILABLE (error class,
+  actionable reason, attempts) and Drive health failed with that reason. It opens one exception per cause
+  (`GOOGLE_DRIVE`, with a stable message): a later run with the same cause updates it (`attempt_count`) and never
+  duplicates it. It adds no drift finding.
+- **`wf_reconcile_external` for DRIVE** (the core is renamed, not changed):
+  - folder reads Google rate-limited count as Drive unavailable, never as per-project "could not be read" drift;
+  - a complete check records Drive health ok and resolves the open Drive exceptions (`resolved_by_system
+    workflow:reconciliation`, audited).
+
+**Tests (offline, first).** `test/reconcile-drive-resilience.test.ts`, on PGlite and Postgres 17, is red before the
+fix. It covers:
+- Drive success;
+- transient 403, 429, 5xx and network errors, then success, including the backoff bounds and `Retry-After` in
+  seconds or as a date (capped);
+- a rate limit exhausting the capped attempts;
+- permission, auth and daily-quota answers not retried;
+- a run that completes with its Airtable results while Drive stays unavailable, one exception across two runs, then
+  resolved by a successful check;
+- rate-limited folder reads recorded as unavailability, not drift.
+
+Ablations: ignoring `Retry-After`, retrying every 403, no attempt cap, no resolve on success, one exception per run,
+and rate-limited reads counted as drift each turn their own test red. Full suite 388 passed; lint and typecheck
+clean. Fresh chain: 25 applied, 0 skipped on re-run. The n8n validator accepts the Drive loop.
+
+**Live** ([evidence/reconcile-drive-rate-limit-verification.json](../evidence/reconcile-drive-rate-limit-verification.json)).
+- **Deploy.** The migration went alone (`9314af5d…`), then 07 (active version `7b94b5df…`). The live Google account
+  was not rate-limited on purpose.
+- **One controlled run.** `RECON-20261001-092703-2e71` COMPLETED:
+  - Airtable 231 checked, 0 drift; Xero 1/1;
+  - Drive 3/3, through the new decision path. Drive health is now recorded by 07 ("reconciliation
+    RECON-20261001-092703-2e71", 3 verified); no Drive exception.
+- **Checks.** Integrity 0 FAIL, with the hash chain intact. Security all pass (the workflow role has 20 functions).
+  Fingerprint unchanged.
+
+**Owner recommendation (not changed).** Give the "RoofOps Google Drive" credential its own Google Cloud OAuth client,
+which gets its own per-minute quota, and/or move the daily schedule off the top of the hour.

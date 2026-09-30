@@ -1,0 +1,94 @@
+{
+ "defect": "Daily [RoofOps] 07 run failed on a Google Drive rate limit and lost the rest of the run",
+ "diagnosis": {
+  "executions": [
+   "1847 (2026-09-29T17:00:38Z)",
+   "1899 (2026-09-30T17:00:38Z)"
+  ],
+  "trigger": "schedule \"Daily 02:30\" (both started 17:00:38Z)",
+  "failed_node": "Drive Folders To Read threw \"Drive root not found exactly once (HTTP 403, 0 roots)\" on the Find Drive Root answer",
+  "google_answer": {
+   "http": 403,
+   "status": "PERMISSION_DENIED",
+   "errors_0": {
+    "domain": "usageLimits",
+    "reason": "rateLimitExceeded"
+   },
+   "error_info": {
+    "reason": "RATE_LIMIT_EXCEEDED",
+    "quota_limit": "defaultPerMinutePerProject",
+    "quota_limit_value": "12000",
+    "quota_unit": "1/min/{project}",
+    "consumer": "projects/498586711441"
+   },
+   "retry_after_header": "absent"
+  },
+  "classification": "A true per-minute rate limit on the OAuth client's Google Cloud project (usageLimits / rateLimitExceeded), not a permission or credential problem despite the PERMISSION_DENIED status text. The run makes one Drive search, so the 12,000/min budget is consumed by others using the same OAuth client project (most likely a shared client), at the top of the hour; ad-hoc runs at other times verify Drive 3/3. The project owner cannot be confirmed from here.",
+  "lost_work": "Airtable had reconciled all 6 tables (0 drift) before Drive; Xero check, webhook supervision and wf_reconcile_finish never ran; the run stayed RUNNING until superseded."
+ },
+ "fix": {
+  "migration": {
+   "file": "supabase/migrations/20261001050000_reconcile_drive_rate_limit_resilience.sql",
+   "checksum_prefix": "9314af5d",
+   "applied_to_hosted_alone": true
+  },
+  "n8n_07": {
+   "workflow": "EiBs0AB2NfOua7AM",
+   "active_version": "7b94b5df-1679-48f3-86c7-e5193e07fcf3",
+   "previous_active_version": "63ce5cab-4d1b-4a8a-b468-eb107a53666f",
+   "changes": [
+    "Find Drive Root: continue on error (network errors reach the decision)",
+    "Decide Drive Answer -> wf_drive_call_decision(status, headers, body, attempt)",
+    "Drive Answer: ok -> folder checks; retry -> Wait Before Drive Retry -> Find Drive Root; fail -> Record Drive Unavailable -> Xero",
+    "Drive Folders To Read takes the root from the decision (no throw)",
+    "Record Drive Findings passes Google's error reason for each folder read"
+   ]
+  },
+  "policy": {
+   "transient": "429; 403 rateLimitExceeded / userRateLimitExceeded / ErrorInfo RATE_LIMIT_EXCEEDED; 5xx; network",
+   "not_retried": "401, 403 permission, 403 daily quota, root missing",
+   "wait": "Retry-After (seconds or HTTP date) when present, else 15 s * 2^(attempt-1) + 0..15 s jitter; capped 120 s",
+   "attempts": 4,
+   "settings": "app_settings drive.retry_*"
+  }
+ },
+ "offline_tests": "test/reconcile-drive-resilience.test.ts: 6 tests x PGlite + Postgres 17; ablations A-F each red on their own test",
+ "live_verification": {
+  "note": "The live Google account was not rate-limited on purpose; failure paths are proven offline. One controlled 07 run verified the new success path.",
+  "dry_run": [
+   "RECON-20261001-092703-2e71  mode=observe  status=COMPLETED",
+   "│ 0       │ 'AIRTABLE'     │ 231     │ 0           │ 0        │ 0            │ 0         │ 231    │",
+   "│ 1       │ 'GOOGLE_DRIVE' │ 3       │ 0           │ 0        │ 0            │ null      │ 3      │",
+   "│ 2       │ 'XERO'         │ 1       │ 0           │ 0        │ 0            │ null      │ 1      │",
+   "No drift found.",
+   "│ 0       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/quote-events'           │ 'OK'  │ '162'      │ '0'    │",
+   "│ 1       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/project-invoice-events' │ 'OK'  │ '167'      │ '0'    │",
+   "│ 2       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/changes'                │ 'OK'  │ '167'      │ '0'    │"
+  ],
+  "drive_health": "{\"check\": \"reconciliation RECON-20261001-092703-2e71\", \"drift\": 0, \"verified\": 3} (recorded by the new success path; 07 never recorded Drive health before)",
+  "drive_exceptions": 0,
+  "integrity": [
+   "PASS    hash_chain_intact                  The audit trail hash chain verifies end to end",
+   "23 PASS, 3 WARNING, 0 FAIL  (hosted database)"
+  ],
+  "security": [
+   "PASS  workflow role: executable functions            20 items",
+   "all privilege checks pass"
+  ],
+  "value_fingerprint": {
+   "before_deploy": {
+    "count": 173,
+    "sha256": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6"
+   },
+   "after_deploy": {
+    "count": 173,
+    "sha256": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6"
+   },
+   "after_live": {
+    "count": 173,
+    "sha256": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6"
+   }
+  }
+ },
+ "recommendation": "Owner decision, not changed: give the \"RoofOps Google Drive\" credential its own Google Cloud OAuth client (own per-minute quota), and/or move the daily schedule off the top of the hour."
+}

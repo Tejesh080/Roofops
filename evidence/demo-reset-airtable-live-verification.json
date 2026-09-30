@@ -1,0 +1,85 @@
+{
+ "follow_up": "demo:reset puts the Airtable invoice projection back (no manual clearing)",
+ "migration": {
+  "file": "supabase/migrations/20261001030000_demo_reset_restores_airtable_projection.sql",
+  "checksum_prefix": "38314d19",
+  "applied_to_hosted_alone": true
+ },
+ "n8n_07": {
+  "workflow": "EiBs0AB2NfOua7AM",
+  "active_version": "63ce5cab-4d1b-4a8a-b468-eb107a53666f",
+  "change": "Read Request passes body.scope; Start Reconciliation Run passes it to wf_reconcile_start ($4)"
+ },
+ "before": "After the AC-03 live test, demo:reset withdrew APR-2026-0009 in Postgres only; dry-run RECON-20261001-075518-c2e2 then reported PRJ-2026-0005 Invoice Status \"Awaiting approval\" expected blank, and the row had to be cleared by hand.",
+ "live_test": {
+  "record": "PRJ-2026-0005 (recyDSiQ5Ot1tdbVu)",
+  "steps": [
+   {
+    "step": "Airtable: Invoice Action = Prepare (txn107)",
+    "result": "APR-2026-0011 PENDING; the row shows Invoice Status \"Awaiting approval\", Invoice Amount 17831.91 and \"PREVIEW APR-2026-0011 · #29299f54aa2fb08a …\" (verified shown 22:46:55Z)"
+   },
+   {
+    "step": "npm run demo:reset (one command)",
+    "output": [
+     "Withdrew 1 pending preview(s): APR-2026-0011 (audited as demo.reset.preview_withdrawn)",
+     "Reconciliation (repair, scoped to PRJ-2026-0005 invoice fields) requested; waiting for [RoofOps] 07…",
+     "Airtable: PRJ-2026-0005 Invoice Amount (inc GST), Invoice Preview, Invoice Status cleared, read back and proved (RECON-20261001-084719-73a5)",
+     "01  Quote → Project            READY        Next quote to accept in Airtable: Q-2026-0050 (9 unused); last live run Q-2026-0048 → PRJ-2026-0033  [not reset by script]",
+     "04  Finance + human approval   READY        Ask the Copilot to prepare PRJ-2026-0005; PRJ-2026-0004 shows the approved Xero draft"
+    ]
+   },
+   {
+    "step": "Airtable read of the row",
+    "result": "Invoice Status, Invoice Amount and Invoice Preview blank; Project Number, Status (Completed) and Planned Completion unchanged"
+   },
+   {
+    "step": "npm run demo:reset again within the 2-minute quota window (idempotency, quota wait)",
+    "output": [
+     "Nothing to withdraw in Postgres",
+     "Reconciliation (repair, scoped to PRJ-2026-0005 invoice fields) requested; waiting for [RoofOps] 07…",
+     "A reconciliation ran less than 2 minutes ago (Airtable quota guard): retrying in 72 s",
+     "Reconciliation (repair, scoped to PRJ-2026-0005 invoice fields) requested; waiting for [RoofOps] 07…",
+     "Airtable: PRJ-2026-0005 invoice fields were already clear (RECON-20261001-085230-dfe4)",
+     "01  Quote → Project            READY        Next quote to accept in Airtable: Q-2026-0050 (9 unused); last live run Q-2026-0048 → PRJ-2026-0033  [not reset by script]"
+    ]
+   }
+  ],
+  "dry_run_after": [
+   "RECON-20261001-085021-de9b  mode=observe  status=COMPLETED",
+   "│ 0       │ 'AIRTABLE'     │ 231     │ 0           │ 0        │ 0            │ 0         │ 231    │",
+   "│ 1       │ 'GOOGLE_DRIVE' │ 3       │ 0           │ 0        │ 0            │ null      │ 3      │",
+   "│ 2       │ 'XERO'         │ 1       │ 0           │ 0        │ 0            │ null      │ 1      │",
+   "No drift found.",
+   "│ 0       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/quote-events'           │ 'OK'  │ '163'      │ '0'    │",
+   "│ 1       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/project-invoice-events' │ 'OK'  │ '168'      │ '0'    │",
+   "│ 2       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/changes'                │ 'OK'  │ '168'      │ '0'    │"
+  ],
+  "integrity": [
+   "PASS    hash_chain_intact                  The audit trail hash chain verifies end to end",
+   "23 PASS, 3 WARNING, 0 FAIL  (hosted database)"
+  ],
+  "security": [
+   "PASS  workflow role: executable functions            18 items",
+   "all privilege checks pass"
+  ],
+  "dashboard_and_copilot": "dashboard /projects/PRJ-2026-0005: contains \"Awaiting approval\": false; out-of-sync notice: false\ncopilot (200) tools=get_project: No — PRJ-2026-0005 (Jack Walker) is **Ready to invoice**, not awaiting approval.\n\n- The final invoice hasn't been prepared yet, and nothing is approved (its two earlier previews, APR-2026-0009 and APR-2026-0010, were never shown on the invoice row, so nothing was approved).\n- RoofOps status: Ready to invoice (in sync with Airtable).\n- There are two open automation issues on this job about those unapproved previews, so a person needs to re-prepare, check and approve it.\n- Amount showing: $17,831.91 inc GST.",
+  "value_fingerprint": {
+   "before_deploy": {
+    "count": 173,
+    "sha256": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6"
+   },
+   "after_deploy": {
+    "count": 173,
+    "sha256": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6"
+   },
+   "after_live_test": {
+    "count": 173,
+    "sha256": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6"
+   }
+  }
+ },
+ "found_while_testing": [
+  "scripts/reconcile.ts (and the first version of the shared helper) reported a quota-guard refusal as \"token refused\" when the 2-minute window closed during the 30 s wait; the helper now judges the guard at request time (fixed, used by both commands).",
+  "Pre-existing, not changed here: the daily scheduled 07 runs of 2026-09-30 and 2026-10-01 (n8n executions 1847, 1899) stopped at Find Drive Root on a Google Drive HTTP 403 per-minute rate limit, after the Airtable comparison (0 drift); the run is superseded by the next one."
+ ]
+}

@@ -1151,3 +1151,69 @@ after the click), together with a verified showing before the click. The webhook
 preview cell (Airtable webhook specs cannot be changed without recreating the webhook). If the row changed between
 the click and the read, the decision is refused, never widened: the read text must show exactly the pending approval,
 verified before the click.
+
+### 14. Follow-up: `demo:reset` puts the Airtable invoice projection back (2026-10-01, owner-instructed)
+
+**Before.** `demo:reset` withdrew the demo preview in Postgres only. The Airtable row kept "Awaiting approval", the
+amount and the preview text, so reconciliation reported drift (`RECON-20261001-075518-c2e2`), and the script printed
+"clear it by hand". Local scripts hold no Airtable credential, by design; every Airtable write goes through n8n.
+
+**Fix.** Migration `20261001030000_demo_reset_restores_airtable_projection.sql`, one small n8n 07 change, and the
+scripts.
+
+1. **Scoped repair runs.** `wf_reconcile_start` accepts a `scope` of kind `invoice_projection_reset` for one project.
+   It is refused unless all of these hold:
+   - it is a manual repair run, with the operator token;
+   - the project has a linked Airtable row;
+   - the project has no pending preview and no non-void FINAL invoice.
+
+   Other scopes are refused. 07 passes the request's `scope` through: Read Request, then Start Reconciliation Run.
+2. **The scoped comparison touches one row's invoice fields and nothing else.** It compares that row's Invoice Status,
+   Invoice Amount and Invoice Preview with blank, and records a `REPAIRED_AIRTABLE` finding and a blank correction for
+   each non-blank one. The correction is recorded as a RoofOps write. It never touches other rows or fields, never
+   replays staff edits, and checks no Drive or Xero objects (`wf_reconcile_targets` returns none). 07 PATCHes and
+   reads back, and `wf_airtable_writeback_verified` proves it, like any repair.
+3. **`npm run demo:reset`.**
+   1. It withdraws the preview in Postgres, as before.
+   2. It asks 07 for the scoped run (`src/ops/reconcile-run.ts`, shared with `npm run reconcile`), waiting out the
+      2-minute quota guard if needed.
+   3. It reports what was cleared, read back and proved.
+
+   If the project has an invoice, it leaves Airtable alone. The manual note is gone.
+
+**Tests.** `test/demo-reset-airtable.test.ts`, on PGlite and Postgres 17, is red before the fix (the capability did
+not exist). It covers the full offline path:
+
+- a preview is shown on the row and `demoReset` withdraws it;
+- a scoped run corrects exactly the three fields of that row, and not PRJ-2026-0009's unrelated missed edit;
+- the read-back proves, and the run finishes with 3 `REPAIRED_AIRTABLE` findings;
+- an unscoped dry-run is then clean;
+- refusals: a preview in flight, no token (schedule), an unknown scope.
+
+Ablations: without the scoped comparison, the first test fails (it runs as a full run); without the "nothing in
+flight" rule, the refusal test fails.
+
+**Verification.**
+- Full suite 370 passed; lint and typecheck clean.
+- Fresh chain: 23 applied, 0 skipped on re-run.
+- Parity aligned; the version is unique.
+
+**Deploy.** The migration went to hosted alone (`38314d19…`), then 07 (active version `63ce5cab…`). The fingerprint
+was unchanged.
+
+**Live, on PRJ-2026-0005** ([evidence/demo-reset-airtable-live-verification.json](../evidence/demo-reset-airtable-live-verification.json)):
+
+| Step | Observed |
+|---|---|
+| Airtable Prepare | APR-2026-0011; the row shows "Awaiting approval", $17,831.91 and the preview |
+| One `npm run demo:reset` | Withdrew APR-2026-0011 (audited). Then `RECON-20261001-084719-73a5`, a scoped repair: Invoice Amount, Invoice Preview and Invoice Status cleared, read back and proved |
+| Airtable read | All three invoice fields blank; Project Number, Status and Planned Completion untouched |
+| `demo:reset` again, inside the quota window | Waited 72 s for the guard. `RECON-20261001-085230-dfe4`: "already clear". Idempotent |
+| After | Unscoped dry-run through the updated 07 (`RECON-20261001-085021-de9b`): 0 drift across Airtable, Drive and Xero. Integrity 0 FAIL, with the hash chain intact. Security all pass. Dashboard and Copilot: "Ready to invoice". Fingerprint unchanged |
+
+**Found while testing.**
+- **Fixed.** `npm run reconcile` misreported a quota-guard refusal as "token refused" when the 2-minute window closed
+  during its 30 s wait. The shared helper now judges the guard at request time.
+- **Not changed here (pre-existing).** The daily scheduled 07 runs on 2026-09-30 and 2026-10-01 (n8n 1847, 1899)
+  stopped at Find Drive Root: Google Drive answered HTTP 403, per-minute rate limit. That was after their Airtable
+  comparison (0 drift); the next run supersedes the unfinished one.

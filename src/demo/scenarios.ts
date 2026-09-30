@@ -75,14 +75,12 @@ export interface ResetResult { withdrawn: string[]; notes: string[] }
 export async function demoReset(db: Db): Promise<ResetResult> {
   await db.exec('begin');
   try {
-    const rows = await db.query<{ id: string; approval_number: string; payload_hash: string; source: string | null }>(
+    const rows = await db.query<{ id: string; approval_number: string; payload_hash: string }>(
       `update approvals a set status = 'CANCELLED', decision_reason = 'Demo reset: preview withdrawn so the scenario can be rehearsed again'
          from projects p
         where p.id = a.entity_id and p.project_number = $1 and a.action_type = 'CREATE_INVOICE' and a.status = 'PENDING'
           and not exists (select 1 from invoices i where i.approval_id = a.id)
-       returning a.id, a.approval_number, a.payload_hash,
-         (select e.source from automation_events e where e.event_type = 'invoice.prepare_requested' and e.business_reference = p.project_number
-            and e.occurred_at <= a.created_at + interval '1 minute' order by e.occurred_at desc limit 1) as source`, [INVOICE_DEMO_PROJECT]);
+       returning a.id, a.approval_number, a.payload_hash`, [INVOICE_DEMO_PROJECT]);
     for (const r of rows) {
       await db.query(`insert into audit_events (actor_type, actor_id, action, entity_type, entity_id, business_reference, approval_id, before_state, after_state, reason)
                       values ('SYSTEM', 'demo:reset', 'demo.reset.preview_withdrawn', 'approval', $1, $2, $1, $3, $4, $5)`,
@@ -90,9 +88,8 @@ export async function demoReset(db: Db): Promise<ResetResult> {
          `Interview rehearsal reset of ${INVOICE_DEMO_PROJECT}; no invoice or Xero record existed`]);
     }
     await db.exec('commit');
-    const notes = rows.filter((r) => r.source === 'airtable').map((r) =>
-      `${r.approval_number} was prepared from Airtable: clear Invoice Status/Preview on ${INVOICE_DEMO_PROJECT} in Airtable by hand (RoofOps does not write Airtable from this script).`);
-    return { withdrawn: rows.map((r) => r.approval_number), notes };
+    // The Airtable row is put back by scripts/demo.ts (a repair run of [RoofOps] 07 scoped to its invoice fields).
+    return { withdrawn: rows.map((r) => r.approval_number), notes: [] };
   } catch (e) {
     await db.exec('rollback');
     throw e;

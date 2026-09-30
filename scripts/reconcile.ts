@@ -8,34 +8,15 @@
  * result from Postgres. Never prints connection details or the token.
  */
 import { openPostgres } from '../src/db/db.js';
-import { hostedDbConfig, requireEnv } from '../src/config/env.js';
+import { hostedDbConfig } from '../src/config/env.js';
+import { runReconciliation } from '../src/ops/reconcile-run.js';
 
 const mode = process.argv.includes('--dry-run') ? 'observe' : 'repair';
 const cfg = hostedDbConfig();
-const token = requireEnv('RECONCILE_TRIGGER_TOKEN');
-const base = process.env.N8N_BASE_URL ?? 'https://tejesh08.app.n8n.cloud';
 const db = await openPostgres(cfg.url, cfg.caPem ? { caPem: cfg.caPem } : undefined);
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 try {
-  const [{ since }] = await db.query<{ since: string }>(`select now()::text since`) as [{ since: string }];
-  const res = await fetch(`${base}/webhook/roofops/reconcile`, {
-    method: 'POST', headers: { 'content-type': 'application/json', 'x-roofops-token': token }, body: JSON.stringify({ mode }) });
-  if (!res.ok) throw new Error(`n8n did not accept the trigger: HTTP ${res.status}`);
-  console.log(`Reconciliation (${mode}) requested; waiting for [RoofOps] 07…`);
-
-  let run: { run_key: string; mode: string; status: string } | undefined;
-  for (let i = 0; i < 90 && !(run && run.status !== 'RUNNING'); i += 1) {
-    await sleep(2000);
-    [run] = await db.query<{ run_key: string; mode: string; status: string }>(`select run_key, mode, status, summary, finished_at from reconciliation_runs where started_at >= $1::timestamptz order by started_at desc limit 1`, [since]);
-    if (!run && i === 15) {
-      const [recent] = await db.query<{ n: number }>(`select count(*)::int n from reconciliation_runs where started_at > now() - interval '2 minutes'`);
-      throw new Error(recent!.n > 0 ? 'Not started: a reconciliation ran less than 2 minutes ago (Airtable quota guard)'
-                                    : 'Not started: the operator token was refused, or [RoofOps] 07 is not published');
-    }
-  }
-  if (!run) throw new Error('No run recorded within 3 minutes');
-  if (run.status !== 'COMPLETED') throw new Error(`Run ${run.run_key} is ${run.status}; see the n8n execution of [RoofOps] 07`);
+  const run = await runReconciliation(db, { mode, log: (s) => { console.log(s); } });
 
   console.log(`\n${run.run_key}  mode=${run.mode}  status=${run.status}`);
   console.table(await db.query(`select system, checked, drift_found, repaired, needs_person, drift_now, linked from v_consistency`));

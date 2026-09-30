@@ -23,15 +23,16 @@ const hook = trigger({ type: 'n8n-nodes-base.webhook', version: 2.1, config: { n
 const request = node({ type: 'n8n-nodes-base.code', version: 2, config: { name: 'Read Request',
   parameters: { mode: 'runOnceForAllItems', jsCode: `
 const j = $input.first().json;
-if (!j.headers) return [{ json: { trigger: 'schedule', mode: 'repair', token: null } }];
+if (!j.headers) return [{ json: { trigger: 'schedule', mode: 'repair', token: null, scope: null } }];
 const mode = (j.body || {}).mode === 'observe' ? 'observe' : 'repair';
-// The token is checked in Postgres against a SHA-256 hash; it is never stored or echoed.
-return [{ json: { trigger: 'manual', mode: mode, token: String(j.headers['x-roofops-token'] || '') } }];` } },
-  output: [{ trigger: 'schedule', mode: 'repair', token: null }] });
+// The token is checked in Postgres against a SHA-256 hash; it is never stored or echoed. A scope (e.g. demo:reset's one
+// project invoice projection) is validated in Postgres too.
+return [{ json: { trigger: 'manual', mode: mode, token: String(j.headers['x-roofops-token'] || ''), scope: (j.body || {}).scope || null } }];` } },
+  output: [{ trigger: 'schedule', mode: 'repair', token: null, scope: null }] });
 
 const start = node({ type: 'n8n-nodes-base.postgres', version: 2.7, config: { name: 'Start Reconciliation Run',
-  parameters: { operation: 'executeQuery', query: 'select wf_reconcile_start($1, $2, nullif($3, \'\')) as r',
-    options: { queryReplacement: expr("{{ [ $json.trigger, $json.mode, $json.token || '' ] }}") } }, credentials: PG },
+  parameters: { operation: 'executeQuery', query: 'select wf_reconcile_start($1, $2, nullif($3, \'\'), $4::jsonb) as r',
+    options: { queryReplacement: expr("{{ [ $json.trigger, $json.mode, $json.token || '', JSON.stringify($json.scope || null) ] }}") } }, credentials: PG },
   output: [{ r: { started: true, run_key: 'RECON-x', mode: 'repair', tables: [] } }] });
 
 const started = ifElse({ version: 2.3, config: { name: 'Run Started?', parameters: { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'loose' },

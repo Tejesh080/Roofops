@@ -61,12 +61,12 @@ async function force(db: Db, sql: string, p: unknown[] = []) {
  */
 class Airtable06 {
   cells: Record<string, unknown> = {};
-  txns: { n: number; at: string; who: 'staff' | 'n8n'; changes: Record<string, { current: unknown; previous: unknown }> }[] = [];
+  txns: { n: number; at: string; who: 'staff' | 'api' | 'n8n'; changes: Record<string, { current: unknown; previous: unknown }> }[] = [];
   outcomes: { n: number; who: string; outcome: string; duplicate: boolean }[] = [];
   cursor = 0;
   executions = 0;
   failReadBackOnce = new Set<number>();
-  /** withOrigin: 06 passes Airtable's actionMetadata.source (staff in the UI: 'client'; n8n's PATCH: 'publicApi'). */
+  /** withOrigin: 06 passes Airtable's actionMetadata.source (staff in the UI: 'client'; n8n's PATCH and any other API client ('api'): 'publicApi'). */
   constructor(private db: Db, private table: string, readonly record: string, private withOrigin = false) {}
   async init() {
     const [r] = await this.db.query<{ e: Record<string, unknown> }>(`select expected e from v_airtable_expected where record_id = $1`, [this.record]);
@@ -79,7 +79,7 @@ class Airtable06 {
   }
   private notBefore = 0;
   get last() { return this.txns.at(-1)?.n ?? 0; }
-  write(fields: Record<string, unknown>, who: 'staff' | 'n8n') {
+  write(fields: Record<string, unknown>, who: 'staff' | 'api' | 'n8n') {
     const changes: Record<string, { current: unknown; previous: unknown }> = {};
     for (const [k, v] of Object.entries(fields)) {
       if (JSON.stringify(this.cells[k] ?? null) === JSON.stringify(v ?? null)) continue;   // Airtable emits nothing for an unchanged cell
@@ -789,6 +789,23 @@ describe.each(TARGETS)('state integrity [%s]', (target) => {
       expect(await one(db, `select count(*) v from airtable_writes where issued_at < now() - interval '90 days'
                               or (issued_at < now() - interval '30 days' and (echoed_at is not null or verified_at is not null))`)).toBe('0');
       await db.exec(`delete from airtable_writes where source_key like 'retention-test:%'`);
+    });
+
+    it('origin publicApi alone never makes a change an echo: it must match a recorded RoofOps write for that field', async () => {
+      const p = 'PRJ-2026-0019';
+      const [start, finish] = [await day(p, 'planned_start_date'), await day(p, 'planned_completion_date')];
+      const a = await new Airtable06(db, T.projects, await rec(db, 'project', p), true).init();
+      a.write({ [F.pEnd]: plus(finish, 2) }, 'api');           // another API client, nothing recorded for it: a staff edit
+      await a.run();
+      a.write({ [F.pEnd]: plus(start, -1) }, 'api');           // refused: RoofOps writes plus(finish, 2) back (recorded)
+      await a.run(2);                                          // its echo (publicApi, matches the recorded write) is not applied
+      a.write({ [F.pEnd]: plus(finish, 4) }, 'api');           // publicApi again, matching no pending RoofOps write
+      await a.run(2);
+      expect(a.outcomes.filter((o) => o.who === 'api' && !o.duplicate).map((o) => o.outcome)).toEqual(['APPLIED', 'REJECTED', 'APPLIED']);
+      expect(a.outcomes.filter((o) => o.who === 'n8n' && !o.duplicate).map((o) => o.outcome)).toEqual(['NO_CHANGE']);
+      expect([await day(p, 'planned_completion_date'), a.cells[F.pEnd], a.cursor, a.ownWritesApplied]).toEqual([plus(finish, 4), plus(finish, 4), a.last, []]);
+      // Postgres sees the origin Airtable reported: every event of this record carries it.
+      expect(await col(db, `select distinct payload ->> 'origin' v from automation_events where event_key like 'airtable:achSIM:%' || $1`, [a.record])).toEqual(['publicApi']);
     });
   });
 

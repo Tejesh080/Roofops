@@ -1,0 +1,137 @@
+{
+ "follow_up": "AC-10: Airtable actionMetadata.source is passed to Postgres as origin",
+ "n8n": {
+  "workflow": "[RoofOps] 06 Airtable Changes → Postgres (lD6BOf2dhZZpSoEH)",
+  "node": "Extract Record Changes",
+  "change": "origin: (p.actionMetadata || {}).source || null",
+  "previous_active_version": "d80e92d9-f09a-4881-a4b5-391ec2e14828",
+  "active_version": "4cc8d1d3-5652-4298-b97c-72110273d840",
+  "deployed": "2026-09-30T22:05Z (2026-10-01 08:05 Brisbane), owner-instructed"
+ },
+ "before": "Every 06 event for PRJ-2026-0029 before the deploy (txn82, txn83, txn84, txn85, txn87) reached Postgres with origin = null (automation_events.payload).",
+ "live_test": {
+  "record": "PRJ-2026-0029 (recVc7DCnAIOVG3Gm), Planned Completion, start 2026-10-31",
+  "steps": [
+   {
+    "step": "API client (Airtable connector) sets 2026-10-30 (invalid)",
+    "txn": "txn93",
+    "origin": "publicApi",
+    "outcome": "REJECTED; RoofOps records and writes 2026-11-05"
+   },
+   {
+    "step": "Echo of RoofOps's correction",
+    "txn": "txn94",
+    "origin": "publicApi",
+    "outcome": "NO_CHANGE: matched the recorded write, consumed (echoed_at 22:06:38)"
+   },
+   {
+    "step": "A duplicate re-issue recorded a second 2026-11-05 write at 22:06:38 whose PATCH was a no-op: it never echoes and stays open for its 30-minute window",
+    "txn": "—",
+    "origin": "—",
+    "outcome": "open write (the ambiguous case)"
+   },
+   {
+    "step": "API client sets 2026-11-06",
+    "txn": "txn96",
+    "origin": "publicApi",
+    "outcome": "APPLIED: publicApi matching no recorded write is a staff edit"
+   },
+   {
+    "step": "The owner, in the Airtable UI, sets 2026-11-05 at 22:09:50, 3m12s after the open 2026-11-05 write, inside its echo window",
+    "txn": "txn97",
+    "origin": "client",
+    "outcome": "APPLIED. Without origin this edit would have been taken for RoofOps's echo and reverted to 2026-11-06 with a \"↺\" note"
+   }
+  ],
+  "postgres_events": [
+   {
+    "txn": "txn93",
+    "origin": "publicApi",
+    "planned_completion": "2026-10-30",
+    "outcome": "REJECTED",
+    "own_writes_ignored": null,
+    "occurred_utc": "22:06:36"
+   },
+   {
+    "txn": "txn94",
+    "origin": "publicApi",
+    "planned_completion": "2026-11-05",
+    "outcome": "NO_CHANGE",
+    "own_writes_ignored": null,
+    "occurred_utc": "22:06:38"
+   },
+   {
+    "txn": "txn96",
+    "origin": "publicApi",
+    "planned_completion": "2026-11-06",
+    "outcome": "APPLIED",
+    "own_writes_ignored": null,
+    "occurred_utc": "22:07:06"
+   },
+   {
+    "txn": "txn97",
+    "origin": "client",
+    "planned_completion": "2026-11-05",
+    "outcome": "APPLIED",
+    "own_writes_ignored": null,
+    "occurred_utc": "22:09:50"
+   }
+  ],
+  "airtable_writes": [
+   {
+    "value": "2026-11-05",
+    "source_key": "airtable:achrbwFiSoL4y5RXM:txn93:recVc7DCnAIOVG3Gm",
+    "issued": "22:06:36",
+    "echoed": "22:06:38",
+    "verified": "22:06:39"
+   },
+   {
+    "value": "2026-11-05",
+    "source_key": "airtable:achrbwFiSoL4y5RXM:txn93:recVc7DCnAIOVG3Gm",
+    "issued": "22:06:38",
+    "echoed": null,
+    "verified": "22:06:39"
+   }
+  ],
+  "final_canonical": {
+   "pc": "2026-11-05"
+  },
+  "cursor": {
+   "cursor": "29"
+  },
+  "n8n_06_executions": {
+   "ids": [
+    "1942",
+    "1943",
+    "1944",
+    "1945",
+    "1946"
+   ],
+   "all_status": "success"
+  },
+  "dashboard_and_copilot": "dashboard /projects/PRJ-2026-0029: contains \"2026-11-05\": true; out-of-sync notice: false\ncopilot (200) tools=get_project: The planned completion date for PRJ-2026-0029 (Archie Scott, 19 Jacaranda Close, Elliott Heads) is **5 November 2026**.\n\n- Scheduled start: 31 October 2026\n- Stage: Planning\n- Project manager: Aiden Brooks",
+  "dry_run": [
+   "RECON-20261001-081203-f7ea  mode=observe  status=COMPLETED",
+   "│ 0       │ 'AIRTABLE'     │ 231     │ 0           │ 0        │ 0            │ 0         │ 231    │",
+   "│ 1       │ 'GOOGLE_DRIVE' │ 3       │ 0           │ 0        │ 0            │ null      │ 3      │",
+   "│ 2       │ 'XERO'         │ 1       │ 0           │ 0        │ 0            │ null      │ 1      │",
+   "No drift found.",
+   "│ 0       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/quote-events'           │ 'OK'  │ '164'      │ '0'    │",
+   "│ 1       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/project-invoice-events' │ 'OK'  │ '168'      │ '0'    │",
+   "│ 2       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/changes'                │ 'OK'  │ '168'      │ '0'    │"
+  ],
+  "integrity": [
+   "PASS    hash_chain_intact                  The audit trail hash chain verifies end to end",
+   "23 PASS, 3 WARNING, 0 FAIL  (hosted database)"
+  ],
+  "security": [
+   "all privilege checks pass"
+  ],
+  "value_fingerprint": {
+   "count": 173,
+   "sha256": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6",
+   "note": "identical to every earlier fingerprint (89d72adf…): the record ended at its original 2026-11-05"
+  }
+ },
+ "offline": "test/state-integrity.test.ts \"origin publicApi alone never makes a change an echo\" (PGlite + Postgres 17); ablation \"any publicApi change is an echo\" turns only it red"
+}

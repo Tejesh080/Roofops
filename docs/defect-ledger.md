@@ -11,7 +11,7 @@ instruction).
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | AC-01 | P0 | The reconciler replays an Airtable read that is older than a webhook edit, reverting the staff member's edit | **Yes**, offline (PGlite and Postgres 17) | Probe `ws07/p2_stale_snapshot.mts` plus 2 failing tests (below) | Replays had no observation time and were exempt from the webhook path's stale and compare-and-set checks | An Airtable read is evidence only if canonical has not changed since the read | `test/state-integrity.test.ts:376`, `:396`, plus race tests `:485`, `:520` (two Postgres connections) | Migration `20260930000000_reconcile_never_replays_stale_reads.sql` | Migration chain clean from zero; 314 tests pass on PGlite and Postgres 17; lint, typecheck clean; integrity 0 FAIL on canonical local and hosted; **deployed to hosted**; hosted dry-run 0 drift | Done 2026-10-01 (§12): hosted repair run, then the controlled live test on PRJ-2026-0029, with [evidence/ac01-live-verification.json](../evidence/ac01-live-verification.json) | **FIXED** |
 | AC-02 | P0 | A missing or reshaped Airtable field is replayed as a staff edit | **Yes**, offline (PGlite and Postgres 17) | 5 failing tests that emulate real Airtable reads: keys omitted, dates as UTC instants, one field changed on 8 records (below) | The reconciler read an absent key as "blank", compared date instants as text and cast them to their UTC date, and had no notion of a field-level change | A field missing from a whole read is not evidence; a date is the Brisbane business day it denotes; one field changing on many records at once is not N staff edits | `test/state-integrity.test.ts:427`, `:449`, `:458`, `:473`, `:490`, plus bulk-edit tests `:511` (legitimate, via webhook) and `:535` (missed, ambiguous) | Migration `20260930010000_reconcile_field_shape_guards.sql` | Chain from zero on PostgreSQL 17.11; 328 tests pass on PGlite and Postgres 17; red without the fix, green with it; each part ablated turns its own tests red; lint, typecheck clean; local integrity 0 FAIL; grants checked | Done 2026-10-01 (§10–§11): deployed alone; hosted dry-run 0 drift, 0 findings; integrity 0 FAIL; proven cell by cell against an independent read of the real base, with [evidence/ac02-live-verification.json](../evidence/ac02-live-verification.json) | **FIXED** |
-| AC-10 | P0 | 06 applies its own stale correction back as a staff edit | – | – | – | – | – | – | – | – | Not started |
+| AC-10 | P0 | 06 applies its own stale correction back as a staff edit | **Yes**, offline (PGlite and Postgres 17), with a harness that replays 06's real batch order, Airtable's echo transactions and the cursor | Ping-pong: after one transient read-back failure and a staff edit, every run applied RoofOps's own write, flipping canonical, and the cursor never advanced. Related: a staff member's fix of their own refused edit was refused as a conflict (below) | A correction is computed when 06 processes an item but written after later items; a landed-but-overtaken write never verifies; its echo passes compare-and-set; compare-and-set judged the staff member's `previous` against canonical, not against what Airtable showed | A value RoofOps wrote is never applied back as a staff edit; after the staff member's last edit, Airtable and canonical converge and every run advances the cursor | `test/state-integrity.test.ts:628`, `:650`, `:663`, `:685`, guard `:707`, echo-window tests `:729`, `:747`, retention `:764`; harness `Airtable06` `:62` | Migration `20261001000000_roofops_writes_are_not_staff_edits.sql` (+ one line in n8n 06, not yet deployed) | Chain from zero; 344 tests pass on PGlite and Postgres 17; red without the fix (7 of 8; the guard stays green); each of 7 parts ablated turns its own tests red; lint, typecheck clean; local integrity 0 FAIL; grants and RLS checked | Done 2026-10-01 (§10–§11): deployed alone; dry-run 0 drift, integrity 0 FAIL, security all pass. The live test on PRJ-2026-0029 reproduced the stale write for real and it converged: the fix was applied, the echo ignored, the cursor consumed, 0 drift, the hash chain intact, and the value restored. [evidence/ac10-live-verification.json](../evidence/ac10-live-verification.json). Owner action: deploy the 06 `origin` line (§12) | **FIXED** |
 | AC-03 | P0 | Airtable Approve is not bound to the row or preview the approver saw | – | – | – | – | – | – | – | – | Not started |
 | AC-05 | P0 | Voiding an invoice does not cancel its queued Xero write | – | – | – | – | – | – | – | – | Not started |
 | AC-06 | P0 | Unpinning the Xero tenant is not a kill switch | – | – | – | – | – | – | – | – | Not started |
@@ -555,3 +555,308 @@ the dry-run itself recorded from its own REST read, and against the deployed fun
 | Contract docs current | Regenerating them produced identical files |
 
 **AC-02 is FIXED.**
+
+---
+
+## AC-10 evidence package
+
+### 1. Reproduction (offline, before the fix)
+
+The catalogue's probes (`ws05/p1-pingpong.mts`, `ws04/p3-stale-correction-echo.mts`) were not available, so a probe
+replayed n8n 06 exactly (`n8n/06-airtable-changes.sdk.ts:148-153`):
+
+- **Apply Change In Postgres** runs for **every** item of the batch first.
+- Then each item's corrections are PATCHed, read back and proved, in item order.
+- The cursor advances only if every proof verifies.
+
+Every write to the simulated record (staff or n8n) becomes one webhook transaction with Airtable's real shape. Earlier
+live 06 executions (e.g. n8n execution 1805) show that Airtable always sends `previous`, even for blank cells, so the
+probe always sets `has_previous`.
+
+| Scenario | Before the fix |
+|---|---|
+| S1: a staff member types an invalid finish (10-10), then fixes it (10-25) before 06 runs | The fix was **refused**: "someone else changed it at the same time". Airtable and Postgres settled on 10-19, so the staff member's last edit was lost (the catalogue's related symptom) |
+| S2: a refused start, then a valid finish edit | Converged correctly |
+| S3: two legal status changes in one batch | Converged correctly |
+| S4: a correction lands but its read-back fails once (transient Airtable/n8n error), then the staff member moves the finish | **Ping-pong** (below) |
+
+S4, before the fix (PRJ-2026-0017):
+
+```
+run1 txn1 (staff 10-22→10-01) → REJECTED corr 10-22 | read-back fails → execution fails, cursor 0/2
+run2 txn1 (dup) → corr re-issued 10-22 (computed before txn3) · txn2 (n8n echo) NO_CHANGE · txn3 (staff 10-22→10-30) APPLIED
+     the stale 10-22 is written over the staff edit; its read-back ≠ canonical → NOT verified → cursor 0/4
+run3 txn4 (n8n: 10-30→10-22) → APPLIED        ← RoofOps's own write applied as a staff edit; canonical 10-22
+run4 txn5 (n8n: 10-22→10-30) → APPLIED        ← and back again …
+run5 txn6 (n8n: 10-30→10-22) → APPLIED   run6 txn7 → APPLIED   run7 txn8 → APPLIED     cursor 0/9, forever
+```
+
+Regression tests, red on the code before the fix (PGlite; the same on Postgres 17):
+
+```
+× a correction that landed but whose read-back failed, then a staff edit: no ping-pong …
+    expected [ { n: 4, who: 'n8n', … }, … ] to deeply equal []          ← own writes applied
+× a staff member who fixes their own refused edit before the correction lands is not told someone else changed it
+    expected [ 'REJECTED', 'REJECTED' ] to deeply equal [ 'REJECTED', 'APPLIED' ]
+× reconciliation never replays a RoofOps write that Airtable still shows before its echo was processed
+    expected '2026-10-19' to be '2026-11-09'                             ← the reconciler replayed RoofOps's stale write
+Tests  3 failed | 1 passed (the guard)
+```
+
+### 2. Classification: a true bug
+
+- **Not a test artifact.** The harness uses 06's real node order and Airtable's real payload shape. The trigger is
+  ordinary: one transient failure after a PATCH landed (an Airtable 5xx on the GET, an n8n restart), followed by a
+  staff edit to the corrected field, is enough.
+- **Not intended behaviour.** ADR-037 says Airtable is "an editing surface, never a second source of truth" and that
+  unverified corrections are re-issued "recomputed from canonical state". The re-issue was recomputed at the wrong
+  moment, before later items in the same batch.
+- **Impact.** Canonical flips on every execution, the audit trail fills with edits attributed to the staff account,
+  and the cursor never advances, so every later Airtable edit to any record is delayed until someone intervenes.
+
+### 3. The first incorrect state transition
+
+`projects.planned_completion_date` 2026-10-30 → 2026-10-22 in run 3, written by `project_apply_change` for
+`txn4`. That transaction is n8n's own PATCH (the re-issued correction for `txn1`), judged by `wf_airtable_change_core`
+as a staff edit: its `previous` (10-30) equalled canonical, so compare-and-set passed
+(`20260929001300_…sql:97`).
+
+### 4. Why the architecture permitted it
+
+- **Corrections are computed at Apply time and written later.** 06 applies all items, then writes. A correction for an
+  earlier item (here, re-issued for a duplicate) can be written after a later item has moved canonical.
+- **Proof compared the read-back with canonical *now*.** A write that landed correctly but was overtaken could never
+  verify, so the cursor never advanced and the same batch was redelivered, re-issuing more stale corrections.
+- **RoofOps did not know its own writes.** Nothing recorded what it had asked n8n to write, so the echo of its own PATCH
+  was indistinguishable from a staff edit, and compare-and-set could not tell them apart.
+- **Compare-and-set judged `previous` against canonical.** A staff member editing the value Airtable visibly showed
+  (their refused edit, before RoofOps's correction landed) looked like a concurrent edit.
+- **The reconciler had the same blind spot.** It would replay a RoofOps write still showing in Airtable as a missed
+  staff edit.
+
+### 5. Invariant
+
+> A value RoofOps wrote to Airtable is never applied back as a staff edit, by the webhook path or by reconciliation.
+> After a staff member's last edit, Airtable and canonical converge on it, and every 06 execution consumes its batch
+> (the cursor advances). A staff edit made against the value Airtable visibly showed is judged on its merits, not
+> refused as a conflict.
+
+### 6. Regression tests (written first, watched fail)
+
+`test/state-integrity.test.ts`, block `AC-10`, on PGlite and real Postgres 17. The `Airtable06` harness (`:62`)
+replays 06's node order (Apply for every item, then every PATCH, then every read-back and proof), Airtable's echo
+transactions, the cursor, and a distinct worker per execution (06 passes `'n8n:' + $execution.id`). Its transactions
+are stamped with real time, never before a change already applied to the record.
+
+- `:628` **The ping-pong (S4).** A correction lands, its read-back fails once, then a staff edit follows. It asserts:
+  - none of RoofOps's own writes is ever applied;
+  - canonical is the staff value after every one of the next three executions;
+  - **every execution consumes its whole batch** (the cursor reaches the last transaction each time);
+  - Airtable agrees;
+  - exactly one audit row (the staff edit).
+- `:650` **Fixing your own refused edit (S1)**, both edits in one batch. The fix is `APPLIED`, and none of RoofOps's own
+  writes is applied. Canonical and Airtable both hold the fix, and the cursor is at the end.
+- `:663` **Reconciliation** meets a stale RoofOps write still showing in Airtable, with 06 down. It is not replayed:
+  canonical keeps the staff value, and Airtable is corrected back to it.
+- `:685` **A reconciliation repair overtaken** by a webhook status change before 07 reads it back. The proof reports
+  `verified: true` with `overtaken_fields`, and the repair's echo converges Airtable to canonical.
+- `:707` **Guard:** a staff member deliberately choosing a value RoofOps wrote earlier, after its echo was seen, is
+  `APPLIED`. This stays green with or without the fix; it pins down that the fix does not over-block. Its transactions
+  are seconds apart, so they fall inside the echo window, but the write had already been consumed by its echo. It
+  therefore does **not** cover an unconsumed write. The two tests below do.
+- `:729` **Echo window, same batch** (no `origin`, as the current 06 sends). The staff member types an invalid finish,
+  then a valid one, then goes back to exactly the value RoofOps's pending correction will write, all before 06 runs.
+  The test asserts that the last edit is stamped inside the window (−5 / +30 minutes) of the still-unconsumed write.
+  Result: `REJECTED`, `APPLIED`, `APPLIED`; canonical and Airtable hold that value; two audit rows, both staff edits.
+- `:747` **Echo window, later execution** (with `origin`). Same start, so RoofOps's correction lands on a cell that
+  already shows its value and never echoes. The staff member then moves the finish and, minutes later in another
+  execution, chooses that value again in the Airtable UI (inside the window of the unconsumed write). Result: `APPLIED`.
+- `:764` **Retention.** Old rows are inserted beside a real pending write (its read-back failed): settled 10 days,
+  echoed 40 days, verified 40 days, unsettled 40 days, unsettled 100 days. Ordinary 06 runs prune as they record
+  writes. The test asserts:
+  - exactly the settled 10-day row and the unsettled 40-day row remain;
+  - the pending write is kept, and is still recognised (none of RoofOps's own writes is applied, the staff edit
+    stands, the cursor is at the end);
+  - no row beyond the retention bounds is left.
+
+### 7. Fix (design, not the example)
+
+New migration `supabase/migrations/20261001000000_roofops_writes_are_not_staff_edits.sql`. n8n still calls the same
+three function names. One line in n8n 06 passes Airtable's `actionMetadata.source` as `origin` (point 8). It is
+optional for the rest of the fix, and it is not yet deployed (§11).
+
+1. **A ledger of RoofOps's own writes.** `airtable_writes` holds every value RoofOps asks n8n to write to Airtable:
+   corrections from the webhook path, including re-issues, and repairs from reconciliation. Each row records the field,
+   the value, the value it replaces, the issuing event and the issue time. A value equal to what Airtable already shows
+   is not recorded, because it produces no echo. The table is RLS-protected, and no role outside the definer functions
+   can read or write it.
+2. **Echo recognition** (in `wf_airtable_change`, before the unchanged handler, now `wf_airtable_change_core`):
+   - **What counts as an echo.** A change whose value equals an outstanding RoofOps write for that field.
+   - **Timing window.** For the webhook, the transaction must be stamped from 5 minutes before to 30 minutes after the
+     write was issued. For the reconciler, the write must be at most 7 days old.
+   - **What happens to it.** It is RoofOps's own write, so it is never applied or compared. If canonical has moved on,
+     Airtable is corrected to canonical, with a RoofOps Sync note: "an earlier RoofOps correction arrived after a newer
+     edit; "…" is kept".
+   - **Consumption.** A webhook echo consumes the write, and any older outstanding write for the field, so it can't
+     match a later genuine edit.
+3. **An edit made before a correction landed.** A staff change whose `previous` is exactly the value an outstanding
+   RoofOps correction is replacing was made against what Airtable showed. Compare-and-set accepts it, and it is still
+   fully validated. A genuine concurrent edit (any other `previous`) is still refused.
+4. **An overtaken write is verified as landed.** `wf_airtable_writeback_verified` accepts a field whose read-back is
+   either canonical or exactly the value this event (or reconciliation run) asked to write. The result lists it in
+   `overtaken_fields`. Its echo then converges Airtable, and the cursor advances.
+5. **Reconciliation records its repairs.** `wf_reconcile_airtable` wraps the unchanged AC-02 function (now `…_core`).
+6. **The same lock order as the handler.** The canonical row is locked before any decision, so a concurrent change
+   can't slip between the echo check and the handler.
+7. **Nothing in the issuing execution's batch is its echo.** Each write records the worker that issued it
+   (`n8n:<execution id>`). 06 PATCHes only after Apply has run for its whole batch, so a transaction in that batch whose
+   value equals the pending write is a person choosing that value. It is judged as a staff edit, never as an echo.
+   This found and fixed a real hole: an invalid edit, a fix, then a return to the original value, all typed before 06
+   ran, lost the last edit (Airtable was put back with a misleading "↺" note). `:729` pins it.
+8. **An edit made in the Airtable UI is never an echo.** RoofOps writes only through the API. Airtable labels each
+   payload with `actionMetadata.source`, confirmed on live 06 execution 1911: an API write shows `publicApi`, and a
+   person in the UI shows `client`. When 06 passes it as `origin`, only `publicApi` changes (and events without
+   `origin`) are checked for echoes. `:747` pins it.
+9. **Bounded ledger.** Every rule reads only writes issued in the last 7 days. That is the widest window: the
+   reconciler's; the webhook's is 30 minutes, and Airtable keeps payloads for 7 days. The edit-before-landed rule and
+   the landed-write proof are now bounded the same way, so older rows cannot change any decision.
+   `airtable_writes_prune()` deletes settled writes (echo seen, or read back) after 30 days and unsettled ones after
+   90 days. That is 4× and 13× the widest window. It runs whenever writes are recorded, so no scheduler is needed; an
+   index on `issued_at` keeps it cheap. A pending write is inside the 7-day window by definition, so it is never
+   deleted. `:764` pins it, and ablation D shows what deleting pending writes would break.
+
+**What remains ambiguous without `origin`.** Consider an API client other than RoofOps (a script, or the Airtable
+connector) that writes exactly the value of a still-unconsumed RoofOps write, within 30 minutes. If that write never
+echoed, the change is treated as RoofOps's echo. A RoofOps write never echoes only when Airtable already showed its
+value at PATCH time, which is point 7's case. With `origin`, people editing in Airtable are exact; until the 06 line
+is deployed, the ambiguity also covers them in that same narrow case (`:747` fails without `origin`: ablation B).
+
+**Convergence.** With n8n unchanged, a write overtaken inside one batch still lands briefly. Its echo arrives in the
+next 06 execution (triggered by Airtable's own ping, seconds later), where it is recognised and corrected. The
+following execution sees Airtable agree. Every execution advances the cursor. A change to n8n 06 (recompute
+corrections immediately before each PATCH) would avoid the brief overtaken value altogether. It is optional hardening,
+not needed for the invariant.
+
+**The window was widened after a probe finding.** The first version allowed ±1/15 minutes. The original probe, which
+stamps transactions at a fixed past time, still showed echoes applied, because they fell outside the window. Airtable
+stamps transactions with real time, so the tests (real time) passed. Still, the window was widened to 5 minutes of
+clock skew and 30 minutes of PATCH delay (06's own retries take under a minute), and the probe was re-run with real
+timestamps.
+
+### 8. Verification (first version, before points 7–9; kept for the record, superseded by §9)
+
+| Check | Result |
+|---|---|
+| Probe re-run (real timestamps), all four scenarios | S1: the fix is `APPLIED`; the overtaken correction's echo is `NO_CHANGE` with a correction back to 10-25; converged. S2 and S3 unchanged. S4: the staff edit is `APPLIED`; echoes are `NO_CHANGE`; converged at 10-30; cursor 4/4, then 5/5. No RoofOps write is applied in any scenario |
+| Red / green, fix removed / restored byte-for-byte (sha256 `c85b76455d2c424a…`) | Removed: **4 failed**, 1 passed (the guard). Restored: **5 passed** |
+| Ablation, one part at a time | Echo recognition off: `:616`, `:638`, `:651` red. Edit-before-correction rule off: `:638` red. Overtaken-write verification off: `:616` (the cursor stalls: `[0, 0]` for `[0, 3]`) and `:673` red. Reconciler recording off: `:673` red |
+| Full suite, PGlite + Postgres 17 | **338 passed**, 33 skipped. Baseline 328; +10 = 5 tests × 2 engines |
+| Lint / typecheck | exit 0 / exit 0 |
+| Fresh PostgreSQL 17 database, migrated from zero | 20 applied, 0 skipped; import OK; a re-run applied 0 and skipped 20; integrity 0 FAIL |
+| Migration histories | Repo, local and hosted aligned through AC-02 (19 versions, identical checksums). `20261001000000` is unused in git history and on hosted |
+| Local dev DB (`npm run db:load` applied only this migration) | `integrity:check -- --local`: 22 PASS, 4 WARNING, 0 FAIL (unchanged) |
+| Grants and RLS (local) | `roofops_workflow` can execute `wf_airtable_change`, `wf_airtable_writeback_verified` and `wf_reconcile_airtable`, but none of the three `…_core` functions or `airtable_record_writes`. `roofops_dashboard` can execute none of them. `airtable_writes` has RLS on and cannot be read by either role |
+
+### 9. Verification of the final migration (sha256 `c570be45…`), 2026-10-01
+
+| Check | Result |
+|---|---|
+| Red, whole fix removed (test harness in its final form) | **7 failed**, 1 passed (the guard) |
+| Ablation A: no same-execution rule | Only `:729` red (both engines) |
+| Ablation B: no `origin` rule | Only `:747` red |
+| Ablation C: no pruning | Only `:764` red |
+| Ablation D: pruning also deletes pending writes | **7 of 8 red**: every test that relies on a pending write |
+| Ablation E: pruning keeps everything | Only `:764` red |
+| Full suite, PGlite + Postgres 17 | **344 passed**, 33 skipped (baseline 328; +16 = 8 tests × 2 engines) |
+| Lint / typecheck | exit 0 / exit 0 |
+| Fresh PostgreSQL 17 database, migrated from zero | 20 applied, 0 skipped; import OK; a re-run applied 0 and skipped 20. Checks: integrity 0 FAIL, `airtable_writes` RLS on and empty, `…_core` functions and `airtable_writes_prune()` present. The database was then dropped |
+| Local dev DB, rebuilt (`db:reset`) | `integrity:check -- --local`: 22 PASS, 4 WARNING, 0 FAIL |
+| Grants (local and hosted, identical) | `roofops_workflow` can execute exactly the three entry points. The internal functions (`wf_airtable_change_core`, `wf_airtable_writeback_verified_core`, `wf_reconcile_airtable_core`), `airtable_record_writes` and `airtable_writes_prune` are executable by neither application role. `airtable_writes`: RLS on, and neither role can select or insert |
+
+### 10. Hosted deployment and checks (2026-10-01, no repair run)
+
+- **Before the deploy.**
+  - Repo, local and hosted aligned through AC-02: 19 versions, identical checksums.
+  - `20261001000000` has exactly one repo file, is absent from git history and hosted, and is later than every
+    applied version.
+  - Value fingerprint: 173 values, `89d72adf…`.
+- **`npm run db:load -- --hosted`** applied `20261001000000_roofops_writes_are_not_staff_edits.sql` alone (skipped 19).
+  - The dataset was already imported, so nothing else ran.
+  - The hosted checksum equals the repo file (`c570be45…`).
+  - The fingerprint afterwards is unchanged (`89d72adf…`).
+- **`npm run reconcile -- --dry-run`** gave `RECON-20261001-062752-d8e0` (observe, COMPLETED):
+  - Airtable **231 checked, 0 drift, 0 repaired, 0 needing a person, `drift_now` 0**, 231 linked;
+  - Drive 3/3 and Xero 1/1, both without drift;
+  - all 3 webhooks OK, 0 unread.
+- **`npm run integrity:check`** (hosted): **23 PASS, 3 WARNING, 0 FAIL**. The warnings are the known open items:
+  - cancelled PRJ-2026-0001 with an open PO;
+  - Q-2026-0031 accepted without a project;
+  - four open exceptions.
+- **`npm run security:check`**: every check passes.
+  - Dashboard role: no readable tables, and no `wf_*` write other than prepare.
+  - Workflow role: 17 functions.
+  - Nothing is readable or executable by anon, authenticated or PUBLIC.
+  - Every table has RLS.
+  - Xero is pinned to the Demo tenant.
+  - The trigger token is stored only as a hash.
+
+### 11. Controlled live verification (2026-10-01, PRJ-2026-0029, approved by the owner)
+
+This used the S1 path with both edits in one batch. No failure was injected in production: the ping-pong's transient
+read-back failure stays an offline test (`:628`).
+
+1. n8n 06 was unpublished.
+2. In Airtable, Planned Completion was set to 2026-11-05 → **2026-10-30** (txn82; before the 2026-10-31 start, so
+   invalid), then to 2026-10-30 → **2026-11-12** (txn83).
+3. 06 was re-published on the same version (`d80e92d9`), and Airtable's ping retry triggered it.
+
+What happened (n8n executions 1918–1921, all `success`; full record in the evidence file):
+
+| Proof | Observed |
+|---|---|
+| The invalid staff edit is refused correctly | txn82 `REJECTED`: "Planned Completion 2026-10-30 would be before Planned Start 2026-10-31. Kept 2026-11-05" |
+| The staff member's later valid correction is accepted | txn83 `APPLIED` 11-05 → 11-12, with `edited_before_correction_landed`. Before AC-10 this was refused as a conflict |
+| RoofOps's own correction echo is not treated as a staff edit | 06 wrote txn82's correction (11-05) **after** txn83 was applied: the stale write AC-10 is about, occurring for real. Its read-back returned `verified: true, overtaken_fields: [Planned Completion]`. Its echo, txn84, was `NO_CHANGE` with `own_writes_ignored`, and Airtable was corrected back to 11-12. txn85, the echo of that correction, was `NO_CHANGE`. No RoofOps write was applied |
+| The cursor advances fully | 13 → 15 (1918) → 16 (1919) → 18 (1920/1921) → 19 (the restore). Every webhook shows 0 unread |
+| No infinite redelivery | 5 executions in total: 4 for the test batch, all within 12 s, then quiet; 1 for the restore. Overlapping executions delivered txn82/83 three times, and every duplicate was recognised |
+| Airtable and Postgres converge | Both show 2026-11-12. `airtable_writes`: 3 rows, all echoed and verified, none open |
+| The dashboard shows canonical state | `/projects/PRJ-2026-0029` shows 2026-11-12, with no out-of-sync notice |
+| The Copilot reports canonical state | `get_project`: "planned to finish on **2026-11-12**" |
+| Reconciliation is clean afterwards | `RECON-20261001-064623-bcc8`: 231 checked, 0 drift, 0 needing a person |
+| The audit chain remains valid | `hash_chain_intact` PASS. Exactly one audit row (USER, 11-05 → 11-12); none for the refused edit or any RoofOps write. No new exception |
+| The original value is restored through the normal Airtable path | Airtable 11-12 → 11-05 (txn87, execution 1923): `APPLIED`, one audit row, cursor 19. Airtable, Postgres, the dashboard and the Copilot all show 2026-11-05. Final dry-run `RECON-20261001-064840-f3a5`: 0 drift. Integrity 23 PASS, 3 WARNING (unchanged), 0 FAIL, with the hash chain intact. Value fingerprint `89d72adf…`, identical to before the deploy |
+
+**Observation (not a defect of AC-10's invariant).** 1919 wrote the RoofOps Sync note "↺ Planned Completion: an
+earlier RoofOps correction arrived after a newer edit; "2026-11-12" is kept." A re-issued duplicate correction cleared
+it within seconds, because the existing re-issue logic recomputes the note as blank. Values were never affected;
+only the explanation is lost. Worth a follow-up so the note persists.
+
+### 12. Owner action outstanding
+
+1. **The 06 `origin` line** (`n8n/06-airtable-changes.sdk.ts`, Extract Record Changes: `origin: (p.actionMetadata ||
+   {}).source || null`). The repo file has it; the live workflow does not, because the production change was not in
+   the approved scope and was declined when attempted. The owner then approved it, but the session's permission
+   check still refused the production workflow change, so it must be applied by the owner (in the n8n editor: node
+   "Extract Record Changes", add the `origin` property as in the repo file) or with that permission granted. Until it
+   is deployed, the database uses the rules without `origin`: points 1–7 and 9 are active, point 8 is dormant. The
+   remaining exposure is the narrow case in §7, "What remains ambiguous without `origin`". Its failure mode is
+   visible, not silent: the value is put back to canonical with a "↺" note, and there is no ping-pong.
+
+The plan below was carried out as §11.
+
+2. **Controlled live test of the fix-your-own-refused-edit path (S1)**, on a record in no demo scenario (e.g.
+   PRJ-2026-0029, Planned Completion 2026-11-05). This is the realistic live trigger, and it needs a live Airtable edit
+   and a brief 06 unpublish, so it needs approval.
+   1. Unpublish n8n 06 briefly (as in the Phase 6 outage test), so both edits arrive in one batch.
+   2. In Airtable, set Planned Completion before the Planned Start (refused), then fix it to 2026-11-12.
+   3. Re-publish 06. Airtable's retry delivers both edits together.
+   4. Verify each of these:
+      - the fix is `APPLIED`, not a conflict;
+      - no `n8n`-caused transaction is applied;
+      - Airtable and Postgres both show 2026-11-12;
+      - the cursor is consumed, and dashboard and Copilot agree;
+      - the next dry-run is clean, and `hash_chain_intact` passes.
+   5. Restore 2026-11-05 through Airtable, then run a final dry-run and integrity check.
+3. The ping-pong itself needs a transient read-back failure. That can only be induced safely offline (the tests above),
+   never by breaking production n8n.
+4. **Commit:** migration, tests, the 06 source line, ledger and evidence, as one commit separate from other defects.

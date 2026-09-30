@@ -77,7 +77,8 @@ for (const it of $input.all()) {
         const current = Object.assign({}, (ch.unchanged || {}).cellValuesByFieldId || {}, cur);
         for (const k of keys) if (!(k in cur)) current[k] = null;
         events.push({ event: { event_id: 'airtable:' + hook + ':txn' + p.baseTransactionNumber + ':' + rec, source: 'airtable',
-          actor_id: user.id || (p.actionMetadata || {}).source || 'airtable', occurred_at: p.timestamp, table_id: tableId, record_id: rec,
+          actor_id: user.id || (p.actionMetadata || {}).source || 'airtable', origin: (p.actionMetadata || {}).source || null,
+          occurred_at: p.timestamp, table_id: tableId, record_id: rec,
           changes: changes, current: current } });
       }
     }

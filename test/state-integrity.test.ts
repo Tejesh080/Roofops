@@ -53,6 +53,75 @@ async function force(db: Db, sql: string, p: unknown[] = []) {
   try { await db.query(sql, p); } finally { await db.exec(`set session_replication_role = origin`); }
 }
 
+/**
+ * n8n 06 as it really runs, for one Airtable record (AC-10). Every write to the simulated record, by staff or by n8n's
+ * PATCH, becomes one webhook transaction with Airtable's shape (current and previous). One `run()` is one 06 execution:
+ * every undelivered transaction goes through wf_airtable_change first; then each item's corrections are written, read
+ * back and proved in order; the cursor advances only if every proof verifies (otherwise the batch is redelivered).
+ */
+class Airtable06 {
+  cells: Record<string, unknown> = {};
+  txns: { n: number; at: string; who: 'staff' | 'n8n'; changes: Record<string, { current: unknown; previous: unknown }> }[] = [];
+  outcomes: { n: number; who: string; outcome: string; duplicate: boolean }[] = [];
+  cursor = 0;
+  executions = 0;
+  failReadBackOnce = new Set<number>();
+  /** withOrigin: 06 passes Airtable's actionMetadata.source (staff in the UI: 'client'; n8n's PATCH: 'publicApi'). */
+  constructor(private db: Db, private table: string, readonly record: string, private withOrigin = false) {}
+  async init() {
+    const [r] = await this.db.query<{ e: Record<string, unknown> }>(`select expected e from v_airtable_expected where record_id = $1`, [this.record]);
+    this.cells = Object.fromEntries(Object.entries(r!.e).map(([k, v]) => [k, v !== null && typeof v === 'object' && !Array.isArray(v) ? null : v]));
+    // Airtable stamps a new edit after every change already applied (earlier tests may have dated some a little ahead).
+    const [v] = await this.db.query<{ at: string | null }>(`select max(f.last_source_at)::text at from external_field_versions f
+      join external_links l on l.entity_type = f.entity_type and l.entity_id = f.entity_id where l.provider = 'AIRTABLE' and l.external_id = $1`, [this.record]);
+    this.notBefore = v?.at ? Date.parse(v.at) + 1000 : 0;
+    return this;
+  }
+  private notBefore = 0;
+  get last() { return this.txns.at(-1)?.n ?? 0; }
+  write(fields: Record<string, unknown>, who: 'staff' | 'n8n') {
+    const changes: Record<string, { current: unknown; previous: unknown }> = {};
+    for (const [k, v] of Object.entries(fields)) {
+      if (JSON.stringify(this.cells[k] ?? null) === JSON.stringify(v ?? null)) continue;   // Airtable emits nothing for an unchanged cell
+      changes[k] = { current: v, previous: this.cells[k] ?? null };
+      this.cells[k] = v;
+    }
+    if (!Object.keys(changes).length) return;
+    const at = Math.max(Date.now(), this.notBefore);
+    this.notBefore = at + 1;
+    this.txns.push({ n: this.last + 1, at: new Date(at).toISOString(), who, changes });
+  }
+  async run(times = 1) {
+    for (let i = 0; i < times; i++) {
+      const worker = `n8n:sim${String(++this.executions)}`;              // 06 passes 'n8n:' + $execution.id
+      const batch = this.txns.filter((t) => t.n > this.cursor);
+      const results: { n: number; r: R }[] = [];
+      for (const t of batch) {                                            // Apply Change In Postgres: every item first
+        const r = await call(this.db, 'wf_airtable_change', {
+          event_id: `airtable:achSIM:txn${String(t.n)}:${this.record}`, source: 'airtable', actor_id: 'usr7uCnNO15fCefbH', occurred_at: t.at,
+          ...(this.withOrigin ? { origin: t.who === 'staff' ? 'client' : 'publicApi' } : {}),
+          table_id: this.table, record_id: this.record,
+          changes: Object.fromEntries(Object.entries(t.changes).map(([k, v]) => [k, { ...v, has_previous: true }])),
+          current: { ...this.cells, ...Object.fromEntries(Object.entries(t.changes).map(([k, v]) => [k, v.current])) } }, worker);
+        results.push({ n: t.n, r });
+        this.outcomes.push({ n: t.n, who: t.who, outcome: String(r.outcome), duplicate: r.duplicate === true });
+      }
+      const writes = results.filter(({ r }) => Object.keys(r.corrections ?? {}).length);
+      for (const { r } of writes) this.write(r.corrections!, 'n8n');     // then every PATCH (computed at Apply time)
+      let ok = true;
+      for (const { n, r } of writes) {                                    // then every read-back and its proof
+        if (this.failReadBackOnce.delete(n)) { ok = false; break; }         // transient read-back failure: execution fails
+        const readback = Object.fromEntries(Object.keys(r.corrections!).map((k) => [k, this.cells[k] ?? null]));
+        const v = await call(this.db, 'wf_airtable_writeback_verified', `airtable:achSIM:txn${String(n)}:${this.record}`, this.table, this.record, readback);
+        if (!v.verified) { ok = false; break; }
+      }
+      if (ok && batch.length) this.cursor = batch.at(-1)!.n;
+    }
+  }
+  /** Transactions RoofOps itself caused (n8n PATCHes) that wf_airtable_change applied as if a person had made them. */
+  get ownWritesApplied() { return this.outcomes.filter((o) => o.who === 'n8n' && !o.duplicate && o.outcome === 'APPLIED'); }
+}
+
 async function setup(db: Db) {
   await importBundle(db);
   // The Airtable record ids that the live base load recorded (verify-airtable-load.ts); synthetic but well-formed here.
@@ -548,6 +617,178 @@ describe.each(TARGETS)('state integrity [%s]', (target) => {
       // One actionable exception, reused on the second run (not one per run or per record).
       expect(await col(db, `select attempt_count::text v from workflow_exceptions where error_class = 'RECONCILIATION_MISMATCH' and resolution_status = 'OPEN'
                              and error_message like '6 of 30 Airtable Projects records show a different "Planned Completion"%'`)).toEqual(['2']);
+    });
+  });
+
+  describe('AC-10: a value RoofOps wrote to Airtable is never applied back as a staff edit', () => {
+    const day = async (p: string, c: string) => (await one(db, `select ${c}::text v from projects where project_number = $1`, [p]))!;
+    const plus = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+    const sim = async (p: string) => new Airtable06(db, T.projects, await rec(db, 'project', p)).init();
+
+    it('a correction that landed but whose read-back failed, then a staff edit: no ping-pong, the staff edit wins, the cursor advances', async () => {
+      const p = 'PRJ-2026-0016';
+      const [start, finish] = [await day(p, 'planned_start_date'), await day(p, 'planned_completion_date')];
+      const [invalid, wanted] = [plus(start, -1), plus(finish, 28)];
+      const a = await sim(p);
+      a.write({ [F.pEnd]: invalid }, 'staff');       // refused (before the start); RoofOps corrects Airtable back to the old finish
+      a.failReadBackOnce.add(1);                     // that correction lands, but its read-back fails once
+      await a.run();
+      a.write({ [F.pEnd]: wanted }, 'staff');        // the staff member then moves the finish (valid)
+      const canonical: string[] = [];
+      for (let i = 0; i < 3; i++) {
+        const end = a.last;
+        await a.run();
+        expect([i, a.cursor]).toEqual([i, end]);   // every execution consumes its whole batch: nothing is redelivered again
+        canonical.push(await day(p, 'planned_completion_date'));
+      }
+      expect(a.ownWritesApplied).toEqual([]);                                 // before the fix: every run applied the echo
+      expect(canonical).toEqual([wanted, wanted, wanted]);                    // never flips once the staff edit is in
+      expect([a.cells[F.pEnd], a.cursor]).toEqual([wanted, a.last]);          // Airtable agrees; every payload consumed
+      expect(await one(db, `select count(*) v from audit_events where action = 'project.planned_completion_date.changed' and business_reference = $1`, [p])).toBe('1');
+    });
+
+    it('a staff member who fixes their own refused edit before the correction lands is not told someone else changed it', async () => {
+      const p = 'PRJ-2026-0012';
+      const [start, finish] = [await day(p, 'planned_start_date'), await day(p, 'planned_completion_date')];
+      const [invalid, fixed] = [plus(start, -1), plus(finish, 14)];
+      const a = await sim(p);
+      a.write({ [F.pEnd]: invalid }, 'staff');
+      a.write({ [F.pEnd]: fixed }, 'staff');         // typed before 06 ran: both edits arrive in one batch
+      await a.run(3);
+      expect(a.outcomes.filter((o) => o.who === 'staff' && !o.duplicate).map((o) => o.outcome)).toEqual(['REJECTED', 'APPLIED']);
+      expect(a.ownWritesApplied).toEqual([]);
+      expect([await day(p, 'planned_completion_date'), a.cells[F.pEnd], a.cursor]).toEqual([fixed, fixed, a.last]);
+    });
+
+    it('reconciliation never replays a RoofOps write that Airtable still shows before its echo was processed', async () => {
+      const p = 'PRJ-2026-0009';
+      const [start, finish] = [await day(p, 'planned_start_date'), await day(p, 'planned_completion_date')];
+      const [invalid, wanted] = [plus(start, -1), plus(finish, 21)];
+      const a = await sim(p);
+      a.write({ [F.pEnd]: invalid }, 'staff');
+      a.failReadBackOnce.add(1);
+      await a.run();
+      a.write({ [F.pEnd]: wanted }, 'staff');
+      await a.run();                                 // applies the staff edit; a re-issued, now stale, correction lands in Airtable
+      expect(await day(p, 'planned_completion_date')).toBe(wanted);
+      const stale = a.cells[F.pEnd];
+      expect(stale).not.toBe(wanted);                // Airtable shows RoofOps's own out-of-date write; n8n 06 then goes down
+      await db.exec(`update reconciliation_runs set started_at = started_at - interval '5 minutes'`);
+      const run = await call(db, 'wf_reconcile_start', 'schedule', 'repair');
+      const r = await call(db, 'wf_reconcile_airtable', run.run_key, T.projects, await snapshot(T.projects, (id, f) => { if (id === a.record) f[F.pEnd] = stale; }));
+      expect(await day(p, 'planned_completion_date')).toBe(wanted);          // not replayed as a staff edit
+      expect((r.corrections as unknown as { id: string; fields: Record<string, unknown> }[]).find((c) => c.id === a.record)?.fields)
+        .toMatchObject({ [F.pEnd]: wanted });                                 // Airtable is put back to the staff member's value
+      await call(db, 'wf_reconcile_finish', run.run_key, {}, []);
+    });
+
+    it('a reconciliation repair overtaken by a webhook change before 07 reads it back is proved as landed, and its echo converges', async () => {
+      const p = 'PRJ-2026-0024';                     // In Progress, no Actual Completion yet
+      const a = await sim(p);
+      await db.exec(`update reconciliation_runs set started_at = started_at - interval '5 minutes'`);
+      const run = await call(db, 'wf_reconcile_start', 'schedule', 'repair');
+      // Someone typed an Actual Completion (owned by RoofOps) in Airtable: the repair run blanks it again.
+      const r = await call(db, 'wf_reconcile_airtable', run.run_key, T.projects, await snapshot(T.projects, (id, f) => { if (id === a.record) f[F.pActualEnd] = '2026-09-01'; }));
+      expect((r.corrections as unknown as { id: string; fields: Record<string, unknown> }[]).find((c) => c.id === a.record)?.fields).toMatchObject({ [F.pActualEnd]: null });
+      a.cells[F.pActualEnd] = '2026-09-01';
+      // Before 07 writes the repair, staff complete the job; 06 applies it (Actual Completion becomes today).
+      a.write({ [F.pStatus]: 'Completed' }, 'staff');
+      await a.run();
+      const done = await day(p, 'actual_completion_date');
+      // 07 now writes its (overtaken) repair and reads it back.
+      a.write({ [F.pActualEnd]: null }, 'n8n');
+      expect(await call(db, 'wf_airtable_writeback_verified', `reconcile:${String(run.run_key)}`, T.projects, a.record, { [F.pActualEnd]: null }))
+        .toMatchObject({ verified: true, overtaken_fields: [F.pActualEnd] });
+      await call(db, 'wf_reconcile_finish', run.run_key, {}, []);
+      await a.run(2);                                // the echo of the repair: Airtable is put back to canonical
+      expect([await day(p, 'actual_completion_date'), a.cells[F.pActualEnd], a.cursor, a.ownWritesApplied]).toEqual([done, done, a.last, []]);
+    });
+
+    it('a staff member may deliberately choose a value RoofOps once wrote (after its echo was seen)', async () => {
+      const p = 'PRJ-2026-0010';
+      const [start, finish] = [await day(p, 'planned_start_date'), await day(p, 'planned_completion_date')];
+      const a = await sim(p);
+      a.write({ [F.pEnd]: plus(start, -1) }, 'staff');        // refused; RoofOps writes `finish` back
+      await a.run(2);
+      a.write({ [F.pEnd]: plus(finish, 5) }, 'staff');
+      await a.run(2);
+      a.write({ [F.pEnd]: finish }, 'staff');                  // back to exactly the value RoofOps once wrote
+      await a.run(2);
+      expect([await day(p, 'planned_completion_date'), a.cells[F.pEnd], a.cursor]).toEqual([finish, finish, a.last]);
+      expect(a.outcomes.filter((o) => o.who === 'staff' && !o.duplicate).map((o) => o.outcome)).toEqual(['REJECTED', 'APPLIED', 'APPLIED']);
+    });
+
+    /** The staff transaction's time relative to the still-unconsumed RoofOps write of the same value (minutes). */
+    const insideWindow = async (a: Airtable06, value: string, n: number) => {
+      const [w] = await db.query<{ at: string }>(`select issued_at::text at from airtable_writes where record_id = $1 and field_id = $2 and value = $3
+                                                   and echoed_at is null order by issued_at limit 1`, [a.record, F.pEnd, value]);
+      const m = (Date.parse(a.txns.find((t) => t.n === n)!.at) - Date.parse(w!.at)) / 60_000;
+      return m >= -5 && m <= 30;                     // the webhook echo window: 5 minutes before to 30 minutes after issue
+    };
+
+    it('echo window: going back, in the same batch, to exactly the value a pending RoofOps correction writes is a staff edit', async () => {
+      const p = 'PRJ-2026-0014';
+      const [start, finish] = [await day(p, 'planned_start_date'), await day(p, 'planned_completion_date')];
+      const audits = () => one(db, `select count(*) v from audit_events where action = 'project.planned_completion_date.changed' and business_reference = $1`, [p]);
+      const audited = Number(await audits());
+      const a = await sim(p);                        // no origin: holds with events from the current 06 too
+      a.write({ [F.pEnd]: plus(start, -1) }, 'staff');        // refused; RoofOps will write `finish` back (not landed yet)
+      a.write({ [F.pEnd]: plus(finish, 7) }, 'staff');         // fixed to a new valid date
+      a.write({ [F.pEnd]: finish }, 'staff');                  // then deliberately back to `finish`, seconds later
+      const [, , back] = a.txns;
+      await a.run();
+      expect(await insideWindow(a, finish, back!.n)).toBe(true);           // same value, inside the window, write unconsumed
+      await a.run(2);
+      expect(a.outcomes.filter((o) => o.who === 'staff' && !o.duplicate).map((o) => o.outcome)).toEqual(['REJECTED', 'APPLIED', 'APPLIED']);
+      expect([await day(p, 'planned_completion_date'), a.cells[F.pEnd], a.cursor, a.ownWritesApplied]).toEqual([finish, finish, a.last, []]);
+      expect(Number(await audits()) - audited).toBe(2);                     // the two staff edits; nothing for RoofOps's own write
+    });
+
+    it('echo window: a person in the Airtable UI choosing the value of an unconsumed RoofOps write from an earlier execution is a staff edit', async () => {
+      const p = 'PRJ-2026-0017';
+      const [start, finish] = [await day(p, 'planned_start_date'), await day(p, 'planned_completion_date')];
+      const a = await new Airtable06(db, T.projects, await rec(db, 'project', p), true).init();
+      a.write({ [F.pEnd]: plus(start, -1) }, 'staff');        // refused; RoofOps's correction to `finish` is issued...
+      a.write({ [F.pEnd]: plus(finish, 7) }, 'staff');
+      a.write({ [F.pEnd]: finish }, 'staff');                  // ...and lands on a cell that already shows `finish`: it never echoes
+      await a.run();
+      a.write({ [F.pEnd]: plus(finish, 3) }, 'staff');
+      await a.run();
+      a.write({ [F.pEnd]: finish }, 'staff');                  // minutes later, in a later execution: `finish` again
+      expect(await insideWindow(a, finish, a.last)).toBe(true);
+      await a.run(2);
+      expect(a.outcomes.filter((o) => o.who === 'staff' && !o.duplicate).map((o) => o.outcome)).toEqual(['REJECTED', 'APPLIED', 'APPLIED', 'APPLIED', 'APPLIED']);
+      expect([await day(p, 'planned_completion_date'), a.cells[F.pEnd], a.cursor, a.ownWritesApplied]).toEqual([finish, finish, a.last, []]);
+    });
+
+    it('the ledger of RoofOps writes is bounded: old settled and abandoned rows are pruned; a pending write is kept and still recognised', async () => {
+      const p = 'PRJ-2026-0018';
+      const [start, finish] = [await day(p, 'planned_start_date'), await day(p, 'planned_completion_date')];
+      const [invalid, wanted] = [plus(start, -1), plus(finish, 10)];
+      const a = await sim(p);
+      a.write({ [F.pEnd]: invalid }, 'staff');
+      a.failReadBackOnce.add(1);                     // the correction lands, its read-back fails: its write stays pending
+      await a.run();
+      const pending = await col(db, `select id::text v from airtable_writes where record_id = $1 and echoed_at is null and verified_at is null`, [a.record]);
+      expect(pending.length).toBeGreaterThan(0);
+      const age = (d: number, state: string) => `now() - interval '${String(d)} days', ${state}`;
+      const junk = await col(db, `insert into airtable_writes (table_id, record_id, field_id, value, source_key, issued_at, echoed_at, verified_at)
+        select $1, 'recRETENTION0001', $2, 'x', 'retention-test:' || s.k, s.at, s.echoed, s.verified from (values
+          ('settled-10d', ${age(10, `now(), null`)}), ('echoed-40d', ${age(40, `now(), null`)}), ('verified-40d', ${age(40, `null, now()`)}),
+          ('unsettled-40d', ${age(40, `null, null`)}), ('unsettled-100d', ${age(100, `null, null`)}))
+          as s(k, at, echoed, verified)
+        returning source_key v`, [T.projects, F.pEnd]);
+      expect(junk).toHaveLength(5);
+      a.write({ [F.pEnd]: wanted }, 'staff');
+      await a.run(3);                                // recording writes prunes as it goes: no scheduler needed
+      expect(await col(db, `select source_key v from airtable_writes where source_key like 'retention-test:%' order by 1`))
+        .toEqual(['retention-test:settled-10d', 'retention-test:unsettled-40d']);   // kept: < 30 days settled, < 90 days unsettled
+      expect(await col(db, `select id::text v from airtable_writes where id = any($1::bigint[])`, [pending])).toEqual(pending);   // pending kept
+      // ...and still recognised: RoofOps's own write was not applied back, the staff edit stands, the cursor advanced.
+      expect([await day(p, 'planned_completion_date'), a.cells[F.pEnd], a.cursor, a.ownWritesApplied]).toEqual([wanted, wanted, a.last, []]);
+      expect(await one(db, `select count(*) v from airtable_writes where issued_at < now() - interval '90 days'
+                              or (issued_at < now() - interval '30 days' and (echoed_at is not null or verified_at is not null))`)).toBe('0');
+      await db.exec(`delete from airtable_writes where source_key like 'retention-test:%'`);
     });
   });
 

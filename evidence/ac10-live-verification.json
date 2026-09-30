@@ -1,0 +1,289 @@
+{
+ "defect": "AC-10: n8n 06 applied RoofOps's own stale correction back as a staff edit (ping-pong)",
+ "migration": {
+  "file": "supabase/migrations/20261001000000_roofops_writes_are_not_staff_edits.sql",
+  "sha256": "c570be459b061e3900da3bf4605b243a97601976e25d1936d36b99a7b9c8c637",
+  "applied_to_hosted_alone": true
+ },
+ "record": {
+  "project": "PRJ-2026-0029",
+  "airtable_record": "recVc7DCnAIOVG3Gm",
+  "table": "tblvUPIoebC3zoacv",
+  "field": "Planned Completion fldvZtiassZEgLMAN",
+  "planned_start": "2026-10-31",
+  "original_planned_completion": "2026-11-05"
+ },
+ "procedure": [
+  "20:40Z n8n 06 unpublished (so both staff edits arrive in one batch, as when 06 is backlogged)",
+  "Airtable edit 1 (txn82): Planned Completion 2026-11-05 -> 2026-10-30 (before the start: invalid)",
+  "Airtable edit 2 (txn83): 2026-10-30 -> 2026-11-12 (the staff member fixes their own edit, before any correction landed)",
+  "20:41Z n8n 06 re-published (same version d80e92d9, content unchanged); Airtable's ping retry triggered it",
+  "20:47Z restore: Airtable edit 2026-11-12 -> 2026-11-05 through the normal path (06 running)",
+  "No transient failure was induced in production (that remains an offline test)"
+ ],
+ "n8n_06_executions": {
+  "1918": {
+   "apply": {
+    "txn82": "REJECTED: \"Planned Completion 2026-10-30 would be before Planned Start 2026-10-31. Kept 2026-11-05\"; correction 2026-11-05",
+    "txn83": "APPLIED 2026-11-05 -> 2026-11-12, edited_before_correction_landed: [fldvZtiassZEgLMAN]"
+   },
+   "patch": "the correction computed for txn82 (2026-11-05) was written after txn83 was applied: the stale write AC-10 is about, live",
+   "read_back": {
+    "fldvZtiassZEgLMAN": "2026-11-05"
+   },
+   "proof": {
+    "verified": true,
+    "overtaken_fields": [
+     "fldvZtiassZEgLMAN"
+    ],
+    "mismatched_fields": []
+   },
+   "cursor_after": "15"
+  },
+  "1919": {
+   "apply": {
+    "txn82": "duplicate; correction re-issued recomputed from canonical (2026-11-12)",
+    "txn83": "duplicate",
+    "txn84": "NO_CHANGE: the echo of 1918's stale PATCH (2026-11-12 -> 2026-11-05, same API user as staff), own_writes_ignored: [Planned Completion]; correction back to 2026-11-12 with RoofOps Sync note \"↺ Planned Completion: an earlier RoofOps correction arrived after a newer edit; \\\"2026-11-12\\\" is kept.\""
+   },
+   "proofs": "verified: true (both)",
+   "cursor_after": "16"
+  },
+  "1923": "restore txn87 APPLIED 2026-11-12 -> 2026-11-05; cursor 19",
+  "all": [
+   "1918",
+   "1919",
+   "1920",
+   "1921",
+   "1923"
+  ],
+  "all_status": "success",
+  "1920_1921": "txn85 (echo of the 2026-11-12 correction) NO_CHANGE; duplicates of txn82/83; cursor 18"
+ },
+ "processed_events": [
+  {
+   "k": "airtable:achrbwFiSoL4y5RXM:txn82:recVc7DCnAIOVG3Gm",
+   "status": "COMPLETED",
+   "outcome": "REJECTED",
+   "dup": null,
+   "dlv": 3,
+   "corrections": {
+    "fldVrJOuyhbNtxnVh": "2026-10-01 06:41\n✗ Planned Completion: \"2026-10-30\" not applied: Planned Completion 2026-10-30 would be before Planned Start 2026-10-31. Kept \"2026-11-05\".",
+    "fldvZtiassZEgLMAN": "2026-11-05"
+   },
+   "own_ignored": null,
+   "based": null,
+   "note": "✗ Planned Completion: \"2026-10-30\" not applied: Planned Completion 2026-10-30 would be before Planned Start 2026-10-31. Kept \"2026-11-05\".",
+   "at_utc": "20:41:33"
+  },
+  {
+   "k": "airtable:achrbwFiSoL4y5RXM:txn83:recVc7DCnAIOVG3Gm",
+   "status": "COMPLETED",
+   "outcome": "APPLIED",
+   "dup": null,
+   "dlv": 3,
+   "corrections": {},
+   "own_ignored": null,
+   "based": null,
+   "note": "✓ Planned Completion: 2026-11-05 → 2026-11-12 applied",
+   "at_utc": "20:41:33"
+  },
+  {
+   "k": "airtable:achrbwFiSoL4y5RXM:txn84:recVc7DCnAIOVG3Gm",
+   "status": "COMPLETED",
+   "outcome": "NO_CHANGE",
+   "dup": null,
+   "dlv": 2,
+   "corrections": {
+    "fldVrJOuyhbNtxnVh": "2026-10-01 06:41\n↺ Planned Completion: an earlier RoofOps correction arrived after a newer edit; \"2026-11-12\" is kept.",
+    "fldvZtiassZEgLMAN": "2026-11-12"
+   },
+   "own_ignored": [
+    "Planned Completion"
+   ],
+   "based": null,
+   "note": null,
+   "at_utc": "20:41:36"
+  },
+  {
+   "k": "airtable:achrbwFiSoL4y5RXM:txn85:recVc7DCnAIOVG3Gm",
+   "status": "COMPLETED",
+   "outcome": "NO_CHANGE",
+   "dup": null,
+   "dlv": 1,
+   "corrections": {},
+   "own_ignored": null,
+   "based": null,
+   "note": null,
+   "at_utc": "20:41:38"
+  },
+  {
+   "k": "airtable:achrbwFiSoL4y5RXM:txn87:recVc7DCnAIOVG3Gm",
+   "status": "COMPLETED",
+   "outcome": "APPLIED",
+   "dup": null,
+   "dlv": 1,
+   "corrections": {},
+   "own_ignored": null,
+   "based": null,
+   "note": "✓ Planned Completion: 2026-11-12 → 2026-11-05 applied",
+   "at_utc": "20:47:07"
+  }
+ ],
+ "airtable_writes": [
+  {
+   "id": "1",
+   "value": "2026-11-05",
+   "replaces": "2026-10-30",
+   "source_key": "airtable:achrbwFiSoL4y5RXM:txn82:recVc7DCnAIOVG3Gm",
+   "issued_by": "n8n:1918",
+   "issued": "20:41:33",
+   "echoed": "20:41:36",
+   "verified": "20:41:37"
+  },
+  {
+   "id": "2",
+   "value": "2026-11-12",
+   "replaces": "2026-10-30",
+   "source_key": "airtable:achrbwFiSoL4y5RXM:txn82:recVc7DCnAIOVG3Gm",
+   "issued_by": "n8n:1919",
+   "issued": "20:41:36",
+   "echoed": "20:41:38",
+   "verified": "20:41:37"
+  },
+  {
+   "id": "3",
+   "value": "2026-11-12",
+   "replaces": "2026-11-05",
+   "source_key": "airtable:achrbwFiSoL4y5RXM:txn84:recVc7DCnAIOVG3Gm",
+   "issued_by": "n8n:1919",
+   "issued": "20:41:36",
+   "echoed": "20:41:38",
+   "verified": "20:41:37"
+  }
+ ],
+ "audit_events": [
+  {
+   "action": "project.planned_completion_date.changed",
+   "actor_type": "USER",
+   "actor_id": "usr7uCnNO15fCefbH",
+   "before_state": {
+    "planned_completion_date": "2026-11-05"
+   },
+   "after_state": {
+    "planned_completion_date": "2026-11-12"
+   },
+   "at_utc": "20:41:33"
+  },
+  {
+   "action": "project.planned_completion_date.changed",
+   "actor_type": "USER",
+   "actor_id": "usr7uCnNO15fCefbH",
+   "before_state": {
+    "planned_completion_date": "2026-11-12"
+   },
+   "after_state": {
+    "planned_completion_date": "2026-11-05"
+   },
+   "at_utc": "20:47:07"
+  }
+ ],
+ "audit_note": "Exactly one audit row per staff edit (the fix and the restore). None for the refused edit, and none for any RoofOps write.",
+ "airtable_reads": {
+  "during": {
+   "fldvZtiassZEgLMAN": "2026-11-12",
+   "status": "Planning",
+   "planned_start": "2026-10-31"
+  },
+  "after_restore": {
+   "fldvZtiassZEgLMAN": "2026-11-05",
+   "status": "Planning",
+   "planned_start": "2026-10-31"
+  }
+ },
+ "postgres": {
+  "during": "2026-11-12",
+  "after_restore": {
+   "ps": "2026-10-31",
+   "pc": "2026-11-05",
+   "status": "PLANNING",
+   "updated_utc": "20:47:07"
+  },
+  "cursor_final": {
+   "cursor": "19",
+   "updated_utc": "20:47:08"
+  }
+ },
+ "dashboard_and_copilot": {
+  "during": "dashboard /projects/PRJ-2026-0029: contains \"2026-11-12\": true; out-of-sync notice: false\ncopilot (200) tools=get_project: PRJ-2026-0029 (Archie Scott) is planned to finish on **2026-11-12**, with a scheduled start of 2026-10-31.\n\n- Stage: Planning\n- Site: 19 Jacaranda Close, Elliott Heads\n- Project manager: Aiden Brooks\n\nNote: this is the planned finish; the job hasn't started yet, so there's no actual finish date.",
+  "after_restore": "dashboard /projects/PRJ-2026-0029: contains \"2026-11-05\": true; out-of-sync notice: false\ncopilot (200) tools=get_project: PRJ-2026-0029 (Archie Scott, 19 Jacaranda Close, Elliott Heads) — planned completion date: **5 November 2026**.\n\n- Stage: Planning (not at risk)\n- Scheduled start: 31 October 2026\n- One open checklist item: completion/compliance photos not yet uploaded"
+ },
+ "reconciliation_dry_runs": {
+  "after_deploy": [
+   "RECON-20261001-062752-d8e0  mode=observe  status=COMPLETED",
+   "│ 0       │ 'AIRTABLE'     │ 231     │ 0           │ 0        │ 0            │ 0         │ 231    │",
+   "│ 1       │ 'GOOGLE_DRIVE' │ 3       │ 0           │ 0        │ 0            │ null      │ 3      │",
+   "│ 2       │ 'XERO'         │ 1       │ 0           │ 0        │ 0            │ null      │ 1      │",
+   "No drift found.",
+   "│ 0       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/quote-events'           │ 'OK'  │ '165'      │ '0'    │",
+   "│ 1       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/project-invoice-events' │ 'OK'  │ '165'      │ '0'    │",
+   "│ 2       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/changes'                │ 'OK'  │ '167'      │ '0'    │"
+  ],
+  "during_test": [
+   "RECON-20261001-064623-bcc8  mode=observe  status=COMPLETED",
+   "│ 0       │ 'AIRTABLE'     │ 231     │ 0           │ 0        │ 0            │ 0         │ 231    │",
+   "│ 1       │ 'GOOGLE_DRIVE' │ 3       │ 0           │ 0        │ 0            │ null      │ 3      │",
+   "│ 2       │ 'XERO'         │ 1       │ 0           │ 0        │ 0            │ null      │ 1      │",
+   "No drift found.",
+   "│ 0       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/quote-events'           │ 'OK'  │ '165'      │ '0'    │",
+   "│ 1       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/project-invoice-events' │ 'OK'  │ '165'      │ '0'    │",
+   "│ 2       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/changes'                │ 'OK'  │ '168'      │ '0'    │"
+  ],
+  "after_restore": [
+   "RECON-20261001-064840-f3a5  mode=observe  status=COMPLETED",
+   "│ 0       │ 'AIRTABLE'     │ 231     │ 0           │ 0        │ 0            │ 0         │ 231    │",
+   "│ 1       │ 'GOOGLE_DRIVE' │ 3       │ 0           │ 0        │ 0            │ null      │ 3      │",
+   "│ 2       │ 'XERO'         │ 1       │ 0           │ 0        │ 0            │ null      │ 1      │",
+   "No drift found.",
+   "│ 0       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/quote-events'           │ 'OK'  │ '165'      │ '0'    │",
+   "│ 1       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/project-invoice-events' │ 'OK'  │ '165'      │ '0'    │",
+   "│ 2       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/changes'                │ 'OK'  │ '168'      │ '0'    │"
+  ]
+ },
+ "integrity": {
+  "after_deploy": [
+   "PASS    hash_chain_intact                  The audit trail hash chain verifies end to end",
+   "23 PASS, 3 WARNING, 0 FAIL  (hosted database)"
+  ],
+  "during_test": [
+   "PASS    hash_chain_intact                  The audit trail hash chain verifies end to end",
+   "23 PASS, 3 WARNING, 0 FAIL  (hosted database)"
+  ],
+  "after_restore": [
+   "PASS    hash_chain_intact                  The audit trail hash chain verifies end to end",
+   "23 PASS, 3 WARNING, 0 FAIL  (hosted database)"
+  ]
+ },
+ "value_fingerprint": {
+  "before_deploy": {
+   "taken_at": "2026-09-30T20:27:17.785Z",
+   "count": 173,
+   "sha256": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6"
+  },
+  "after_deploy": {
+   "taken_at": "2026-09-30T20:27:32.573Z",
+   "count": 173,
+   "sha256": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6"
+  },
+  "after_live_test": {
+   "taken_at": "2026-09-30T20:47:44.735Z",
+   "count": 173,
+   "sha256": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6"
+  }
+ },
+ "observations": [
+  "n8n 06 executions overlapped (1919 started before 1918 advanced the cursor), so txn82/83 were delivered 3 times; every duplicate was recognised and nothing was applied twice.",
+  "The RoofOps Sync note \"↺ …\" was written by 1919 and then cleared within seconds by a re-issued duplicate correction (existing re-issue behaviour recomputes the note as blank). Values were never affected; the note is informational.",
+  "The 06 \"origin\" line (Airtable actionMetadata.source) was not deployed: the session permission check refused the production workflow change. Events carried no origin; the database used the rules that do not need it."
+ ]
+}

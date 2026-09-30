@@ -1217,3 +1217,45 @@ was unchanged.
 - **Not changed here (pre-existing).** The daily scheduled 07 runs on 2026-09-30 and 2026-10-01 (n8n 1847, 1899)
   stopped at Find Drive Root: Google Drive answered HTTP 403, per-minute rate limit. That was after their Airtable
   comparison (0 drift); the next run supersedes the unfinished one.
+
+### 15. Follow-up: supported, audited exception resolution (2026-10-01, owner-instructed)
+
+**Before.** An exception could only be closed by editing `workflow_exceptions` with SQL (`ops/*.sql` through
+`scripts/sql.ts`): no check of who, no required reason, no audit row. EXC-0018 and EXC-0019, the live refusals from
+§11 and §13, stayed OPEN, and the Copilot kept reporting them. `test/exception-resolution.test.ts` was red: there was
+no supported path.
+
+**Fix.** Migration `20261001040000_supported_exception_resolution.sql`, `scripts/exception.ts` and
+`npm run exception:resolve -- EXC-NNNN --by EMP-NNN --note "why"`.
+
+- **`ops_resolve_exception(exception, employee, note)` refuses unless all of these hold:**
+  - the note says why (at least 10 characters);
+  - the employee is known and active;
+  - their role is in `app_settings exception.resolver_roles` (FINANCE, ADMIN, OPERATIONS_MANAGER, PROJECT_MANAGER);
+  - the exception exists and is OPEN.
+- **What it records.** It moves the exception OPEN → RESOLVED through the existing state machine, recording
+  `resolved_by`, `resolved_at` and `resolution_note`. It writes one `exception.resolved` audit row with the before
+  and after state and the note.
+- **History.** The exception keeps its original failure, class and attempts. Nothing is deleted.
+- **Idempotent.** Resolving again changes nothing: "already RESOLVED by …", with no second audit row.
+- **Access.** Neither application role can call it or update exceptions; the dashboard stays read-only.
+
+**Tests** (PGlite and Postgres 17):
+- **Refusals:** a blank or short note, an unknown, inactive or estimator employee, an unknown exception. Nothing
+  changes.
+- **The resolution:** OPEN → RESOLVED with who, when and why; the original message kept; the row count unchanged;
+  exactly one audit row; idempotent; the hash chain intact.
+- **Least privilege** for both roles.
+
+Ablations: without the role check, the audit row, the OPEN-only rule or the note rule, each turns its test red.
+Full suite 376 passed; lint and typecheck clean. Fresh chain: 24 applied, 0 skipped on re-run.
+
+**Live** ([evidence/exception-resolution-live-verification.json](../evidence/exception-resolution-live-verification.json)):
+
+| Step | Observed |
+|---|---|
+| Deploy | Migration alone (`eb6c9a95…`); fingerprint unchanged; neither application role can execute it or update exceptions |
+| EMP-002 (Estimator) resolves EXC-0018 | Refused: "EMP-002 (ESTIMATOR) may not resolve exceptions". Still OPEN |
+| EMP-900 (Finance) resolves EXC-0018 and EXC-0019, with notes | Both RESOLVED by EMP-900. Two `exception.resolved` audit rows (USER EMP-900, OPEN → RESOLVED, with the note). Original failure text kept |
+| Repeat on EXC-0018 | Refused: "already RESOLVED by EMP-900". No second audit row |
+| After | 19 exception records, the same as before. Open exceptions back to the four pre-existing ones (EXC-0003, 0013, 0016, 0017). Integrity 0 FAIL, with the hash chain intact. Security all pass. Dry-run `RECON-20261001-090010-e1dd`: 0 drift. The Copilot reports no open issues on PRJ-2026-0005 |

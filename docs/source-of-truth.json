@@ -1663,7 +1663,7 @@
       "airtable_name": null,
       "canonical": "workflow_exceptions.resolution_status",
       "owner": "POSTGRES",
-      "editable_in": "ops SQL (re-queue) / automatic resolve",
+      "editable_in": "npm run exception:resolve (ops_resolve_exception: OPEN -> RESOLVED, audited) / ops SQL re-queue / automatic resolve",
       "change_path": "wf_* functions",
       "validation": "state_transitions(workflow_exception)",
       "event_generated": "exception.*",

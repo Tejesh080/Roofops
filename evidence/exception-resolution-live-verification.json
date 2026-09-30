@@ -1,0 +1,79 @@
+{
+ "follow_up": "Supported, audited exception resolution (OPEN -> RESOLVED)",
+ "migration": {
+  "file": "supabase/migrations/20261001040000_supported_exception_resolution.sql",
+  "checksum_prefix": "eb6c9a95",
+  "applied_to_hosted_alone": true
+ },
+ "command": "npm run exception:resolve -- EXC-NNNN --by EMP-NNN --note \"why\"  (scripts/exception.ts -> ops_resolve_exception)",
+ "before": "Closing an exception meant editing workflow_exceptions with SQL (ops/*.sql through scripts/sql.ts); no check of who, no required reason, no audit row. EXC-0018 and EXC-0019 (the live AC-03 refusals) stayed OPEN and the Copilot kept reporting them.",
+ "live_test": {
+  "refused": {
+   "command": "exception:resolve EXC-0018 --by EMP-002 (ESTIMATOR)",
+   "result": [
+    "if (!r!.r.resolved) throw new Error(`Not resolved: ${r!.r.reason ?? 'refused'}`);",
+    "Error: Not resolved: EMP-002 (ESTIMATOR) may not resolve exceptions"
+   ]
+  },
+  "resolved": [
+   {
+    "exception": "EXC-0018",
+    "by": "EMP-900 (FINANCE)",
+    "output": [
+     "EXC-0018 resolved by EMP-900 (audited as exception.resolved)"
+    ]
+   },
+   {
+    "exception": "EXC-0019",
+    "by": "EMP-900 (FINANCE)",
+    "output": [
+     "EXC-0019 resolved by EMP-900 (audited as exception.resolved)"
+    ]
+   }
+  ],
+  "repeat": {
+   "command": "exception:resolve EXC-0018 again",
+   "result": [
+    "if (!r!.r.resolved) throw new Error(`Not resolved: ${r!.r.reason ?? 'refused'}`);",
+    "Error: Not resolved: EXC-0018 is already RESOLVED by EMP-900"
+   ]
+  },
+  "audit_rows": [
+   "│ 0       │ 'EXC-0018'         │ 'USER'     │ 'EMP-900' │ 'OPEN' │ 'RESOLVED' │ 'Live AC-03 test: the refused Approve was correct; APR-2026-0' │",
+   "│ 1       │ 'EXC-0019'         │ 'USER'     │ 'EMP-900' │ 'OPEN' │ 'RESOLVED' │ 'Live AC-03 exact-preview test: the Approve of an edited prev' │"
+  ],
+  "history": "19 exception records before and after (nothing deleted); each keeps its original error_class, error_message and attempts",
+  "integrity": [
+   "PASS    cancelled_has_no_open_work         A cancelled project has no open tasks and no pending invoice approval",
+   "WARNING cancelled_open_purchase_orders     Cancelled projects with supplier orders still open (cancel or re-assign them)  → PRJ-2026-0001",
+   "PASS    dead_letters                       Side effects that stopped after their retry budget (each has an open exception)",
+   "PASS    hash_chain_intact                  The audit trail hash chain verifies end to end",
+   "WARNING open                               Open exceptions waiting for a person  → EXC-0003 PRJ-2026-0008; EXC-0013 Q-2026-0035; EXC-0016 PRJ-2026-0007; EXC-0017 PRJ-2026-0031",
+   "23 PASS, 3 WARNING, 0 FAIL  (hosted database)"
+  ],
+  "security": [
+   "PASS  dashboard role: can it write via wf_* (other than prepare)? []",
+   "PASS  workflow role: executable functions            18 items",
+   "all privilege checks pass"
+  ],
+  "grants": "roofops_workflow and roofops_dashboard: no EXECUTE on ops_resolve_exception, no UPDATE on workflow_exceptions",
+  "dry_run": [
+   "RECON-20261001-090010-e1dd  mode=observe  status=COMPLETED",
+   "│ 0       │ 'AIRTABLE'     │ 231     │ 0           │ 0        │ 0            │ 0         │ 231    │",
+   "│ 1       │ 'GOOGLE_DRIVE' │ 3       │ 0           │ 0        │ 0            │ null      │ 3      │",
+   "│ 2       │ 'XERO'         │ 1       │ 0           │ 0        │ 0            │ null      │ 1      │",
+   "No drift found."
+  ],
+  "dashboard_and_copilot": "dashboard /projects/PRJ-2026-0005: contains \"Ready to invoice\": true; out-of-sync notice: false\ncopilot (200) tools=get_project: No open automation issues on **PRJ-2026-0005** (Jack Walker, 39 Sugar Mill Way, Avenell Heights).\n\n- Status: Completed; invoice status is \"Ready to invoice\".\n- Open issues: none recorded for this project.\n- One related note: purchase order PO-2026-0005 (Pacific Fasteners Demo, $5,776.45 inc GST) shows supplier confirmation overdue.",
+  "value_fingerprint": {
+   "before_deploy": {
+    "count": 173,
+    "sha256": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6"
+   },
+   "after_deploy": {
+    "count": 173,
+    "sha256": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6"
+   }
+  }
+ }
+}

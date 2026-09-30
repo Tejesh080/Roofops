@@ -179,7 +179,7 @@ Airtable is a projection RoofOps writes and repairs. Google Drive and Xero hold 
 
 | Field | Canonical | Owner | Editable where | Change path | Validation | Event | Downstream | Read-back | Reconcile | AI |
 |---|---|---|---|---|---|---|---|---|---|---|
-| resolution_status | workflow_exceptions.resolution_status | `POSTGRES` | ops SQL (re-queue) / automatic resolve | wf_* functions | state_transitions(workflow_exception) | exception.* | dashboard, Copilot | — | `IGNORE` | yes |
+| resolution_status | workflow_exceptions.resolution_status | `POSTGRES` | npm run exception:resolve (ops_resolve_exception: OPEN -> RESOLVED, audited) / ops SQL re-queue / automatic resolve | wf_* functions | state_transitions(workflow_exception) | exception.* | dashboard, Copilot | — | `IGNORE` | yes |
 
 ## xero
 

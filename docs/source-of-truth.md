@@ -47,7 +47,7 @@ Airtable is a projection RoofOps writes and repairs. Google Drive and Xero hold 
 | Field | Canonical | Owner | Editable where | Change path | Validation | Event | Downstream | Read-back | Reconcile | AI |
 |---|---|---|---|---|---|---|---|---|---|---|
 | Customer ID<br>`fldzmWSHtLVZ4OTmZ` | customers.customer_number | `POSTGRES` | none | import | unique | — | Xero contact number | — | `REPAIR_AIRTABLE` | yes |
-| Customer Since<br>`fldNu4bbDXjMbwmZ8` | customers.customer_since | `POSTGRES` | none | import | date | — | — | — | `REPAIR_AIRTABLE` | no |
+| Customer Since _(date: Brisbane business day)_<br>`fldNu4bbDXjMbwmZ8` | customers.customer_since | `POSTGRES` | none | import | date | — | — | — | `REPAIR_AIRTABLE` | no |
 | Email<br>`fldNcSkEiFnb8m4XP` | customers.email | `POSTGRES` | none (managed in RoofOps) | import | email | — | Xero contact | — | `REPAIR_AIRTABLE` | no |
 | Properties<br>`fldKPwUjWtW2jpEEF` | customer_properties | `POSTGRES` | none | inverse link | — | — | — | — | `IGNORE` | no |
 | Name<br>`fldI46VewtlNRnwui` | customers.display_name | `POSTGRES` | none (managed in RoofOps) | import | — | — | Xero contact name, dashboard | — | `REPAIR_AIRTABLE` | yes |
@@ -77,12 +77,12 @@ Airtable is a projection RoofOps writes and repairs. Google Drive and Xero hold 
 
 | Field | Canonical | Owner | Editable where | Change path | Validation | Event | Downstream | Read-back | Reconcile | AI |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Planned Completion<br>`fldvZtiassZEgLMAN` | projects.planned_completion_date | `AIRTABLE_EDIT` | Airtable Projects.Planned Completion | 06 → wf_airtable_change | date; ≥ Planned Start; locked once Completed/Closed/Cancelled | project.planned_completion_date.changed | risk views, dashboard, Copilot | 06 read-back; reconciliation | `APPLY_VIA_HANDLER` | yes |
-| Planned Start<br>`fld8rf6RZLgfs6Ron` | projects.planned_start_date | `AIRTABLE_EDIT` | Airtable Projects.Planned Start | 06 → wf_airtable_change | date; ≤ Planned Completion; locked once Completed/Closed/Cancelled | project.planned_start_date.changed | risk views, dashboard, Copilot | 06 read-back; reconciliation | `APPLY_VIA_HANDLER` | yes |
+| Planned Completion _(date: Brisbane business day)_<br>`fldvZtiassZEgLMAN` | projects.planned_completion_date | `AIRTABLE_EDIT` | Airtable Projects.Planned Completion | 06 → wf_airtable_change | date; ≥ Planned Start; locked once Completed/Closed/Cancelled | project.planned_completion_date.changed | risk views, dashboard, Copilot | 06 read-back; reconciliation | `APPLY_VIA_HANDLER` | yes |
+| Planned Start _(date: Brisbane business day)_<br>`fld8rf6RZLgfs6Ron` | projects.planned_start_date | `AIRTABLE_EDIT` | Airtable Projects.Planned Start | 06 → wf_airtable_change | date; ≤ Planned Completion; locked once Completed/Closed/Cancelled | project.planned_start_date.changed | risk views, dashboard, Copilot | 06 read-back; reconciliation | `APPLY_VIA_HANDLER` | yes |
 | Project Manager<br>`fldnZcRBxG7hTebD5` | projects.project_manager_id | `AIRTABLE_EDIT` | Airtable Projects.Project Manager | 06 → wf_airtable_change | must be an active PROJECT_MANAGER by full name | project.project_manager.changed | dashboard, Copilot | 06 read-back; reconciliation | `APPLY_VIA_HANDLER` | yes |
 | Status<br>`fldi2Qwz1dAh2tcTE` | projects.status | `AIRTABLE_EDIT` | Airtable Projects.Status | Airtable webhook → n8n 06 → wf_airtable_change → project transition | state_transitions(project) + project_transition_guard | project.status.changed | dashboard, Copilot, invoice eligibility, risk views, tasks/approvals on cancel | 06 PATCH + read-back; reconciliation | `APPLY_VIA_HANDLER` | yes |
-| Actual Completion<br>`fldWKRobTLlOjeN9j` | projects.actual_completion_date | `POSTGRES` | none (set by Status → Completed) | derived by the project transition | required for Completed/Closed | project.status.changed | invoice eligibility, dashboard | 06 correction; reconciliation | `REPAIR_AIRTABLE` | yes |
-| Actual Start<br>`fldIje5e0a72cBfVD` | projects.actual_start_date | `POSTGRES` | none (set by Status → In Progress) | derived by the project transition | required from In Progress onwards | project.status.changed | dashboard, Copilot | 06 correction; reconciliation | `REPAIR_AIRTABLE` | yes |
+| Actual Completion _(date: Brisbane business day)_<br>`fldWKRobTLlOjeN9j` | projects.actual_completion_date | `POSTGRES` | none (set by Status → Completed) | derived by the project transition | required for Completed/Closed | project.status.changed | invoice eligibility, dashboard | 06 correction; reconciliation | `REPAIR_AIRTABLE` | yes |
+| Actual Start _(date: Brisbane business day)_<br>`fldIje5e0a72cBfVD` | projects.actual_start_date | `POSTGRES` | none (set by Status → In Progress) | derived by the project transition | required from In Progress onwards | project.status.changed | dashboard, Copilot | 06 correction; reconciliation | `REPAIR_AIRTABLE` | yes |
 | Customer<br>`fldG4mPoV6sUkA9rM` | projects.customer_id | `POSTGRES` | none | created by wf_quote_accepted | must equal the quote customer | project.created | Airtable | 03 read-back | `REPAIR_AIRTABLE` | yes |
 | Drive Folder<br>`fldgVDT29UOOOtlqO` | external_links GOOGLE_DRIVE Folder (verified) | `DRIVE` | none | 02 creates, 03 writes after read-back | must equal the verified folder URL | drive.project_folder.verified | dashboard, Copilot | 03 read-back; reconciliation (Drive + Airtable) | `REPAIR_AIRTABLE` | yes |
 | Invoice Action<br>`fldYnINTdtOckOzK4` | approvals / invoices (via 04) | `ACTION` | Airtable Projects.Invoice Action | webhook → n8n 04 → wf_invoice_prepare / wf_invoice_decide | mapped approver for Approve | invoice.prepare_requested / invoice.approved | approvals, invoices, Xero | 04 clears + read-back | `IGNORE` | yes |
@@ -120,10 +120,10 @@ Airtable is a projection RoofOps writes and repairs. Google Drive and Xero hold 
 
 | Field | Canonical | Owner | Editable where | Change path | Validation | Event | Downstream | Read-back | Reconcile | AI |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Expected Delivery<br>`fldqkJourPRGAcJya` | purchase_orders.expected_delivery_date | `AIRTABLE_EDIT` | Airtable Purchase Orders.Expected Delivery | 06 → wf_airtable_change | date ≥ PO Date; locked once Delivered/Cancelled | purchase_order.expected_delivery_date.changed | risk views (materials after start), dashboard, Copilot | 06 read-back; reconciliation | `APPLY_VIA_HANDLER` | yes |
+| Expected Delivery _(date: Brisbane business day)_<br>`fldqkJourPRGAcJya` | purchase_orders.expected_delivery_date | `AIRTABLE_EDIT` | Airtable Purchase Orders.Expected Delivery | 06 → wf_airtable_change | date ≥ PO Date; locked once Delivered/Cancelled | purchase_order.expected_delivery_date.changed | risk views (materials after start), dashboard, Copilot | 06 read-back; reconciliation | `APPLY_VIA_HANDLER` | yes |
 | Status<br>`fldMtDddp1Rm4tDHf` | purchase_orders.status | `AIRTABLE_EDIT` | Airtable Purchase Orders.Status | 06 → wf_airtable_change | state_transitions(purchase_order); approver for Approved | purchase_order.status.changed | materials status, risk views, dashboard, Copilot | 06 read-back; reconciliation | `APPLY_VIA_HANDLER` | yes |
 | Supplier Reference<br>`fldJ4Z5Rg5adnEFU0` | purchase_orders.supplier_reference | `AIRTABLE_EDIT` | Airtable Purchase Orders.Supplier Reference | 06 → wf_airtable_change | free text | purchase_order.supplier_reference.changed | dashboard | 06 read-back | `APPLY_VIA_HANDLER` | yes |
-| PO Date<br>`fldqNNcA85jAC9FxM` | purchase_orders.po_date | `POSTGRES` | none | import | date | — | ack SLA | — | `REPAIR_AIRTABLE` | yes |
+| PO Date _(date: Brisbane business day)_<br>`fldqNNcA85jAC9FxM` | purchase_orders.po_date | `POSTGRES` | none | import | date | — | ack SLA | — | `REPAIR_AIRTABLE` | yes |
 | PO Number<br>`fld1yW7kd8vY975Tj` | purchase_orders.po_number | `POSTGRES` | none | import | unique | — | Airtable | — | `REPAIR_AIRTABLE` | yes |
 | Project<br>`fldDVMu2hgtSVuJyR` | purchase_orders.project_id | `POSTGRES` | none | import | — | — | materials views | — | `REPAIR_AIRTABLE` | yes |
 | RoofOps ID<br>`fldnzaXx4TTTjCakj` | purchase_orders.id | `POSTGRES` | none | import | uuid | — | identity | — | `REPAIR_AIRTABLE` | no |
@@ -137,11 +137,11 @@ Airtable is a projection RoofOps writes and repairs. Google Drive and Xero hold 
 |---|---|---|---|---|---|---|---|---|---|---|
 | Lost Reason<br>`fld1sZibwdMVnI4Hd` | quotes.lost_reason | `AIRTABLE_EDIT` | Airtable Quotes.Lost Reason | 06 → wf_airtable_change | required while Lost | quote.lost_reason.changed | conversion KPIs | 06 read-back | `APPLY_VIA_HANDLER` | yes |
 | Status<br>`fldQpTa5tvrzlNg1h` | quotes.status | `AIRTABLE_EDIT` | Airtable Quotes.Status | Accepted: webhook → n8n 01 → wf_quote_accepted. Sent/Lost/Expired: webhook → n8n 06 → wf_airtable_change | state_transitions(quote) | quote.accepted / quote.status.changed | projects, Drive, dashboard, Copilot | 01/06 read-back; reconciliation | `APPLY_VIA_HANDLER` | yes |
-| Accepted On<br>`fldfhsHggkGd8GKVq` | quotes.accepted_on | `POSTGRES` | none (set by acceptance) | wf_quote_accepted | date | quote.accepted | projects | 01 read-back | `REPAIR_AIRTABLE` | yes |
+| Accepted On _(date: Brisbane business day)_<br>`fldfhsHggkGd8GKVq` | quotes.accepted_on | `POSTGRES` | none (set by acceptance) | wf_quote_accepted | date | quote.accepted | projects | 01 read-back | `REPAIR_AIRTABLE` | yes |
 | Amount (inc GST)<br>`fldbfUE8DVh1Dwjfs` | quote_versions.total_inc_gst (latest) | `POSTGRES` | none | import (derived from lines) | derived total | — | invoicing | — | `REPAIR_AIRTABLE` | yes |
 | Automation Message<br>`fldC70PHs4gQh8M42` | — | `WORKFLOW` | none | written by 01 | — | — | Airtable only | 01 read-back | `IGNORE` | no |
 | Automation Status<br>`fldVc9vw112vrP33n` | processed_events / outbox (01) | `WORKFLOW` | none | written by 01 | — | — | Airtable only | 01 read-back | `IGNORE` | yes |
-| Created On<br>`fldHSFkvwuVLfAS7J` | quotes.created_on | `POSTGRES` | none | import | date | — | — | — | `REPAIR_AIRTABLE` | yes |
+| Created On _(date: Brisbane business day)_<br>`fldHSFkvwuVLfAS7J` | quotes.created_on | `POSTGRES` | none | import | date | — | — | — | `REPAIR_AIRTABLE` | yes |
 | Customer<br>`fld4LsEu8c9EMFj0h` | quotes.customer_id | `POSTGRES` | none | import | — | — | Airtable | — | `REPAIR_AIRTABLE` | yes |
 | Estimator<br>`fld5Bz9FDhJSPibPk` | quotes.estimator_id | `POSTGRES` | none | import | employee | — | — | — | `REPAIR_AIRTABLE` | yes |
 | Job Type<br>`fldOaXGsOgYHuWFYg` | quotes.job_type | `POSTGRES` | none | import | enum | — | dashboard | — | `REPAIR_AIRTABLE` | yes |
@@ -153,7 +153,7 @@ Airtable is a projection RoofOps writes and repairs. Google Drive and Xero hold 
 | Roof Type<br>`fldhY6d0ikMnsc7D3` | inspections.roof_type | `POSTGRES` | none | import | enum | — | — | — | `REPAIR_AIRTABLE` | yes |
 | RoofOps ID<br>`fldVUpqZkVKid3Fyy` | quotes.id | `POSTGRES` | none | import | uuid | — | 01 identity cross-check | — | `REPAIR_AIRTABLE` | no |
 | RoofOps Sync<br>`fldKjdNBqdBYBdlUo` | — | `WORKFLOW` | none | 06/07 | text | — | Airtable only | — | `IGNORE` | no |
-| Sent On<br>`fldMnoHiondm5jBWv` | quotes.sent_on | `POSTGRES` | none (set by Status → Sent) | derived by the quote transition | date | quote.status.changed | — | 06 correction | `REPAIR_AIRTABLE` | yes |
+| Sent On _(date: Brisbane business day)_<br>`fldMnoHiondm5jBWv` | quotes.sent_on | `POSTGRES` | none (set by Status → Sent) | derived by the quote transition | date | quote.status.changed | — | 06 correction | `REPAIR_AIRTABLE` | yes |
 | Version<br>`fldEjEqlzE8Y0M1nf` | quote_versions (latest) | `POSTGRES` | none | import | — | — | acceptance | — | `REPAIR_AIRTABLE` | yes |
 
 ## supplier

@@ -14,7 +14,7 @@ const db = await openPglite();
 await migrate(db);
 type Row = Record<string, string | boolean | null>;
 const contract = await db.query<Row>(`select entity, field_key, airtable_table_id, airtable_field_id, airtable_name, canonical, owner, editable_in,
-  change_path, validation, event_generated, downstream, readback, reconcile, ai_visible from field_contract order by entity, (owner <> 'AIRTABLE_EDIT'), field_key`);
+  change_path, validation, event_generated, downstream, readback, reconcile, ai_visible, value_type from field_contract order by entity, (owner <> 'AIRTABLE_EDIT'), field_key`);
 const states = await db.query<Row>(`select machine, state, label, is_terminal from state_machine_states order by machine, state`);
 const trans = await db.query<Row>(`select machine, from_state, to_state, guard, note from state_transitions order by machine, from_state, to_state`);
 await db.close();
@@ -45,7 +45,7 @@ for (const entity of [...new Set(contract.map((c) => String(c.entity)))]) {
     '|---|---|---|---|---|---|---|---|---|---|---|');
   for (const c of contract.filter((x) => x.entity === entity)) {
     const cell = (v: string | boolean | null | undefined) => String(v ?? '—').replace(/\|/g, '\\|');
-    md.push(`| ${cell(c.airtable_name ?? c.field_key)}${c.airtable_field_id ? `<br>\`${String(c.airtable_field_id)}\`` : ''} | ${cell(c.canonical)} | \`${String(c.owner)}\` | ${cell(c.editable_in)} | ${cell(c.change_path)} | ${cell(c.validation)} | ${cell(c.event_generated)} | ${cell(c.downstream)} | ${cell(c.readback)} | \`${String(c.reconcile)}\` | ${c.ai_visible ? 'yes' : 'no'} |`);
+    md.push(`| ${cell(c.airtable_name ?? c.field_key)}${c.value_type === 'date' ? ' _(date: Brisbane business day)_' : ''}${c.airtable_field_id ? `<br>\`${String(c.airtable_field_id)}\`` : ''} | ${cell(c.canonical)} | \`${String(c.owner)}\` | ${cell(c.editable_in)} | ${cell(c.change_path)} | ${cell(c.validation)} | ${cell(c.event_generated)} | ${cell(c.downstream)} | ${cell(c.readback)} | \`${String(c.reconcile)}\` | ${c.ai_visible ? 'yes' : 'no'} |`);
   }
   md.push('');
 }

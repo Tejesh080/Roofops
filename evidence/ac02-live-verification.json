@@ -1,0 +1,230 @@
+{
+ "defect": "AC-02",
+ "environment": "hosted Supabase + n8n Cloud + production Airtable base (synthetic data); read-only checks",
+ "deployed": {
+  "migration": "20260930010000_reconcile_field_shape_guards.sql",
+  "checksum": "740e6d4b129026180efe0a33565c257ae3802bb5bc08fb87ec9924494ddeb281",
+  "applied_alone": true
+ },
+ "dry_run_after_deploy": {
+  "run_key": "RECON-20261001-052724-7729",
+  "mode": "observe",
+  "status": "COMPLETED",
+  "tables": [
+   {
+    "drift": 0,
+    "records": 40,
+    "table_id": "tblHKX79FJFHn5FDc",
+    "fields_checked": 360
+   },
+   {
+    "drift": 0,
+    "records": 6,
+    "table_id": "tbloPJwCIcdIZQFVK",
+    "fields_checked": 36
+   },
+   {
+    "drift": 0,
+    "records": 52,
+    "table_id": "tblSYcCqId9wTMg3c",
+    "fields_checked": 520
+   },
+   {
+    "drift": 0,
+    "records": 35,
+    "table_id": "tbluIbl4zpMiAlMVw",
+    "fields_checked": 315
+   },
+   {
+    "drift": 0,
+    "records": 33,
+    "table_id": "tblvUPIoebC3zoacv",
+    "fields_checked": 463
+   },
+   {
+    "drift": 0,
+    "records": 65,
+    "table_id": "tblzenPRNVV5O7lZP",
+    "fields_checked": 1040
+   }
+  ],
+  "findings": 0,
+  "requires_human": 0
+ },
+ "integrity_after_deploy": "23 PASS, 3 WARNING (known: PRJ-2026-0001 open PO, Q-2026-0031, open exceptions), 0 FAIL",
+ "independent_airtable_read": "evidence/ac02-airtable-read-2026-10-01.json",
+ "proof": {
+  "run_key": "RECON-20261001-052724-7729",
+  "cells": {
+   "projects": 33,
+   "purchase_orders": 35,
+   "per_field": {
+    "Planned Start": {
+     "present": 30,
+     "omitted": 3,
+     "omitted_with_canonical_value": 0,
+     "date_only_format": 30,
+     "other_format": 0,
+     "equals_canonical": 33,
+     "differs_from_canonical": 0,
+     "observed_by_dry_run_equal": 33,
+     "observed_by_dry_run_differs": 0,
+     "observed_before_run": 0
+    },
+    "Planned Completion": {
+     "present": 30,
+     "omitted": 3,
+     "omitted_with_canonical_value": 0,
+     "date_only_format": 30,
+     "other_format": 0,
+     "equals_canonical": 33,
+     "differs_from_canonical": 0,
+     "observed_by_dry_run_equal": 33,
+     "observed_by_dry_run_differs": 0,
+     "observed_before_run": 0
+    },
+    "Actual Start": {
+     "present": 13,
+     "omitted": 20,
+     "omitted_with_canonical_value": 0,
+     "date_only_format": 13,
+     "other_format": 0,
+     "equals_canonical": 33,
+     "differs_from_canonical": 0,
+     "observed_by_dry_run_equal": 33,
+     "observed_by_dry_run_differs": 0,
+     "observed_before_run": 0
+    },
+    "Actual Completion": {
+     "present": 8,
+     "omitted": 25,
+     "omitted_with_canonical_value": 0,
+     "date_only_format": 8,
+     "other_format": 0,
+     "equals_canonical": 33,
+     "differs_from_canonical": 0,
+     "observed_by_dry_run_equal": 33,
+     "observed_by_dry_run_differs": 0,
+     "observed_before_run": 0
+    },
+    "PO Date": {
+     "present": 35,
+     "omitted": 0,
+     "omitted_with_canonical_value": 0,
+     "date_only_format": 35,
+     "other_format": 0,
+     "equals_canonical": 35,
+     "differs_from_canonical": 0,
+     "observed_by_dry_run_equal": 35,
+     "observed_by_dry_run_differs": 0,
+     "observed_before_run": 0
+    },
+    "Expected Delivery": {
+     "present": 35,
+     "omitted": 0,
+     "omitted_with_canonical_value": 0,
+     "date_only_format": 35,
+     "other_format": 0,
+     "equals_canonical": 35,
+     "differs_from_canonical": 0,
+     "observed_by_dry_run_equal": 35,
+     "observed_by_dry_run_differs": 0,
+     "observed_before_run": 0
+    },
+    "Supplier Reference": {
+     "present": 35,
+     "omitted": 0,
+     "omitted_with_canonical_value": 0,
+     "date_only_format": 0,
+     "other_format": 35,
+     "equals_canonical": 35,
+     "differs_from_canonical": 0,
+     "observed_by_dry_run_equal": 35,
+     "observed_by_dry_run_differs": 0,
+     "observed_before_run": 0
+    }
+   },
+   "problems": []
+  },
+  "guard1_fields_missing_from_every_record": [],
+  "guard2_max_differing_records_per_editable_field": 0,
+  "normalisation_on_hosted": {
+   "real_dates": 183,
+   "date_only_unchanged": 183,
+   "brisbane_midnight_instant_ok": 183,
+   "brisbane_2359_instant_ok": 183,
+   "offset_form_ok": 183,
+   "utc_1400_is_next_brisbane_day_ok": 183,
+   "earliest": "2024-11-15",
+   "latest": "2026-11-05"
+  },
+  "contract": [
+   "accepted_on (Accepted On)",
+   "actual_completion_date (Actual Completion)",
+   "actual_start_date (Actual Start)",
+   "created_on (Created On)",
+   "customer_since (Customer Since)",
+   "expected_delivery_date (Expected Delivery)",
+   "planned_completion_date (Planned Completion)",
+   "planned_start_date (Planned Start)",
+   "po_date (PO Date)",
+   "sent_on (Sent On)"
+  ],
+  "dry_run": {
+   "run_key": "RECON-20261001-052724-7729",
+   "mode": "observe",
+   "status": "COMPLETED",
+   "tables": [
+    {
+     "drift": 0,
+     "records": 40,
+     "table_id": "tblHKX79FJFHn5FDc",
+     "fields_checked": 360
+    },
+    {
+     "drift": 0,
+     "records": 6,
+     "table_id": "tbloPJwCIcdIZQFVK",
+     "fields_checked": 36
+    },
+    {
+     "drift": 0,
+     "records": 52,
+     "table_id": "tblSYcCqId9wTMg3c",
+     "fields_checked": 520
+    },
+    {
+     "drift": 0,
+     "records": 35,
+     "table_id": "tbluIbl4zpMiAlMVw",
+     "fields_checked": 315
+    },
+    {
+     "drift": 0,
+     "records": 33,
+     "table_id": "tblvUPIoebC3zoacv",
+     "fields_checked": 463
+    },
+    {
+     "drift": 0,
+     "records": 65,
+     "table_id": "tblzenPRNVV5O7lZP",
+     "fields_checked": 1040
+    }
+   ],
+   "findings": 0,
+   "requires_human": 0
+  },
+  "v_state_drift_rows": {
+   "n": 0
+  },
+  "open_ac02_exceptions": {
+   "n": 0
+  },
+  "value_fingerprint": {
+   "before_deploy": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6",
+   "after_dry_run": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6",
+   "unchanged": true
+  }
+ }
+}

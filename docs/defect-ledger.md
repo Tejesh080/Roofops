@@ -10,7 +10,7 @@ instruction).
 | ID | Severity | Hypothesis | Reproduced? | Reproduction evidence | Root cause | Violated invariant | Regression test | Fix | Integration verification | Live verification needed? | Status |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | AC-01 | P0 | The reconciler replays an Airtable read that is older than a webhook edit, reverting the staff member's edit | **Yes**, offline (PGlite and Postgres 17) | Probe `ws07/p2_stale_snapshot.mts` plus 2 failing tests (below) | Replays had no observation time and were exempt from the webhook path's stale and compare-and-set checks | An Airtable read is evidence only if canonical has not changed since the read | `test/state-integrity.test.ts:376`, `:396`, plus race tests `:485`, `:520` (two Postgres connections) | Migration `20260930000000_reconcile_never_replays_stale_reads.sql` | Migration chain clean from zero; 314 tests pass on PGlite and Postgres 17; lint, typecheck clean; integrity 0 FAIL on canonical local and hosted; **deployed to hosted**; hosted dry-run 0 drift | Done 2026-10-01 (§12): hosted repair run, then the controlled live test on PRJ-2026-0029, with [evidence/ac01-live-verification.json](../evidence/ac01-live-verification.json) | **FIXED** |
-| AC-02 | P0 | A missing or reshaped Airtable field is replayed as a staff edit | – | – | – | – | – | – | – | – | Not started |
+| AC-02 | P0 | A missing or reshaped Airtable field is replayed as a staff edit | **Yes**, offline (PGlite and Postgres 17) | 5 failing tests that emulate real Airtable reads: keys omitted, dates as UTC instants, one field changed on 8 records (below) | The reconciler read an absent key as "blank", compared date instants as text and cast them to their UTC date, and had no notion of a field-level change | A field missing from a whole read is not evidence; a date is the Brisbane business day it denotes; one field changing on many records at once is not N staff edits | `test/state-integrity.test.ts:427`, `:449`, `:458`, `:473`, `:490`, plus bulk-edit tests `:511` (legitimate, via webhook) and `:535` (missed, ambiguous) | Migration `20260930010000_reconcile_field_shape_guards.sql` | Chain from zero on PostgreSQL 17.11; 328 tests pass on PGlite and Postgres 17; red without the fix, green with it; each part ablated turns its own tests red; lint, typecheck clean; local integrity 0 FAIL; grants checked | Done 2026-10-01 (§10–§11): deployed alone; hosted dry-run 0 drift, 0 findings; integrity 0 FAIL; proven cell by cell against an independent read of the real base, with [evidence/ac02-live-verification.json](../evidence/ac02-live-verification.json) | **FIXED** |
 | AC-10 | P0 | 06 applies its own stale correction back as a staff edit | – | – | – | – | – | – | – | – | Not started |
 | AC-03 | P0 | Airtable Approve is not bound to the row or preview the approver saw | – | – | – | – | – | – | – | – | Not started |
 | AC-05 | P0 | Voiding an invoice does not cancel its queued Xero write | – | – | – | – | – | – | – | – | Not started |
@@ -338,3 +338,220 @@ the staff edit) is covered by the two-connection test `:520`.
 
 **AC-01 is FIXED.**
 
+---
+
+## AC-02 evidence package
+
+### 1. Reproduction (offline, before the fix)
+
+The catalogue's probes (`ws07/p1_missing_field.mts`, `ws07/p3_order_and_tz.mts`) were not available in this session, so the
+reproduction was rebuilt as regression tests. They feed `wf_reconcile_airtable` reads shaped the way the Airtable API
+really returns them. The existing `snapshot()` helper always sends every field id (with `null` for blanks) and only
+`YYYY-MM-DD` dates, which is why the suite missed this.
+
+Red on the current code (PGlite; the same on Postgres 17), 2026-10-01:
+
+```
+× AC-02: a field missing from every record of the read … is never replayed as "staff blanked it"
+    AssertionError: expected [ …(30) ] to deeply equal [ …(30) ]        ← planned dates changed across the project table
+× AC-02: a blank cell on one record (the field is present on others) is still a missed staff edit
+    AssertionError: expected [] to deeply equal [ Array(1) ]           ← knock-on: the first run had already blanked it
+× AC-02: dates returned as instants for the same Brisbane day are not drift, run after run
+    AssertionError: expected [ +0, 47, … ] to deeply equal [ +0, +0, [] ]
+    "✓ Planned Start: 2026-10-04 → 2026-10-03T14:00:00.000Z applied"   ← 47 phantom drifts; each date moved back one day
+× AC-02: a real date change sent as an instant lands on the Brisbane business day …
+    expected '2026-11-19' to be '2026-11-20'                           ← the UTC date, not the business day
+× AC-02: the same field changed on many records in one read … nothing is replayed
+    expected { drift: 0 … } to match { drift: 8, corrections: [] }     ← knock-on from the corrupted dates
+Tests  5 failed | 30 skipped (35)
+```
+
+### 2. Classification: a true bug
+
+- **Not a test artifact.** The Airtable REST API omits empty cells from `fields`, and omits every cell of a field that
+  was deleted or recreated (new field id). Switching a date field to "include time" returns ISO instants in UTC.
+- **Not intended behaviour.** ADR-038 says reconciliation "replays, never picks a winner". A missing field has no
+  winner to pick; the replay invented one ("staff blanked it") on every record.
+- **When it happens.** The first nightly or on-demand repair run after anyone deletes, recreates or reformats a synced
+  Airtable field. For dates it compounds: each run writes the shifted date back, and the next run shifts it again.
+
+### 3. The first incorrect state transition
+
+`projects.planned_completion_date` (and `planned_start_date`, `purchase_orders.expected_delivery_date`,
+`supplier_reference`) set to NULL on every eligible record by `project_apply_change` / `po_apply_change`. They were
+called from `wf_airtable_change` with `source='reconciler'`, on a replay built from
+`a := e.fields -> c.airtable_field_id` (`20260930000000_…sql:89`), where an absent key reads as NULL. For instants, the
+same handlers cast with `p_value::date` (`20260929001200_…sql:565`, `:629`), which gives the UTC date.
+
+### 4. Why the architecture permitted it
+
+- The reconciler judged every field record by record. Nothing looked at the read as a whole, so a field absent from
+  all 30 projects looked like 30 separate staff edits.
+- In the REST API, "absent" means both "blank" and "no such field". Record by record the two can't be told apart;
+  across the whole read they can.
+- `at_norm` compares values as text. `'2026-10-04T14:00:00.000Z'` never equals `'2026-10-05'`, so every date is drift.
+  The handlers then cast it to a UTC date, and the webhook path (06) and the read-back proof
+  (`wf_airtable_writeback_verified`) shared the same conversion.
+- The field contract had no type, so nothing knew a field held a business day.
+
+### 5. Invariant
+
+> A field id missing from a whole Airtable read is never a staff edit. A date is the Brisbane business day it denotes,
+> whatever shape Airtable returns it in. A reconcile run never changes a canonical date that Airtable shows as the same
+> business day, so N runs with no staff edits change nothing. The same staff-editable field differing on many records
+> in one read is a change to the field, reported once, never replayed record by record.
+
+### 6. Regression tests (written first, watched fail)
+
+`test/state-integrity.test.ts`, reconciliation block, on PGlite and real Postgres 17:
+
+- `:427` **Field missing from every record.** Planned Start and Planned Completion keys are removed from every project in
+  the read, plus one genuine missed status edit (PRJ-2026-0025) in the same read. It asserts:
+  - every canonical date is unchanged;
+  - the status edit is still applied (not a blanket abort);
+  - no correction writes to the missing field ids;
+  - exactly one `REQUIRES_HUMAN/EXCEPTION_OPENED` finding per field, with a `SCHEMA_MISMATCH` exception;
+  - no false drift is recorded for those fields.
+- `:449` **Blank cell on one record** (key absent on PRJ-2026-0030 only). Still replayed as a missed staff edit. This
+  guards against making guard 1 too broad.
+- `:458` **Instants for the same Brisbane day**, in all four project date fields, over **two consecutive runs**. Asserts
+  0 drift, no corrections, no findings, and no canonical date changed.
+- `:473` **A real change sent as an instant.** Covers three paths:
+  - the reconciler applies it as the Brisbane day (2026-11-20, not 2026-11-19);
+  - the webhook path applies the next edit the same way, with no correction back to Airtable;
+  - the read-back proof accepts an instant for the right day.
+- `:490` **Same field on 8 of 30 projects**, shifted by a day. Asserts:
+  - nothing is replayed and no correction is written;
+  - drift is 8, with one field-level `REQUIRES_HUMAN` finding;
+  - the 8 divergences stay visible in `v_state_drift`.
+
+Added in round 2, on the owner's request:
+
+- `:511` **A legitimate bulk edit through the webhook.** Six projects (20% of the read) are moved to the same new finish
+  date through `wf_airtable_change`, each `APPLIED`, while a run holds an older read. It asserts:
+  - all six values are kept, with no correction;
+  - six `STALE_EVENT/NONE` findings (re-checked next run), with **no** field-level alarm and no exception;
+  - the next run with a fresh read has 0 drift and 0 findings.
+- `:535` **A missed bulk edit (no webhook).** Airtable shows six genuine staff edits RoofOps never received, and the read
+  is ambiguous. Over two runs it asserts:
+  - nothing is applied to RoofOps, and nothing is reverted in Airtable (no corrections);
+  - one `REQUIRES_HUMAN/EXCEPTION_OPENED` finding per run;
+  - the six divergences stay visible in `v_state_drift`;
+  - **one** exception, reused by the second run (`attempt_count` 2).
+
+### 7. Fix (design, not the example)
+
+New migration `supabase/migrations/20260930010000_reconcile_field_shape_guards.sql`. It changes Postgres only; n8n is
+unchanged.
+
+1. **Dates are typed.** `field_contract.value_type` ('text' | 'date') marks the 10 date fields. It is exported to
+   `docs/source-of-truth.*`.
+2. **One normalisation at every entry point.**
+   - `at_business_date()` turns any Airtable date or date-time into the Brisbane business day. Anything unparseable is
+     returned unchanged and never guessed.
+   - `at_normalize_fields()` applies it to the date fields of a record.
+   - It is used by:
+     - the reconciler, on the whole read;
+     - `wf_airtable_change`, which is now a thin wrapper that normalises `changes.current/previous` and `current`, then
+       calls the unchanged handler (renamed `wf_airtable_change_core`);
+     - `wf_airtable_writeback_verified`, which is also now a wrapper around `…_core`.
+   - The renamed internals are not callable by n8n. n8n and the reconciler keep calling the same names.
+3. **Guard 1, a field missing from the whole read.** If a contract field id appears in no record of the read while
+   RoofOps holds a value for at least one of them, it is:
+   - not compared, observed, replayed or written;
+   - reported once as `REQUIRES_HUMAN`, with a `SCHEMA_MISMATCH` exception naming the field and its id.
+
+   A blank cell on some records, with the field present on others, is still evidence.
+4. **Guard 2, a field-level change.** If one staff-editable field differs on at least 5 records **and** at least 20% of
+   the read, none of those differences are replayed. The drift stays counted and visible, and there is one
+   `REQUIRES_HUMAN` finding with a `RECONCILIATION_MISMATCH` exception. Missed edits after a real outage still arrive
+   through 07's webhook drain, which carries real payloads with previous values. **Only records unchanged since the
+   run started count** (the AC-01 rule, see the round-2 correction below).
+5. `wf_reconcile_airtable` returns `suspect_fields`. The existing keys are unchanged, so n8n 07 is unaffected.
+
+**Known trade-off (guard 1):** a sparse field, one blank in almost every record, that a staff member blanks on its
+only non-blank record while the webhook is missed is indistinguishable from a deleted field. It is reported to a
+person rather than replayed. The webhook path still applies such an edit normally, because 06 carries real previous
+values.
+
+**Round-2 correction, found by the legitimate-bulk-edit test.** The first version of guard 2 counted differences over
+every record in the read, including records that staff changed through the webhook after the read was taken. A
+genuine bulk edit racing a reconciliation run therefore raised a false field-level alarm and exception. The records
+themselves were safe, because AC-01's rule skipped them, but the alarm was false. The red run on the first version was
+`expected [ …(7) ] to deeply equal [ …(6) ]`: six correct `STALE_EVENT` findings plus the false `REQUIRES_HUMAN`.
+Guard 2 now counts only records whose canonical row has not changed since the run started. The migration had not
+reached any shared environment (only the local dev DB, which was then rebuilt with `npm run db:reset`), so the fix was
+made in the same file.
+
+### 8. Verification, round 1 (superseded by round 2 below)
+
+| Check | Result |
+|---|---|
+| AC-02 tests, fix removed / restored (byte-identical, sha256 `a168e642b835e933…`) | **5 failed** / **5 passed** |
+| Ablation, one part disabled at a time | Guard 1 off: `:427` red. Normalisation off: `:458` and `:473` red. Guard 2 off: `:490` red. `:449` stays green throughout (it guards against over-blocking). File restored byte-for-byte |
+| Full suite, PGlite + Postgres 17 (every suite builds its database from all migrations) | **324 passed**, 33 skipped. Baseline 314; +10 = 5 tests × 2 engines |
+| Lint / typecheck | Clean |
+| Local dev DB (`npm run db:load` applied only this migration) | `integrity:check -- --local`: **22 PASS, 4 WARNING, 0 FAIL** (same as after AC-01) |
+| Grants (local) | `roofops_workflow` can execute `wf_airtable_change`, `wf_airtable_writeback_verified`, `wf_reconcile_airtable`, but not the two `…_core` functions; `roofops_dashboard` can execute none of them; the schema test's allowed list is unchanged and passes |
+| Contract export | Only the 10 date rows gain `value_type: date` / a "Brisbane business day" note; state machines unchanged |
+
+### 9. Pre-deployment checks (round 2, 2026-10-01)
+
+| Check | Result |
+|---|---|
+| 1. Repo, local and hosted histories aligned through AC-01 | **Yes.** All 18 versions have identical checksums in repo, local (rebuilt with `npm run db:reset`) and hosted |
+| 2. `20260930010000_reconcile_field_shape_guards.sql` globally unique and unused | **Yes.** One repo file with that prefix; absent from git history, and absent from hosted. It sorts after every hosted version. The local dev DB holds exactly the repo file (checksum `740e6d4b…`), from the rebuild |
+| 3. Fresh PostgreSQL 17.11 database migrated from zero through AC-02 | **Yes.** 19 applied, 0 skipped; import succeeded; a second migrate applied 0 and skipped 19. Checks on it: 10 date fields typed, handler renamed to `_core`, integrity 0 FAIL, and `at_business_date('2026-10-04T14:00:00.000Z')` = `2026-10-05`. The database was then dropped |
+| 4. AC-02 regression tests after that | **20 passed** (every AC-01 and AC-02 test; PGlite + Postgres 17) |
+
+### 10. Hosted deployment and dry-run (2026-10-01, no repair run)
+
+- **Applied `20260930010000_…` alone** (18 skipped). The value fingerprint was taken first: 173 values, `89d72adf…`.
+  The hosted checksum equals the repo file (`740e6d4b…`).
+- **`npm run reconcile -- --dry-run`** gave `RECON-20261001-052724-7729` (observe, COMPLETED):
+  - Airtable **231 checked, 0 drift, 0 findings, 0 needing a person, `drift_now` 0**;
+  - per table: Customers 40, Suppliers 6, Properties 52, Purchase Orders 35, Projects 33, Quotes 65, all with drift 0;
+  - Drive 3/3 and Xero 1/1 without drift;
+  - all 3 webhooks OK, 0 unread.
+  - So there were no schema warnings, no mass-change warnings and no date drift.
+- **`npm run integrity:check`:** 23 PASS, 3 WARNING, 0 FAIL, the same known warnings (PRJ-2026-0001 open PO,
+  Q-2026-0031, open exceptions).
+- **`npm run security:check` (hosted):** all 9 checks pass. `roofops_workflow` still has exactly 17 executable
+  functions (the renamed `…_core` internals are not among them).
+
+### 11. Live proof from the real Airtable read
+
+07 does not store its read, so the base was read again independently through the Airtable connector, right after the
+dry-run: Projects (33 records, 4 date fields) and Purchase Orders (35 records: PO Date, ETA, Supplier Reference). The
+read is recorded in [evidence/ac02-airtable-read-2026-10-01.json](../evidence/ac02-airtable-read-2026-10-01.json).
+A read-only script (hosted session set to read only) checked every cell against hosted canonical state, against what
+the dry-run itself recorded from its own REST read, and against the deployed functions. Results are in
+[evidence/ac02-live-verification.json](../evidence/ac02-live-verification.json).
+
+| Requirement | Evidence from the real read | Verdict |
+|---|---|---|
+| Omitted blank cells do not wipe canonical values | The API omitted 48 blank cells (Planned Start 3, Planned Completion 3, Actual Start 20, Actual Completion 25). **All 48 are blank in RoofOps too** (`omitted_with_canonical_value` 0). 0 drift, and the 173-value fingerprint is unchanged | Pass |
+| Legitimate blank values can still be distinguished where supported | Every field is present on at least one record (Actual Start: 13 present, 20 blank), so guard 1 is inactive and each blank is per-record evidence. Guard 1 finds **no** field missing from every record | Pass |
+| Date-only values remain the same Brisbane business day | All 151 date cells present in the read are `YYYY-MM-DD` (0 in any other format), and every cell, present or blank, equals canonical. On hosted, all 183 distinct real dates (2024-11-15 to 2026-11-05) pass `at_business_date()` unchanged | Pass |
+| Airtable date-time values normalise to the correct Brisbane day | The production base has **no** date-time fields (no field was changed to create one). Instead, the deployed function was run on hosted on every one of the 183 real dates, as Brisbane-midnight instants, 23:59:59.999 instants and `+10:00` offset forms (183/183 give the same day), plus the 14:00Z boundary (183/183 give the next Brisbane day) | Pass (constructed values; no destructive schema test) |
+| No existing project dates shift | Project, PO, quote and customer dates: fingerprint `89d72adf…` before the deploy = after the dry-run | Pass |
+| No supplier reference or ETA unexpectedly cleared | All 35 ETAs and 35 supplier references are present in Airtable and equal canonical | Pass |
+| No false mass-change detection | Guard 2's maximum differing records per staff-editable field in this read is **0**. There are 0 `REQUIRES_HUMAN` findings, and 0 open `SCHEMA_MISMATCH` / field-level exceptions | Pass |
+| `v_state_drift` remains truthful | `v_state_drift` has 0 rows. Every cell the dry-run recorded from its own read (237/237 cells: 33 × 4 project fields + 35 × 3 PO fields) equals the independent read, and all were refreshed by this run | Pass |
+
+**Not done, by design:**
+- No repair run was performed after the AC-02 deployment.
+- No production Airtable field was deleted or changed to date-time. Destructive schema tests would need a disposable
+  clone of the base; the offline tests feed those exact shapes.
+
+### 12. Verification before completion (fresh, after everything above)
+
+| Check | Result |
+|---|---|
+| Full suite, PGlite + Postgres 17 | **328 passed**, 0 failed, 33 skipped (vitest exit 0). Baseline 314; +14 = 7 AC-02 tests × 2 engines |
+| Lint / typecheck | exit 0 / exit 0. The temporary live-verification helpers were moved out of the repo; they are not part of any commit |
+| Red/green on the final migration (sha256 `740e6d4b12902618…`, restored byte-for-byte) | Removed: **7 failed**. Restored: **7 passed**. The blank-cell and legitimate-bulk-edit tests fail when it is removed partly as a knock-on (earlier tests corrupt shared data first). Their specific proofs are the ablation above (guard 1 not over-broad) and the round-2 red run (the false alarm) |
+| Hosted checksum = repo file | `740e6d4b…` on both |
+| Contract docs current | Regenerating them produced identical files |
+
+**AC-02 is FIXED.**

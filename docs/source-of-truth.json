@@ -32,7 +32,8 @@
       "downstream": "invoices, Xero",
       "readback": "—",
       "reconcile": "IGNORE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "automation",
@@ -49,7 +50,8 @@
       "downstream": "System Health, dashboard, Copilot",
       "readback": "—",
       "reconcile": "IGNORE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "checklist",
@@ -66,7 +68,8 @@
       "downstream": "invoice eligibility (completion docs), dashboard",
       "readback": "—",
       "reconcile": "IGNORE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "customer",
@@ -83,7 +86,8 @@
       "downstream": "Xero contact number",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "customer",
@@ -100,7 +104,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "date"
     },
     {
       "entity": "customer",
@@ -117,7 +122,8 @@
       "downstream": "Xero contact",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "customer",
@@ -134,7 +140,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "IGNORE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "customer",
@@ -151,7 +158,8 @@
       "downstream": "Xero contact name, dashboard",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "customer",
@@ -168,7 +176,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "customer",
@@ -185,7 +194,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "customer",
@@ -202,7 +212,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "customer",
@@ -219,7 +230,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "IGNORE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "customer",
@@ -236,7 +248,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "IGNORE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "customer",
@@ -253,7 +266,8 @@
       "downstream": "identity",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "customer",
@@ -270,7 +284,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "IGNORE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "customer",
@@ -287,7 +302,8 @@
       "downstream": "dashboard",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "drive",
@@ -304,7 +320,8 @@
       "downstream": "Airtable Drive Folder, dashboard",
       "readback": "Drive read-back; reconciliation",
       "reconcile": "VERIFY_EXTERNAL",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "invoice",
@@ -321,7 +338,8 @@
       "downstream": "dashboard, Copilot, Airtable projection",
       "readback": "—",
       "reconcile": "IGNORE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "invoice",
@@ -338,7 +356,8 @@
       "downstream": "dashboard, Copilot",
       "readback": "Xero read-back",
       "reconcile": "VERIFY_EXTERNAL",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "project",
@@ -355,7 +374,8 @@
       "downstream": "risk views, dashboard, Copilot",
       "readback": "06 read-back; reconciliation",
       "reconcile": "APPLY_VIA_HANDLER",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "date"
     },
     {
       "entity": "project",
@@ -372,7 +392,8 @@
       "downstream": "risk views, dashboard, Copilot",
       "readback": "06 read-back; reconciliation",
       "reconcile": "APPLY_VIA_HANDLER",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "date"
     },
     {
       "entity": "project",
@@ -389,7 +410,8 @@
       "downstream": "dashboard, Copilot",
       "readback": "06 read-back; reconciliation",
       "reconcile": "APPLY_VIA_HANDLER",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "project",
@@ -406,7 +428,8 @@
       "downstream": "dashboard, Copilot, invoice eligibility, risk views, tasks/approvals on cancel",
       "readback": "06 PATCH + read-back; reconciliation",
       "reconcile": "APPLY_VIA_HANDLER",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "project",
@@ -423,7 +446,8 @@
       "downstream": "invoice eligibility, dashboard",
       "readback": "06 correction; reconciliation",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "date"
     },
     {
       "entity": "project",
@@ -440,7 +464,8 @@
       "downstream": "dashboard, Copilot",
       "readback": "06 correction; reconciliation",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "date"
     },
     {
       "entity": "project",
@@ -457,7 +482,8 @@
       "downstream": "Airtable",
       "readback": "03 read-back",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "project",
@@ -474,7 +500,8 @@
       "downstream": "dashboard, Copilot",
       "readback": "03 read-back; reconciliation (Drive + Airtable)",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "project",
@@ -491,7 +518,8 @@
       "downstream": "approvals, invoices, Xero",
       "readback": "04 clears + read-back",
       "reconcile": "IGNORE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "project",
@@ -508,7 +536,8 @@
       "downstream": "Airtable only",
       "readback": "04 read-back; reconciliation",
       "reconcile": "PROJECTION",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "project",
@@ -525,7 +554,8 @@
       "downstream": "Airtable only",
       "readback": "04 read-back",
       "reconcile": "IGNORE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "project",
@@ -542,7 +572,8 @@
       "downstream": "Airtable only",
       "readback": "04 read-back; reconciliation",
       "reconcile": "PROJECTION",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "project",
@@ -559,7 +590,8 @@
       "downstream": "Airtable only",
       "readback": "03 read-back",
       "reconcile": "IGNORE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "project",
@@ -576,7 +608,8 @@
       "downstream": "Airtable, Drive folder name, Xero reference",
       "readback": "03 read-back",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "project",
@@ -593,7 +626,8 @@
       "downstream": "Airtable only",
       "readback": "—",
       "reconcile": "IGNORE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "project",
@@ -610,7 +644,8 @@
       "downstream": "Airtable",
       "readback": "03 read-back",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "project",
@@ -627,7 +662,8 @@
       "downstream": "all integrations",
       "readback": "03 read-back; reconciliation",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "project",
@@ -644,7 +680,8 @@
       "downstream": "Airtable only",
       "readback": "—",
       "reconcile": "IGNORE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "project",
@@ -661,7 +698,8 @@
       "downstream": "audit",
       "readback": "n/a",
       "reconcile": "IGNORE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "project",
@@ -678,7 +716,8 @@
       "downstream": "dashboard, Copilot",
       "readback": "04 read-back; reconciliation (Xero + Airtable)",
       "reconcile": "PROJECTION",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "project",
@@ -695,7 +734,8 @@
       "downstream": "dashboard, Copilot",
       "readback": "04 read-back; reconciliation",
       "reconcile": "PROJECTION",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "property",
@@ -712,7 +752,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "property",
@@ -729,7 +770,8 @@
       "downstream": "Drive folder name, dashboard",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "property",
@@ -746,7 +788,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "property",
@@ -763,7 +806,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "property",
@@ -780,7 +824,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "property",
@@ -797,7 +842,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "property",
@@ -814,7 +860,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "IGNORE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "property",
@@ -831,7 +878,8 @@
       "downstream": "identity",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "property",
@@ -848,7 +896,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "IGNORE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "property",
@@ -865,7 +914,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "property",
@@ -882,7 +932,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "property",
@@ -899,7 +950,8 @@
       "downstream": "dashboard",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "purchase_order",
@@ -916,7 +968,8 @@
       "downstream": "risk views (materials after start), dashboard, Copilot",
       "readback": "06 read-back; reconciliation",
       "reconcile": "APPLY_VIA_HANDLER",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "date"
     },
     {
       "entity": "purchase_order",
@@ -933,7 +986,8 @@
       "downstream": "materials status, risk views, dashboard, Copilot",
       "readback": "06 read-back; reconciliation",
       "reconcile": "APPLY_VIA_HANDLER",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "purchase_order",
@@ -950,7 +1004,8 @@
       "downstream": "dashboard",
       "readback": "06 read-back",
       "reconcile": "APPLY_VIA_HANDLER",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "purchase_order",
@@ -967,7 +1022,8 @@
       "downstream": "ack SLA",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "date"
     },
     {
       "entity": "purchase_order",
@@ -984,7 +1040,8 @@
       "downstream": "Airtable",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "purchase_order",
@@ -1001,7 +1058,8 @@
       "downstream": "materials views",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "purchase_order",
@@ -1018,7 +1076,8 @@
       "downstream": "identity",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "purchase_order",
@@ -1035,7 +1094,8 @@
       "downstream": "Airtable only",
       "readback": "—",
       "reconcile": "IGNORE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "purchase_order",
@@ -1052,7 +1112,8 @@
       "downstream": "open PO value",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "purchase_order",
@@ -1069,7 +1130,8 @@
       "downstream": "materials views",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "quote",
@@ -1086,7 +1148,8 @@
       "downstream": "conversion KPIs",
       "readback": "06 read-back",
       "reconcile": "APPLY_VIA_HANDLER",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "quote",
@@ -1103,7 +1166,8 @@
       "downstream": "projects, Drive, dashboard, Copilot",
       "readback": "01/06 read-back; reconciliation",
       "reconcile": "APPLY_VIA_HANDLER",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "quote",
@@ -1120,7 +1184,8 @@
       "downstream": "projects",
       "readback": "01 read-back",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "date"
     },
     {
       "entity": "quote",
@@ -1137,7 +1202,8 @@
       "downstream": "invoicing",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "quote",
@@ -1154,7 +1220,8 @@
       "downstream": "Airtable only",
       "readback": "01 read-back",
       "reconcile": "IGNORE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "quote",
@@ -1171,7 +1238,8 @@
       "downstream": "Airtable only",
       "readback": "01 read-back",
       "reconcile": "IGNORE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "quote",
@@ -1188,7 +1256,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "date"
     },
     {
       "entity": "quote",
@@ -1205,7 +1274,8 @@
       "downstream": "Airtable",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "quote",
@@ -1222,7 +1292,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "quote",
@@ -1239,7 +1310,8 @@
       "downstream": "dashboard",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "quote",
@@ -1256,7 +1328,8 @@
       "downstream": "conversion KPIs",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "quote",
@@ -1273,7 +1346,8 @@
       "downstream": "Airtable only",
       "readback": "03 read-back",
       "reconcile": "IGNORE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "quote",
@@ -1290,7 +1364,8 @@
       "downstream": "Airtable",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "quote",
@@ -1307,7 +1382,8 @@
       "downstream": "Airtable",
       "readback": "import read-back",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "quote",
@@ -1324,7 +1400,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "quote",
@@ -1341,7 +1418,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "quote",
@@ -1358,7 +1436,8 @@
       "downstream": "01 identity cross-check",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "quote",
@@ -1375,7 +1454,8 @@
       "downstream": "Airtable only",
       "readback": "—",
       "reconcile": "IGNORE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "quote",
@@ -1392,7 +1472,8 @@
       "downstream": "—",
       "readback": "06 correction",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "date"
     },
     {
       "entity": "quote",
@@ -1409,7 +1490,8 @@
       "downstream": "acceptance",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "supplier",
@@ -1426,7 +1508,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "supplier",
@@ -1443,7 +1526,8 @@
       "downstream": "dashboard",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "supplier",
@@ -1460,7 +1544,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "supplier",
@@ -1477,7 +1562,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "supplier",
@@ -1494,7 +1580,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "IGNORE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "supplier",
@@ -1511,7 +1598,8 @@
       "downstream": "identity",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "supplier",
@@ -1528,7 +1616,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "IGNORE",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "supplier",
@@ -1545,7 +1634,8 @@
       "downstream": "—",
       "readback": "—",
       "reconcile": "REPAIR_AIRTABLE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "task",
@@ -1562,7 +1652,8 @@
       "downstream": "dashboard, Copilot",
       "readback": "—",
       "reconcile": "IGNORE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "workflow_exception",
@@ -1579,7 +1670,8 @@
       "downstream": "dashboard, Copilot",
       "readback": "—",
       "reconcile": "IGNORE",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     },
     {
       "entity": "xero",
@@ -1596,7 +1688,8 @@
       "downstream": "—",
       "readback": "Xero read-back; reconciliation",
       "reconcile": "VERIFY_EXTERNAL",
-      "ai_visible": false
+      "ai_visible": false,
+      "value_type": "text"
     },
     {
       "entity": "xero",
@@ -1613,7 +1706,8 @@
       "downstream": "dashboard, Copilot",
       "readback": "Xero read-back; reconciliation",
       "reconcile": "VERIFY_EXTERNAL",
-      "ai_visible": true
+      "ai_visible": true,
+      "value_type": "text"
     }
   ]
 }

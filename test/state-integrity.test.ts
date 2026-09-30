@@ -410,6 +410,145 @@ describe.each(TARGETS)('state integrity [%s]', (target) => {
       expect(await one(db, `select planned_completion_date::text v from projects where project_number = 'PRJ-2026-0027'`)).toBe('2026-10-14');
       await call(db, 'wf_reconcile_finish', run.run_key, {}, []);
     });
+
+    // AC-02 (docs/defect-ledger.md). Real Airtable reads leave blank cells, and field ids that no longer exist, out of
+    // `fields`; a date field switched to "include time" returns UTC instants. The snapshot helper above hides both.
+    const allDates = () => col(db, `select project_number || '|' || coalesce(planned_start_date::text, '-') || '|' || coalesce(planned_completion_date::text, '-') v
+                                    from projects order by project_number`);
+    /** Airtable's instant for midnight of a Brisbane day (UTC+10, no daylight saving): the previous day at 14:00Z. */
+    const bneMidnight = (day: string) => new Date(Date.parse(`${day}T00:00:00+10:00`)).toISOString();
+    const findings = (runKey: unknown) => col(db, `select coalesce(f.entity_ref, '-') || ':' || coalesce(f.field, '-') || ':' || f.classification || '/' || f.action v
+                                                  from reconciliation_findings f join reconciliation_runs x on x.id = f.run_id where x.run_key = $1 order by 1`, [runKey]);
+    const newRun = async (mode = 'repair') => {
+      await db.exec(`update reconciliation_runs set started_at = started_at - interval '5 minutes'`);
+      return call(db, 'wf_reconcile_start', 'schedule', mode);
+    };
+
+    it('AC-02: a field missing from every record of the read (deleted or recreated in Airtable) is never replayed as "staff blanked it"', async () => {
+      const before = await allDates();
+      const run = await newRun();
+      const id25 = await rec(db, 'project', 'PRJ-2026-0025');
+      const read = (await snapshot(T.projects, (id, f) => {
+        Reflect.deleteProperty(f, F.pStart); Reflect.deleteProperty(f, F.pEnd);                      // the two date field ids no longer exist in Airtable
+        if (id === id25) f[F.pStatus] = 'Materials Pending';        // and one genuine missed staff edit in the same read
+      }));
+      const r = await call(db, 'wf_reconcile_airtable', run.run_key, T.projects, read);
+      expect(await allDates()).toEqual(before);                                           // no canonical date touched
+      expect(await one(db, `select status v from projects where project_number = 'PRJ-2026-0025'`)).toBe('MATERIALS_PENDING');   // not a blanket abort
+      const corrected = (r.corrections as unknown as { fields: Record<string, unknown> }[]).flatMap((c) => Object.keys(c.fields));
+      expect(corrected).not.toContain(F.pStart);                  // never write to a field id Airtable no longer has
+      expect(corrected).not.toContain(F.pEnd);
+      expect((await findings(run.run_key)).filter((x) => /Planned (Start|Completion)/.test(x)))
+        .toEqual(['-:Planned Completion:REQUIRES_HUMAN/EXCEPTION_OPENED', '-:Planned Start:REQUIRES_HUMAN/EXCEPTION_OPENED']);
+      expect(await one(db, `select count(*) v from workflow_exceptions where error_class = 'SCHEMA_MISMATCH' and resolution_status = 'OPEN'
+                             and error_message like '%Planned Completion%'`)).toBe('1');
+      expect(await col(db, `select business_key || ':' || field v from v_state_drift where field in ('Planned Start', 'Planned Completion')`)).toEqual([]);
+      await call(db, 'wf_reconcile_finish', run.run_key, {}, []);
+    });
+
+    it('AC-02: a blank cell on one record (the field is present on others) is still a missed staff edit', async () => {
+      const run = await newRun();
+      const id30 = await rec(db, 'project', 'PRJ-2026-0030');
+      await call(db, 'wf_reconcile_airtable', run.run_key, T.projects, await snapshot(T.projects, (id, f) => { if (id === id30) Reflect.deleteProperty(f, F.pEnd); }));
+      expect(await one(db, `select coalesce(planned_completion_date::text, 'blank') v from projects where project_number = 'PRJ-2026-0030'`)).toBe('blank');
+      expect(await findings(run.run_key)).toEqual(['PRJ-2026-0030:Planned Completion:SAFE_AUTO_REPAIR/APPLIED_TO_POSTGRES']);
+      await call(db, 'wf_reconcile_finish', run.run_key, {}, []);
+    });
+
+    it('AC-02: dates returned as instants for the same Brisbane day are not drift, run after run', async () => {
+      const before = await allDates();
+      for (let i = 0; i < 2; i++) {
+        const run = await newRun();
+        const read = await snapshot(T.projects, (_id, f) => {
+          for (const k of [F.pStart, F.pEnd, F.pActualStart, F.pActualEnd]) if (typeof f[k] === 'string') f[k] = bneMidnight(f[k]);
+        });
+        const r = await call(db, 'wf_reconcile_airtable', run.run_key, T.projects, read);
+        expect([i, r.drift, r.corrections]).toEqual([i, 0, []]);
+        expect(await findings(run.run_key)).toEqual([]);
+        await call(db, 'wf_reconcile_finish', run.run_key, {}, []);
+      }
+      expect(await allDates()).toEqual(before);
+    });
+
+    it('AC-02: a real date change sent as an instant lands on the Brisbane business day (reconciler, webhook and read-back)', async () => {
+      const run = await newRun();
+      const id29 = await rec(db, 'project', 'PRJ-2026-0029');
+      await call(db, 'wf_reconcile_airtable', run.run_key, T.projects,
+        await snapshot(T.projects, (id, f) => { if (id === id29) f[F.pEnd] = bneMidnight('2026-11-20'); }));
+      expect(await one(db, `select planned_completion_date::text v from projects where project_number = 'PRJ-2026-0029'`)).toBe('2026-11-20');
+      // The next staff edit arrives through the webhook after the replay (dated after the run start, like AC-01).
+      const at = await one(db, `select (started_at + interval '30 seconds')::text v from reconciliation_runs where run_key = $1`, [run.run_key]);
+      await call(db, 'wf_reconcile_finish', run.run_key, {}, []);
+      const hook = await project(db, 'PRJ-2026-0029', { [F.pEnd]: bneMidnight('2026-11-22') }, { previous: { [F.pEnd]: bneMidnight('2026-11-20') }, at });
+      expect(hook).toMatchObject({ outcome: 'APPLIED' });
+      expect(hook.corrections?.[F.pEnd]).toBeUndefined();          // Airtable already shows that day: nothing to write back
+      expect(await one(db, `select planned_completion_date::text v from projects where project_number = 'PRJ-2026-0029'`)).toBe('2026-11-22');
+      expect(await call(db, 'wf_airtable_writeback_verified', 'ac02:readback', T.projects, id29, { [F.pEnd]: bneMidnight('2026-11-22') }))
+        .toMatchObject({ verified: true });
+    });
+
+    it('AC-02: the same field changed on many records in one read is a change to the field, not staff edits: nothing is replayed', async () => {
+      // Not PRJ-0021/0023: the two-connection race tests below expect no recorded drift on those.
+      const shifted = ['PRJ-2026-0014', 'PRJ-2026-0017', 'PRJ-2026-0018', 'PRJ-2026-0022', 'PRJ-2026-0024', 'PRJ-2026-0025', 'PRJ-2026-0026', 'PRJ-2026-0027'];
+      const ids = new Set(await Promise.all(shifted.map((p) => rec(db, 'project', p))));
+      const before = await allDates();
+      const run = await newRun();
+      const plusOne = (d: string) => new Date(Date.parse(`${d}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+      const r = await call(db, 'wf_reconcile_airtable', run.run_key, T.projects,
+        await snapshot(T.projects, (id, f) => { const v = f[F.pEnd]; if (ids.has(id) && typeof v === 'string') f[F.pEnd] = plusOne(v); }));
+      expect(await allDates()).toEqual(before);
+      expect(r).toMatchObject({ drift: 8, corrections: [] });
+      expect(await findings(run.run_key)).toEqual(['-:Planned Completion:REQUIRES_HUMAN/EXCEPTION_OPENED']);
+      // What Airtable shows is still recorded, so the divergence stays visible until a person decides.
+      expect(Number(await one(db, `select count(*) v from v_state_drift where field = 'Planned Completion'`))).toBe(8);
+      await call(db, 'wf_reconcile_finish', run.run_key, {}, []);
+    });
+
+    const bulk = ['PRJ-2026-0014', 'PRJ-2026-0017', 'PRJ-2026-0018', 'PRJ-2026-0022', 'PRJ-2026-0024', 'PRJ-2026-0026'];   // 6 of 30 = 20%
+    const bulkDates = () => col(db, `select project_number || ' ' || coalesce(planned_completion_date::text, '-') v from projects
+                                     where project_number = any ($1) order by 1`, [bulk]);
+
+    it('AC-02: a legitimate bulk edit through the webhook, while a run holds an older read, is kept: no mass-change alarm, no undo', async () => {
+      const run = await newRun();
+      const read = await snapshot(T.projects, () => {});                    // 07 reads Projects (before the bulk edit)
+      const at = await one(db, `select (started_at + interval '30 seconds')::text v from reconciliation_runs where run_key = $1`, [run.run_key]);
+      // Staff move six jobs to the same new finish date; n8n 06 applies each webhook normally.
+      for (const p of bulk) {
+        const prev = await one(db, `select planned_completion_date::text v from projects where project_number = $1`, [p]);
+        expect((await project(db, p, { [F.pEnd]: '2026-12-11' }, { previous: { [F.pEnd]: prev }, at })).outcome).toBe('APPLIED');
+      }
+      const after = bulk.map((p) => `${p} 2026-12-11`);
+      const r = await call(db, 'wf_reconcile_airtable', run.run_key, T.projects, read);
+      expect(await bulkDates()).toEqual(after);                              // nothing undone or corrupted
+      expect(r.corrections).toEqual([]);
+      expect(await findings(run.run_key)).toEqual(bulk.map((p) => `${p}:Planned Completion:STALE_EVENT/NONE`));   // re-checked next run, no alarm
+      expect(await one(db, `select count(*) v from workflow_exceptions where error_class = 'RECONCILIATION_MISMATCH' and resolution_status = 'OPEN'
+                             and error_message like '%records show a different "Planned Completion"%' and last_attempt_at >= (select started_at from reconciliation_runs where run_key = $1)`, [run.run_key])).toBe('0');
+      await call(db, 'wf_reconcile_finish', run.run_key, {}, []);
+      // The next run reads Airtable after the edit: everything agrees.
+      const next = await newRun();
+      const n = await call(db, 'wf_reconcile_airtable', next.run_key, T.projects, await snapshot(T.projects, () => {}));
+      expect([n.drift, n.corrections, await findings(next.run_key), await bulkDates()]).toEqual([0, [], [], after]);
+      await call(db, 'wf_reconcile_finish', next.run_key, {}, []);
+    });
+
+    it('AC-02: a missed bulk edit (no webhook) is ambiguous: raised for a person, neither applied nor reverted, and stays raised', async () => {
+      const before = await bulkDates();
+      const ids = new Set(await Promise.all(bulk.map((p) => rec(db, 'project', p))));
+      const staffRead = () => snapshot(T.projects, (id, f) => { if (ids.has(id)) f[F.pEnd] = '2026-12-18'; });
+      for (let i = 0; i < 2; i++) {
+        const run = await newRun();
+        const r = await call(db, 'wf_reconcile_airtable', run.run_key, T.projects, await staffRead());
+        expect(await bulkDates()).toEqual(before);                            // not applied to RoofOps
+        expect(r).toMatchObject({ drift: 6, corrections: [] });               // not reverted in Airtable either
+        expect(await findings(run.run_key)).toEqual(['-:Planned Completion:REQUIRES_HUMAN/EXCEPTION_OPENED']);
+        expect(Number(await one(db, `select count(*) v from v_state_drift where field = 'Planned Completion' and business_key = any ($1)`, [bulk]))).toBe(6);
+        await call(db, 'wf_reconcile_finish', run.run_key, {}, []);
+      }
+      // One actionable exception, reused on the second run (not one per run or per record).
+      expect(await col(db, `select attempt_count::text v from workflow_exceptions where error_class = 'RECONCILIATION_MISMATCH' and resolution_status = 'OPEN'
+                             and error_message like '6 of 30 Airtable Projects records show a different "Planned Completion"%'`)).toEqual(['2']);
+    });
   });
 
   describe('health and webhook supervision', () => {

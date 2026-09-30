@@ -28,7 +28,7 @@ Airtable is a projection RoofOps writes and repairs. Google Drive and Xero hold 
 
 | Field | Canonical | Owner | Editable where | Change path | Validation | Event | Downstream | Read-back | Reconcile | AI |
 |---|---|---|---|---|---|---|---|---|---|---|
-| status | approvals.status | `POSTGRES` | Airtable Invoice Action (04) / dashboard prepare | wf_invoice_prepare / wf_invoice_decide | state_transitions(approval); mapped approver; current hash | approval.approve | invoices, Xero | — | `IGNORE` | yes |
+| status | approvals.status | `POSTGRES` | Airtable Invoice Action (04) / dashboard prepare | wf_invoice_prepare / wf_invoice_decide | state_transitions(approval); mapped approver; current hash; an Airtable decision binds to the sending record's project and to the preview a Prepare showed on that row before the decision | approval.approve | invoices, Xero | — | `IGNORE` | yes |
 
 ## automation
 

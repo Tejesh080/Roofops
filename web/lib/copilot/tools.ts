@@ -202,7 +202,7 @@ export const TOOLS: Record<string, ToolDef> = {
       return { card, data: {
         project: n, outcome: status_text, approval_reference: r.approval_number ?? null, reason: r.message ?? null,
         requires_human_approval: r.outcome === 'PREVIEW_READY' || r.outcome === 'ALREADY_PENDING',
-        how_it_gets_approved: 'A finance approver approves it in Airtable (Projects → Invoice Action → "Approve Xero draft invoice"). RoofOps then creates ONE draft invoice in the Xero Demo Company and checks it. Nothing has been sent to Xero yet.',
+        how_it_gets_approved: 'A finance approver approves it in Airtable: on the project row, set Invoice Action → "Prepare Xero draft invoice" to show this same preview there (no new approval), check it, then set Invoice Action → "Approve Xero draft invoice". An Approve only ever approves the preview shown on that row. RoofOps then creates ONE draft invoice in the Xero Demo Company and checks it. Nothing has been sent to Xero yet.',
         preview: pv ? { customer: pv.customer_name, amount_inc_gst: pv.amount_inc_gst, gst: pv.gst_amount, amount_ex_gst: pv.amount_ex_gst,
                         basis: `quote ${pv.quote_number} v${pv.quote_version} ${pv.quote_total_inc_gst} + variations ${pv.approved_variations_inc_gst} - already invoiced ${pv.billed_to_date_inc_gst}`,
                         reference: pv.reference, due_date: pv.due_date, xero_organisation: pv.xero_tenant_name } : null,

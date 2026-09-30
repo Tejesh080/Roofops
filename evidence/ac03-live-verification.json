@@ -1,0 +1,232 @@
+{
+ "defect": "AC-03: an Airtable Approve was bound to neither the row nor the preview the approver saw",
+ "migration": {
+  "file": "supabase/migrations/20261001010000_invoice_decision_bound_to_row_and_preview.sql",
+  "sha256": "b7df8f4a1bf5d16bb2368a20bb94eab948971e5eb9efb0e0095b755d58774287",
+  "applied_to_hosted_alone": true
+ },
+ "record": {
+  "project": "PRJ-2026-0005 (the designated invoice demo project)",
+  "airtable_record": "recyDSiQ5Ot1tdbVu",
+  "table": "tblvUPIoebC3zoacv"
+ },
+ "baseline": {
+  "project_status": "COMPLETED",
+  "pending_previews": 0,
+  "demo_04": "READY",
+  "airtable_row": "Invoice Status, Invoice Amount, Invoice Preview all blank"
+ },
+ "procedure_and_results": [
+  {
+   "step": "Copilot (web app /api/copilot, as the signed-in demo user): \"Prepare invoice for PRJ-2026-0005\"",
+   "result": "tools get_project, prepare_invoice; APR-2026-0009 PENDING, $17,831.91; source roofops-dashboard; no presentation recorded; the Airtable row still blank"
+  },
+  {
+   "step": "Airtable: Invoice Action = \"Approve Xero draft invoice\" on the PRJ-2026-0005 row (txn88, n8n 04 execution 1929)",
+   "result": "REJECTED, INVALID_STATE: \"APR-2026-0009 ($17,831.91 inc GST) was prepared in the RoofOps dashboard and has not been shown on this row. Nothing was approved; set Invoice Action = Prepare Xero draft invoice to show it, check it, then approve\". No FINAL invoice, no xero.create_draft_invoice outbox row, APR-2026-0009 still PENDING, exception EXC-0018. 04 wrote Invoice Status \"Not eligible\" with that reason on the row."
+  },
+  {
+   "step": "Airtable: Invoice Action = \"Prepare Xero draft invoice\" on the same row (txn90, 04 execution 1934)",
+   "result": "ALREADY_PENDING: the row shows \"PREVIEW APR-2026-0009\", Invoice Status \"Awaiting approval\", Invoice Amount 17831.91: the Copilot's preview, no new approval. approval_presentations: APR-2026-0009 on recyDSiQ5Ot1tdbVu at 21:54:23Z."
+  },
+  {
+   "step": "Not done: Approve (it would create a real Xero Demo Company draft; not requested)",
+   "result": "—"
+  },
+  {
+   "step": "npm run demo:reset",
+   "result": "Withdrew APR-2026-0009 (audited demo.reset.preview_withdrawn); demo 04 READY"
+  },
+  {
+   "step": "Dry-run RECON-20261001-075518-c2e2",
+   "result": "1 drift: PRJ-2026-0005 Invoice Status expected null, Airtable \"Awaiting approval\" (demo:reset withdraws in Postgres only; pre-existing, not AC-03)"
+  },
+  {
+   "step": "Restored the row to its pre-test state (Invoice Status, Invoice Amount, Invoice Preview blank) through the Airtable API; no repair run",
+   "result": "06 execution 1938: nothing applied (those fields are RoofOps-written and not watched)"
+  }
+ ],
+ "final_state": {
+  "approvals_pending": [],
+  "finals": [],
+  "outbox": [],
+  "events": [
+   {
+    "event_key": "dashboard:copilot:1efc6b3c-91c1-4b10-aa78-e37c1f170691:invoice.preview_prepared",
+    "event_type": "invoice.preview_prepared",
+    "source": "postgres",
+    "status": "SUCCEEDED",
+    "error_class": null,
+    "reason": null,
+    "occurred_utc": "21:52:43",
+    "recorded_utc": "21:52:43"
+   },
+   {
+    "event_key": "dashboard:copilot:1efc6b3c-91c1-4b10-aa78-e37c1f170691",
+    "event_type": "invoice.prepare_requested",
+    "source": "roofops-dashboard",
+    "status": "SUCCEEDED",
+    "error_class": null,
+    "reason": null,
+    "occurred_utc": "21:52:43",
+    "recorded_utc": "21:52:43"
+   },
+   {
+    "event_key": "airtable:achAHQLGW3ueCycSt:txn88:recyDSiQ5Ot1tdbVu",
+    "event_type": "invoice.approved",
+    "source": "airtable",
+    "status": "REJECTED",
+    "error_class": "INVALID_STATE",
+    "reason": "APR-2026-0009 ($17,831.91 inc GST) was prepared in the RoofOps dashboard and has not been shown on this row. Nothing was approved; set Invoice Action = Prepare Xero draft invoice to show it, check it, then approve",
+    "occurred_utc": "21:53:35",
+    "recorded_utc": "21:53:35"
+   },
+   {
+    "event_key": "airtable:achAHQLGW3ueCycSt:txn90:recyDSiQ5Ot1tdbVu",
+    "event_type": "invoice.prepare_requested",
+    "source": "airtable",
+    "status": "SUCCEEDED",
+    "error_class": null,
+    "reason": null,
+    "occurred_utc": "21:54:23",
+    "recorded_utc": "21:54:23"
+   }
+  ],
+  "exceptions": [
+   {
+    "exception_number": "EXC-0018",
+    "error_class": "INVALID_STATE",
+    "error_message": "APR-2026-0009 ($17,831.91 inc GST) was prepared in the RoofOps dashboard and has not been shown on this row. Nothing was approved; set Invoice Action = Prepare Xero draft invoice to show it, check it, then approve",
+    "resolution_status": "OPEN"
+   }
+  ]
+ },
+ "n8n_executions": {
+  "04 YpmpJxQtSIBGSx6Z": [
+   "1929",
+   "1932",
+   "1934",
+   "1935"
+  ],
+  "06 lD6BOf2dhZZpSoEH": [
+   "1930",
+   "1931",
+   "1933",
+   "1936",
+   "1938"
+  ],
+  "all_status": "success"
+ },
+ "changes_06_applied_and_audit": {
+  "changes_applied_by_06": [],
+  "audit_since_test": [
+   {
+    "action": "reconciliation.completed",
+    "actor_id": "reconciliation",
+    "business_reference": "RECON-20261001-075036-0c4e",
+    "at_utc": "21:50:49"
+   },
+   {
+    "action": "invoice.preview_prepared",
+    "actor_id": "dashboard:copilot",
+    "business_reference": "PRJ-2026-0005",
+    "at_utc": "21:52:43"
+   },
+   {
+    "action": "demo.reset.preview_withdrawn",
+    "actor_id": "demo:reset",
+    "business_reference": "APR-2026-0009",
+    "at_utc": "21:55:04"
+   },
+   {
+    "action": "reconciliation.completed",
+    "actor_id": "reconciliation",
+    "business_reference": "RECON-20261001-075518-c2e2",
+    "at_utc": "21:55:27"
+   },
+   {
+    "action": "reconciliation.completed",
+    "actor_id": "reconciliation",
+    "business_reference": "RECON-20261001-075720-4f7b",
+    "at_utc": "21:57:27"
+   }
+  ]
+ },
+ "dashboard_and_copilot_after_reset": "dashboard /projects/PRJ-2026-0005: contains \"Awaiting approval\": false; out-of-sync notice: false\ncopilot (200) tools=get_project: No — PRJ-2026-0005 (Jack Walker) is not awaiting approval. Its invoice status is **Ready to invoice** ($17,831.91 inc GST), and no invoice has been raised in Xero yet.\n\nOne related point: open issue EXC-0018 says a preview (APR-2026-0009, $17,831.91) was prepared in the dashboard but didn't show on this job's row — nothing was approved, and a person needs to set Invoice Action = Prepare Xero draft invoice, check it, then approve.",
+ "reconciliation_dry_runs": {
+  "after_deploy": [
+   "RECON-20261001-075036-0c4e  mode=observe  status=COMPLETED",
+   "│ 0       │ 'AIRTABLE'     │ 231     │ 0           │ 0        │ 0            │ 0         │ 231    │",
+   "│ 1       │ 'GOOGLE_DRIVE' │ 3       │ 0           │ 0        │ 0            │ null      │ 3      │",
+   "│ 2       │ 'XERO'         │ 1       │ 0           │ 0        │ 0            │ null      │ 1      │",
+   "No drift found.",
+   "│ 0       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/quote-events'           │ 'OK'  │ '164'      │ '0'    │",
+   "│ 1       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/project-invoice-events' │ 'OK'  │ '164'      │ '0'    │",
+   "│ 2       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/changes'                │ 'OK'  │ '167'      │ '0'    │"
+  ],
+  "after_reset": [
+   "RECON-20261001-075518-c2e2  mode=observe  status=COMPLETED",
+   "│ 0       │ 'AIRTABLE'     │ 231     │ 1           │ 0        │ 0            │ 1         │ 231    │",
+   "│ 1       │ 'GOOGLE_DRIVE' │ 3       │ 0           │ 0        │ 0            │ null      │ 3      │",
+   "│ 2       │ 'XERO'         │ 1       │ 0           │ 0        │ 0            │ null      │ 1      │",
+   "│ 0       │ 'AIRTABLE' │ 'PRJ-2026-0005' │ 'Invoice Status' │ null     │ 'Awaiting approval' │ 'SAFE_AUTO_REPAIR' │ 'NONE_OBSERVE_ONLY' │ 'Airtable projection of canonical invoice state was stale' │",
+   "│ 0       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/quote-events'           │ 'OK'  │ '164'      │ '0'    │",
+   "│ 1       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/project-invoice-events' │ 'OK'  │ '168'      │ '0'    │",
+   "│ 2       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/changes'                │ 'OK'  │ '168'      │ '0'    │"
+  ],
+  "after_restore": [
+   "RECON-20261001-075720-4f7b  mode=observe  status=COMPLETED",
+   "│ 0       │ 'AIRTABLE'     │ 231     │ 0           │ 0        │ 0            │ 0         │ 231    │",
+   "│ 1       │ 'GOOGLE_DRIVE' │ 3       │ 0           │ 0        │ 0            │ null      │ 3      │",
+   "│ 2       │ 'XERO'         │ 1       │ 0           │ 0        │ 0            │ null      │ 1      │",
+   "No drift found.",
+   "│ 0       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/quote-events'           │ 'OK'  │ '164'      │ '0'    │",
+   "│ 1       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/project-invoice-events' │ 'OK'  │ '168'      │ '0'    │",
+   "│ 2       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/changes'                │ 'OK'  │ '168'      │ '0'    │"
+  ]
+ },
+ "integrity": {
+  "after_deploy": [
+   "PASS    hash_chain_intact                  The audit trail hash chain verifies end to end",
+   "23 PASS, 3 WARNING, 0 FAIL  (hosted database)"
+  ],
+  "after_test": [
+   "PASS    hash_chain_intact                  The audit trail hash chain verifies end to end",
+   "WARNING open                               Open exceptions waiting for a person  → EXC-0003 PRJ-2026-0008; EXC-0013 Q-2026-0035; EXC-0016 PRJ-2026-0007; EXC-0017 PRJ-2026-0031; EXC-0018 PRJ-2026-0005",
+   "23 PASS, 3 WARNING, 0 FAIL  (hosted database)"
+  ]
+ },
+ "security_after_deploy": [
+  "PASS  dashboard role: readable tables                []",
+  "PASS  dashboard role: SECURITY DEFINER functions     [\"at_link\",\"integrity_check\",\"invoice_final_preview\",\"sm_label\",\"wf_invoice_prepare\"]",
+  "PASS  dashboard role: can it write via wf_* (other than prepare)? []",
+  "PASS  workflow role: executable functions            17 items",
+  "PASS  anon/authenticated: readable or writable objects []",
+  "PASS  functions executable by PUBLIC                 []",
+  "PASS  tables without row level security              []",
+  "PASS  Xero writes pinned to the proven Demo tenant   [\"96643bb0-3a0a-406e-96fb-ab8a933ee6b8\"]",
+  "PASS  reconcile trigger token stored only as a hash  [\"64\"]",
+  "all privilege checks pass"
+ ],
+ "value_fingerprint": {
+  "before_deploy": {
+   "taken_at": "2026-09-30T21:50:13.938Z",
+   "count": 173,
+   "sha256": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6"
+  },
+  "after_deploy": {
+   "taken_at": "2026-09-30T21:50:31.146Z",
+   "count": 173,
+   "sha256": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6"
+  },
+  "after_live_test": {
+   "taken_at": "2026-09-30T21:57:34.694Z",
+   "count": 173,
+   "sha256": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6"
+  }
+ },
+ "open_items": [
+  "EXC-0018 (the live refusal) stays OPEN: it truthfully records a refused decision; there is no staff-facing path to resolve invoice-rejection exceptions, so it was not edited directly. Owner may resolve it.",
+  "demo:reset withdraws previews in Postgres but leaves the Airtable invoice projection showing \"Awaiting approval\" until a repair run; follow-up."
+ ]
+}

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Db } from '../src/db/db.js';
 import { importBundle } from '../src/import/importer.js';
@@ -7,9 +8,12 @@ type Result = Record<string, unknown> & { outcome?: string };
 const APPROVER = 'usr7uCnNO15fCefbH';   // mapped to EMP-900 Demo Finance Approver (FINANCE) by migration 800
 const TENANT = '11111111-2222-3333-4444-555555555555';
 
+/** The Airtable record of a project (linked in beforeAll; synthetic but well-formed). */
+const recFor = (project: string) => `rec${createHash('md5').update(project).digest('hex').slice(0, 14)}`;
+/** What n8n 04 sends: from the project's own row, stamped when the approver acted (after the preview was shown: AC-03). */
 function ev(eventId: string, type: string, project: string, actor = APPROVER, extra: Record<string, unknown> = {}) {
-  return { event_id: eventId, event_type: type, source: 'airtable', actor_id: actor, occurred_at: '2026-09-29T10:00:00+10:00',
-           payload: { project_number: project, airtable_record_id: 'recTESTTESTTEST99', ...extra } };
+  return { event_id: eventId, event_type: type, source: 'airtable', actor_id: actor, occurred_at: new Date(Date.now() + 1000).toISOString(),
+           payload: { project_number: project, airtable_record_id: recFor(project), ...extra } };
 }
 async function call(db: Db, fn: string, ...args: unknown[]): Promise<Result> {
   const params = args.map((_, i) => `$${String(i + 1)}`).join(', ');
@@ -30,7 +34,12 @@ function xeroProof(p: Record<string, unknown>, over: Record<string, unknown> = {
 
 describe.each(TARGETS)('Approved project -> Xero draft invoice control layer [%s]', (target) => {
   let db: Db;
-  beforeAll(async () => { db = await migratedDb(target); await importBundle(db); });
+  beforeAll(async () => {
+    db = await migratedDb(target);
+    await importBundle(db);
+    await db.exec(`insert into external_links (provider, entity_type, entity_id, external_type, external_id, last_synced_at, verified_at)
+                   select 'AIRTABLE', 'project', id, 'Record', 'rec' || substr(md5(project_number), 1, 14), now(), now() from projects`);
+  });
   afterAll(async () => { await db.close(); });
 
   describe('preview (no approval = no Xero side effect)', () => {

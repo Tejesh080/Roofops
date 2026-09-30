@@ -1,0 +1,96 @@
+# AC-03 hosted checks, 2026-10-01, after applying 20261001010000_invoice_decision_bound_to_row_and_preview.sql alone (no repair run)
+
+## dryrun-1
+
+> roofops@0.1.0 reconcile
+> tsx scripts/reconcile.ts --dry-run
+
+Reconciliation (observe) requested; waiting for [RoofOps] 07…
+
+RECON-20261001-075036-0c4e  mode=observe  status=COMPLETED
+┌─────────┬────────────────┬─────────┬─────────────┬──────────┬──────────────┬───────────┬────────┐
+│ (index) │ system         │ checked │ drift_found │ repaired │ needs_person │ drift_now │ linked │
+├─────────┼────────────────┼─────────┼─────────────┼──────────┼──────────────┼───────────┼────────┤
+│ 0       │ 'AIRTABLE'     │ 231     │ 0           │ 0        │ 0            │ 0         │ 231    │
+│ 1       │ 'GOOGLE_DRIVE' │ 3       │ 0           │ 0        │ 0            │ null      │ 3      │
+│ 2       │ 'XERO'         │ 1       │ 0           │ 0        │ 0            │ null      │ 1      │
+└─────────┴────────────────┴─────────┴─────────────┴──────────┴──────────────┴───────────┴────────┘
+No drift found.
+┌─────────┬──────────────────────────────────────────────────────────────────────────────────┬───────┬────────────┬────────┐
+│ (index) │ webhook                                                                          │ state │ hours_left │ unread │
+├─────────┼──────────────────────────────────────────────────────────────────────────────────┼───────┼────────────┼────────┤
+│ 0       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/quote-events'           │ 'OK'  │ '164'      │ '0'    │
+│ 1       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/project-invoice-events' │ 'OK'  │ '164'      │ '0'    │
+│ 2       │ 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/changes'                │ 'OK'  │ '167'      │ '0'    │
+└─────────┴──────────────────────────────────────────────────────────────────────────────────┴───────┴────────────┴────────┘
+
+## integrity-1
+
+> roofops@0.1.0 integrity:check
+> tsx scripts/integrity-check.ts
+
+
+PROJECT
+  PASS    cancelled_never_ready_to_invoice   A cancelled or closed project is never ready to invoice and has no invoice awaiting approval
+  PASS    only_completed_can_be_prepared     Only a COMPLETED project yields an invoice preview (cancelled ones cannot be prepared)
+  PASS    completed_has_finish_date          Completed/closed projects have an actual completion date
+  PASS    started_has_start_date             Started projects have an actual start date
+  PASS    reason_recorded                    Cancelled / on-hold projects carry a reason
+  PASS    created_from_accepted_quote        Every project comes from an ACCEPTED quote
+  PASS    cancelled_has_no_open_work         A cancelled project has no open tasks and no pending invoice approval
+  WARNING cancelled_open_purchase_orders     Cancelled projects with supplier orders still open (cancel or re-assign them)  → PRJ-2026-0001
+  PASS    dashboard_status_is_canonical      Dashboard status is read from canonical projects.status for every project
+
+QUOTE
+  PASS    accepted_at_most_one_project       An accepted quote has at most one project
+  WARNING accepted_has_project               Accepted quotes without a project (acceptance not yet processed)  → Q-2026-0031
+
+INVOICE
+  PASS    one_final_per_project              At most one non-void FINAL invoice per project
+  PASS    xero_synced_has_verified_link      Xero sync DONE only with a read-back-verified Xero invoice link
+  PASS    xero_link_only_when_synced         No Xero link on an invoice RoofOps does not consider synced
+  PASS    xero_synced_approval_executed      Every invoice in Xero came from an EXECUTED human approval
+
+APPROVAL
+  PASS    executed_by_valid_approver         Approved/executed invoice approvals were decided by an authorised approver
+  PASS    pending_preview_current            Pending previews still match the invoice RoofOps would create (a stale one is refused at approval)
+
+SIDE_EFFECT
+  PASS    done_has_proof                     Every DONE side effect (Drive folder, Airtable write-back, Xero draft) has verified proof
+  PASS    dead_letters                       Side effects that stopped after their retry budget (each has an open exception)
+
+STATE_MACHINE
+  PASS    every_status_is_a_known_state      Every stored status is a state of its machine
+  PASS    transition_enforcement_installed   State-machine triggers are installed and enabled
+
+AUDIT
+  PASS    hash_chain_intact                  The audit trail hash chain verifies end to end
+
+AIRTABLE
+  PASS    drift                              Last observed Airtable values match canonical state
+  PASS    every_project_linked               Every project has its Airtable record
+
+RECONCILIATION
+  PASS    recent                             Last reconciliation finished 0 minutes ago
+
+WORKFLOW_EXCEPTION
+  WARNING open                               Open exceptions waiting for a person  → EXC-0003 PRJ-2026-0008; EXC-0013 Q-2026-0035; EXC-0016 PRJ-2026-0007; EXC-0017 PRJ-2026-0031
+
+23 PASS, 3 WARNING, 0 FAIL  (hosted database)
+
+## security-1
+
+> roofops@0.1.0 security:check
+> tsx scripts/security-check.ts
+
+PASS  dashboard role: readable tables                []
+PASS  dashboard role: SECURITY DEFINER functions     ["at_link","integrity_check","invoice_final_preview","sm_label","wf_invoice_prepare"]
+PASS  dashboard role: can it write via wf_* (other than prepare)? []
+PASS  workflow role: executable functions            17 items
+PASS  anon/authenticated: readable or writable objects []
+PASS  functions executable by PUBLIC                 []
+PASS  tables without row level security              []
+PASS  Xero writes pinned to the proven Demo tenant   ["96643bb0-3a0a-406e-96fb-ab8a933ee6b8"]
+PASS  reconcile trigger token stored only as a hash  ["64"]
+
+all privilege checks pass

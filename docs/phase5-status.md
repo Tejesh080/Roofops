@@ -159,7 +159,7 @@ Nothing else in execution history holds secrets. Credentials themselves live onl
 | 2:45 | Demo guide → **03**, then **PRJ-2026-0033**: Drive unavailable, 5 attempts in 29 s, stopped safely; retried by staff; folder and Airtable completed; repeat ignored safely. *"Nothing was created twice."* |
 | 3:45 | **PRJ-2026-0004**: final invoice $14,664.49, RO-INV-2026-0039 *Draft in Xero*, invoice history, Open in Xero; InvoiceID tucked under Technical details. |
 | 4:30 | Copilot: **"Prepare invoice for PRJ-2026-0005"**. The action card shows $17,831.91 (quote $44,579.78 − already invoiced $26,747.87), "Awaiting finance approval", a toast, and the page behind switches to *Awaiting approval*. *"The AI prepares; it cannot approve or send."* |
-| 5:30 | Optional: in Airtable, set PRJ-2026-0005 Invoice Action → *Approve Xero draft invoice*. About 10 s later the project shows *Draft in Xero*. This creates a real Demo Company draft and is not undone by `demo:reset`. |
+| 5:30 | Optional: in Airtable, set PRJ-2026-0005 Invoice Action → *Prepare Xero draft invoice*. The row now shows the Copilot's preview (same APR number and amount, no new approval). Then set Invoice Action → *Approve Xero draft invoice*. About 10 s later the project shows *Draft in Xero*. An Approve only approves the preview shown on that row (AC-03). This creates a real Demo Company draft and is not undone by `demo:reset`. |
 | 6:15 | Finance page (ready → awaiting approval → in Xero → overdue), then Automation page (business-language issues, technical details on demand). |
 | 6:45 | Close on the architecture: Postgres is the source of truth; n8n moves data; Airtable is the office UI; Xero gets drafts only after a person approves; the copilot is read-only plus preview. |
 

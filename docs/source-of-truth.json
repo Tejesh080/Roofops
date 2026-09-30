@@ -27,7 +27,7 @@
       "owner": "POSTGRES",
       "editable_in": "Airtable Invoice Action (04) / dashboard prepare",
       "change_path": "wf_invoice_prepare / wf_invoice_decide",
-      "validation": "state_transitions(approval); mapped approver; current hash",
+      "validation": "state_transitions(approval); mapped approver; current hash; an Airtable decision binds to the sending record's project and to the preview a Prepare showed on that row before the decision",
       "event_generated": "approval.approve",
       "downstream": "invoices, Xero",
       "readback": "—",

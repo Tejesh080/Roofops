@@ -1,0 +1,190 @@
+{
+ "defect": "AC-05: voiding an invoice did not cancel its queued Xero write",
+ "migration": {
+  "file": "supabase/migrations/20261001060000_voided_invoice_never_gets_a_xero_draft.sql",
+  "checksum_prefix": "6dea75f6",
+  "applied_to_hosted_alone": true,
+  "deploy_output": [
+   "migrations applied: 20261001060000_voided_invoice_never_gets_a_xero_draft.sql (skipped 25)",
+   "dataset 0dd5b61419f7… already imported (batch 243ef8f4-08fb-41d5-98c3-ab62f13560c6); nothing to do"
+  ],
+  "parity": "repo = local = hosted for all 26 versions; version 20261001060000 is used only by this file"
+ },
+ "hosted_checks_after_deploy": {
+  "dry_run": [
+   "RECON-20261001-095516-f11e  mode=observe  status=COMPLETED",
+   "│ 0       │ 'AIRTABLE'     │ 231     │ 0           │ 0        │ 0            │ 0         │ 231    │",
+   "│ 1       │ 'GOOGLE_DRIVE' │ 3       │ 0           │ 0        │ 0            │ null      │ 3      │",
+   "│ 2       │ 'XERO'         │ 1       │ 0           │ 0        │ 0            │ null      │ 1      │",
+   "No drift found."
+  ],
+  "integrity": [
+   "PASS    voided_invoice_has_no_xero_write   No Xero draft is created, pending, ambiguous or linked for a voided invoice",
+   "24 PASS, 3 WARNING, 0 FAIL  (hosted database)"
+  ],
+  "security": [
+   "PASS  dashboard role: readable tables                []",
+   "PASS  dashboard role: SECURITY DEFINER functions     [\"at_link\",\"integrity_check\",\"invoice_final_preview\",\"sm_label\",\"wf_invoice_prepare\"]",
+   "PASS  dashboard role: can it write via wf_* (other than prepare)? []",
+   "PASS  workflow role: executable functions            20 items",
+   "PASS  anon/authenticated: readable or writable objects []",
+   "PASS  functions executable by PUBLIC                 []",
+   "PASS  tables without row level security              []",
+   "PASS  Xero writes pinned to the proven Demo tenant   [\"96643bb0-3a0a-406e-96fb-ab8a933ee6b8\"]",
+   "PASS  reconcile trigger token stored only as a hash  [\"64\"]",
+   "all privilege checks pass"
+  ],
+  "repair_run": "none"
+ },
+ "live_refusal_test": {
+  "target": "INV-2026-0039 (FINAL, APPROVED, SYNCED) / PRJ-2026-0004; Xero Demo draft RO-INV-2026-0039",
+  "method": "One operator void (UPDATE invoices.status) on hosted, inside a transaction that is always rolled back, so an unexpected success could not have changed anything",
+  "attempt": {
+   "attempted_at": "2026-09-30T23:56:09.409Z",
+   "statement": "update invoices set status = 'VOIDED', voided_reason = 'AC-05 live refusal test: customer cancelled' where invoice_number = 'INV-2026-0039'",
+   "outcome": "REFUSED",
+   "sqlstate": "23514",
+   "message": "INV-2026-0039 cannot be voided: its Xero draft exists (RO-INV-2026-0039). Void or delete it in Xero first",
+   "hint": null,
+   "detail": null
+  },
+  "before": {
+   "invoice": {
+    "status": "APPROVED",
+    "sync_status": "SYNCED",
+    "voided_reason": null,
+    "record_version": 3,
+    "updated_at": "2026-09-28T22:55:06.181971+00:00"
+   },
+   "project": {
+    "status": "COMPLETED",
+    "record_version": 1,
+    "updated_at": "2026-09-28T19:13:19.119713+00:00"
+   },
+   "outbox": [
+    {
+     "status": "DONE",
+     "attempts": 1,
+     "dispatched_at": "2026-09-28T22:55:06.181971+00:00",
+     "xero_invoice_number": "RO-INV-2026-0039",
+     "xero_status": "DRAFT",
+     "total": 14664.49
+    }
+   ],
+   "xero_link": [
+    {
+     "external_id": "7b74973c-a487-48f0-85b9-91ca8c5b2909",
+     "last_synced_at": "2026-09-30T23:55:26.281325+00:00"
+    }
+   ],
+   "dashboard": {
+    "invoice_status": "XERO_DRAFT_CREATED",
+    "needs_attention": false,
+    "invoice_blocker": null
+   },
+   "counts": {
+    "outbox_total": "7",
+    "xero_jobs_total": "1",
+    "outbox_open": "0",
+    "exceptions_total": "19",
+    "exceptions_open": "4",
+    "invoices_total": "39",
+    "audit_total": "84",
+    "audit_max_seq": "115"
+   },
+   "state_digest": "13aba4cd1dcbd449a5fcfb3551dfe9f1a3116953abb42d73a693e4248f322127",
+   "taken_at": "2026-09-30T23:56:07.108Z"
+  },
+  "after": {
+   "invoice": {
+    "status": "APPROVED",
+    "sync_status": "SYNCED",
+    "voided_reason": null,
+    "record_version": 3,
+    "updated_at": "2026-09-28T22:55:06.181971+00:00"
+   },
+   "project": {
+    "status": "COMPLETED",
+    "record_version": 1,
+    "updated_at": "2026-09-28T19:13:19.119713+00:00"
+   },
+   "outbox": [
+    {
+     "status": "DONE",
+     "attempts": 1,
+     "dispatched_at": "2026-09-28T22:55:06.181971+00:00",
+     "xero_invoice_number": "RO-INV-2026-0039",
+     "xero_status": "DRAFT",
+     "total": 14664.49
+    }
+   ],
+   "xero_link": [
+    {
+     "external_id": "7b74973c-a487-48f0-85b9-91ca8c5b2909",
+     "last_synced_at": "2026-09-30T23:55:26.281325+00:00"
+    }
+   ],
+   "dashboard": {
+    "invoice_status": "XERO_DRAFT_CREATED",
+    "needs_attention": false,
+    "invoice_blocker": null
+   },
+   "counts": {
+    "outbox_total": "7",
+    "xero_jobs_total": "1",
+    "outbox_open": "0",
+    "exceptions_total": "19",
+    "exceptions_open": "4",
+    "invoices_total": "39",
+    "audit_total": "84",
+    "audit_max_seq": "115"
+   },
+   "state_digest": "13aba4cd1dcbd449a5fcfb3551dfe9f1a3116953abb42d73a693e4248f322127",
+   "taken_at": "2026-09-30T23:56:11.902Z"
+  },
+  "state_digest_unchanged": true,
+  "between_deploy_and_test": "Only the observe dry-run RECON-20261001-095516-f11e touched this data: the Xero link last_synced_at, the dashboard last_reconciled_at / airtable_status_seen_at, and its own audit event 115 reconciliation.completed",
+  "n8n_05_executions_after_2026_09_30T23_50Z": 0
+ },
+ "hosted_checks_after_test": {
+  "dry_run": [
+   "RECON-20261001-095746-5b1c  mode=observe  status=COMPLETED",
+   "│ 0       │ 'AIRTABLE'     │ 231     │ 0           │ 0        │ 0            │ 0         │ 231    │",
+   "│ 1       │ 'GOOGLE_DRIVE' │ 3       │ 0           │ 0        │ 0            │ null      │ 3      │",
+   "│ 2       │ 'XERO'         │ 1       │ 0           │ 0        │ 0            │ null      │ 1      │",
+   "No drift found."
+  ],
+  "integrity": [
+   "PASS    voided_invoice_has_no_xero_write   No Xero draft is created, pending, ambiguous or linked for a voided invoice",
+   "24 PASS, 3 WARNING, 0 FAIL  (hosted database)"
+  ],
+  "snapshot_after_integrity_digest_equal_to_after_test": true,
+  "snapshot_note": "taken after the post-test integrity check, before the post-test dry-run (which itself only refreshes reconciliation timestamps and adds its own audit event)",
+  "snapshot_counts": {
+   "outbox_total": "7",
+   "xero_jobs_total": "1",
+   "outbox_open": "0",
+   "exceptions_total": "19",
+   "exceptions_open": "4",
+   "invoices_total": "39",
+   "audit_total": "84",
+   "audit_max_seq": "115"
+  }
+ },
+ "canonical_fingerprint": {
+  "values": 173,
+  "before": "89d72adfc5a6ba3c",
+  "after_deploy": "89d72adfc5a6ba3c",
+  "after_live": "89d72adfc5a6ba3c"
+ },
+ "offline_only": "Queued, in-flight (claimed), ambiguous (UNKNOWN) and dead-lettered paths, the claim/completion safety net, the needs-a-person block and the integrity FAIL are proven offline (test/invoice-void.test.ts, PGlite + Postgres 17). No new Demo invoice was created to live-test them.",
+ "final_verification": {
+  "full_suite": [
+   "Test Files  18 passed | 3 skipped (21)",
+   "Tests  396 passed | 33 skipped (429)"
+  ],
+  "ac05_tests": "8 passed (4 tests x PGlite + Postgres 17)",
+  "lint": "exit 0",
+  "typecheck": "exit 0"
+ }
+}

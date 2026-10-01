@@ -13,7 +13,7 @@ instruction).
 | AC-02 | P0 | A missing or reshaped Airtable field is replayed as a staff edit | **Yes**, offline (PGlite and Postgres 17) | 5 failing tests that emulate real Airtable reads: keys omitted, dates as UTC instants, one field changed on 8 records (below) | The reconciler read an absent key as "blank", compared date instants as text and cast them to their UTC date, and had no notion of a field-level change | A field missing from a whole read is not evidence; a date is the Brisbane business day it denotes; one field changing on many records at once is not N staff edits | `test/state-integrity.test.ts:427`, `:449`, `:458`, `:473`, `:490`, plus bulk-edit tests `:511` (legitimate, via webhook) and `:535` (missed, ambiguous) | Migration `20260930010000_reconcile_field_shape_guards.sql` | Chain from zero on PostgreSQL 17.11; 328 tests pass on PGlite and Postgres 17; red without the fix, green with it; each part ablated turns its own tests red; lint, typecheck clean; local integrity 0 FAIL; grants checked | Done 2026-10-01 (§10–§11): deployed alone; hosted dry-run 0 drift, 0 findings; integrity 0 FAIL; proven cell by cell against an independent read of the real base, with [evidence/ac02-live-verification.json](../evidence/ac02-live-verification.json) | **FIXED** |
 | AC-10 | P0 | 06 applies its own stale correction back as a staff edit | **Yes**, offline (PGlite and Postgres 17), with a harness that replays 06's real batch order, Airtable's echo transactions and the cursor | Ping-pong: after one transient read-back failure and a staff edit, every run applied RoofOps's own write, flipping canonical, and the cursor never advanced. Related: a staff member's fix of their own refused edit was refused as a conflict (below) | A correction is computed when 06 processes an item but written after later items; a landed-but-overtaken write never verifies; its echo passes compare-and-set; compare-and-set judged the staff member's `previous` against canonical, not against what Airtable showed | A value RoofOps wrote is never applied back as a staff edit; after the staff member's last edit, Airtable and canonical converge and every run advances the cursor | `test/state-integrity.test.ts:628`, `:650`, `:663`, `:685`, guard `:707`, echo-window tests `:729`, `:747`, retention `:764`; harness `Airtable06` `:62` | Migration `20261001000000_roofops_writes_are_not_staff_edits.sql` (+ one line in n8n 06, not yet deployed) | Chain from zero; 344 tests pass on PGlite and Postgres 17; red without the fix (7 of 8; the guard stays green); each of 7 parts ablated turns its own tests red; lint, typecheck clean; local integrity 0 FAIL; grants and RLS checked | Done 2026-10-01 (§10–§11): deployed alone; dry-run 0 drift, integrity 0 FAIL, security all pass. The live test on PRJ-2026-0029 reproduced the stale write for real and it converged: the fix was applied, the echo ignored, the cursor consumed, 0 drift, the hash chain intact, and the value restored. [evidence/ac10-live-verification.json](../evidence/ac10-live-verification.json). The 06 `origin` line is live and verified (§12) | **FIXED** (origin propagation live 2026-10-01, §12) |
 | AC-03 | P0 | Airtable Approve is not bound to the row or preview the approver saw | **Yes**, offline (PGlite and Postgres 17), with events shaped exactly as n8n 04 sends them | 3 failing tests: an Approve approved a Copilot re-prepared preview never shown in Airtable, another project's preview (edited Project Number cell), and a preview prepared after the click | 04's decision names no approval; `wf_invoice_decide` found the project by the editable Project Number text and decided whatever was PENDING at processing time | An Airtable decision applies only to the sending record's project and to the preview a Prepare showed on that row before the decision; other sources must name the approval; a sent hash must match | `test/invoice-approval-binding.test.ts:68`, `:98`, `:117`, `:129`, guards `:85`, `:108` | Migration `20261001010000_invoice_decision_bound_to_row_and_preview.sql` (Postgres only; n8n unchanged) | Chain from zero; 356 tests pass on PGlite and Postgres 17; red without the fix (4 of 6; both guards green); each of 5 rules ablated turns its own test red; lint, typecheck clean; local integrity 0 FAIL; grants and RLS checked | Done 2026-10-01 (§10–§11): deployed alone; dry-run 0 drift, integrity 0 FAIL, security all pass. On PRJ-2026-0005 an Approve of a Copilot preview never shown on the row was refused, with nothing approved; Prepare then showed the same preview; the state was reset and 0 drift remained. [evidence/ac03-live-verification.json](../evidence/ac03-live-verification.json) | **FIXED** (exact-preview binding live 2026-10-01, §13) |
-| AC-05 | P0 | Voiding an invoice does not cancel its queued Xero write | – | – | – | – | – | – | – | – | Not started |
+| AC-05 | P0 | Voiding an invoice does not cancel its queued Xero write | **Yes**, offline (PGlite and Postgres 17): approve, void, claim, complete | VOIDED + SYNCED, outbox DONE, Xero link; dashboard READY_TO_INVOICE, needs_attention false, integrity 0 FAIL | Nothing tied the outbox to the invoice status; claim and completion ignored it; the preview ignored voided finals | No Xero draft created, pending, ambiguous or linked for a VOIDED invoice; a voided final blocks the project for a person | `test/invoice-void.test.ts:65`, `:76`, `:86`, `:110` | Migration `20261001060000_voided_invoice_never_gets_a_xero_draft.sql` (Postgres only) | Chain from zero; 396 tests pass; red before (8 of 8); 5 ablations each red; lint, typecheck clean; local integrity 0 FAIL; grants checked | Done 2026-10-01 (§9–§10): deployed alone; dry-run 0 drift, integrity 0 FAIL (new check PASS), security all pass. A void of the SYNCED INV-2026-0039 on hosted was refused ("its Xero draft exists (RO-INV-2026-0039). Void or delete it in Xero first"); invoice, project, outbox, exceptions and Xero draft unchanged; 0 drift after. [evidence/ac05-live-verification.json](../evidence/ac05-live-verification.json) | **FIXED** |
 | AC-06 | P0 | Unpinning the Xero tenant is not a kill switch | – | – | – | – | – | – | – | – | Not started |
 | AC-04 | P0 | A Xero draft that exists is recorded as never created | – | – | – | – | – | – | – | – | Not started |
 | AC-08 | P0 | Over-billed projects are labelled "Fully invoiced" (`dashboard.test.ts:34` expects this) | – | – | – | – | – | – | – | – | Not started |
@@ -1325,3 +1325,137 @@ clean. Fresh chain: 25 applied, 0 skipped on re-run. The n8n validator accepts t
 
 **Owner recommendation (not changed).** Give the "RoofOps Google Drive" credential its own Google Cloud OAuth client,
 which gets its own per-minute quota, and/or move the daily schedule off the top of the hour.
+
+## AC-05 evidence package
+
+### 1. Reproduction (offline, before the fix)
+
+A probe (PGlite, the real `wf_*` path, synthetic Xero proof; the real Xero account was never touched) ran these steps:
+1. approve PRJ-2026-0004 through 04's contract;
+2. void the invoice the only way possible today (`update invoices set status = 'VOIDED', voided_reason = …`);
+3. let 05 claim and complete.
+
+The void was accepted, and the dashboard said **READY_TO_INVOICE** at once. 05 then claimed the job, and the completion
+was RECORDED. The end state was **VOIDED + SYNCED**, with the outbox DONE and one Xero link. `needs_attention` was
+false and integrity reported 0 FAIL. Preparing again answered ALREADY_INVOICED, so the dashboard's "ready" was a dead
+end.
+
+`test/invoice-void.test.ts`, on PGlite and Postgres 17, was red before the fix: 8 failed, each at its first rule
+(05 still claims; the void is accepted while claimed or UNKNOWN; …). A first draft of these tests passed for a wrong
+reason: it voided without the required `voided_reason`, so `invoices_check4` refused it. That was fixed before the
+red run above.
+
+### 2. Classification: a true bug
+
+APPROVED → VOIDED is a legal transition, and nothing tied the outbox row to the invoice's business status. It moves
+money: a Xero draft exists for an invoice RoofOps calls voided, and nothing flags it.
+
+### 3–4. First incorrect transition, and why it was possible
+
+The first incorrect transition was `invoices.sync_status` PENDING → SYNCED on a VOIDED invoice, in
+`wf_complete_side_effect`. It was possible because:
+- the void did not look at the queued write;
+- the claim and the completion did not look at the invoice's status;
+- `invoice_final_preview` ignored voided finals, although `invoices.idempotency_key` (`invoice:final:<project>`)
+  still makes a second FINAL invoice impossible.
+
+### 5. Invariant
+
+> No Xero draft is created, pending, ambiguous or linked for a VOIDED invoice. A voided final invoice leaves its
+> project blocked for a person, never "ready to invoice".
+
+### 6. Tests
+
+`test/invoice-void.test.ts`:
+- **`:65`** a void is refused while the write is queued, and again once the draft exists; the write itself goes on
+  normally;
+- **`:76`** a void is refused while 05 is writing (claimed) and after an ambiguous attempt (UNKNOWN);
+- **`:86`** once the write failed safely (dead-lettered), the void is allowed. After it:
+  - even an operator re-queue gets no claim (`INVOICE_VOIDED`), and a completion is refused and links nothing;
+  - the dashboard shows NOT_READY "final invoice … was voided", with needs attention and one OPEN exception;
+  - Prepare refuses clearly, instead of Approve crashing;
+  - integrity is clean;
+- **`:110`** safety net: an invoice voided behind the checks (bypassing triggers) is never claimed or linked, and
+  integrity FAILs `voided_invoice_has_no_xero_write`.
+
+### 7. Fix (owner decisions, 2026-10-01: refuse while in flight; after a void, blocked for a person)
+
+Migration `20261001060000_voided_invoice_never_gets_a_xero_draft.sql`. It changes Postgres only; n8n is unchanged.
+1. **`invoices_void_guard` (before the status update) refuses a void**, with a reason and the next step, when:
+   - the Xero draft is being created (claimed);
+   - the draft exists (SYNCED, DONE, or linked): void it in Xero first;
+   - an earlier attempt is ambiguous (UNKNOWN): run reconciliation;
+   - the write is queued (pending, or a retry is scheduled).
+
+   Only a dead-lettered write, where nothing was created, allows the void.
+2. **`invoices_voided_needs_person`** opens one exception when a FINAL invoice is voided. It gives the dashboard's
+   needs-attention flag, and it is closed with `npm run exception:resolve`.
+3. **Safety net.** `wf_claim_side_effect` returns `INVOICE_VOIDED` without claiming. `wf_complete_side_effect`
+   refuses by raising, so 05's existing "Proof Refused By Postgres" path records the failure and 04 never reports a
+   draft. Both wrap the unchanged `…_core`.
+4. **`invoice_final_preview`** (redefined in place, so the dashboard view keeps using it) answers not ok, "final
+   invoice … was voided; a replacement final invoice needs a person". The dashboard shows NOT_READY with that
+   blocker, and Prepare refuses cleanly.
+5. **`integrity_check`** (wrapping the unchanged core) adds `voided_invoice_has_no_xero_write`: FAIL for a voided
+   invoice that is SYNCED, PENDING or UNKNOWN, whose outbox row is DISPATCHING or DONE, or that has a Xero link.
+
+### 8. Verification (offline)
+
+| Check | Result |
+|---|---|
+| Red, before the fix | 8 failed (4 tests × 2 engines) |
+| Ablation A: no void guard | `:65`, `:76`, `:86` red |
+| Ablation B+C: no claim or completion safety net | `:86`, `:110` red |
+| Ablation D: the preview still says ready after a void | `:86` red |
+| Ablation E: no needs-a-person exception | `:86` red |
+| Ablation F: integrity does not report it | `:110` red |
+| Full suite, PGlite + Postgres 17 | **396 passed**, 33 skipped; lint and typecheck clean |
+| Fresh PostgreSQL 17 chain | 26 applied, 0 skipped on re-run; both triggers present; the new check PASS on the imported data |
+| Local dev DB | integrity 23 PASS, 4 WARNING, 0 FAIL (the new check PASS) |
+| Grants (local) | `roofops_workflow` can execute only the claim and completion entry points; `roofops_dashboard` only `integrity_check`; the `…_core` functions and the trigger functions are executable by neither |
+
+### 9. Hosted deploy (owner approved 2026-10-01, AC-05 only)
+
+- **Parity first.** Repo, local and hosted agreed on all 25 earlier versions; `20261001060000` was used by no other
+  file, commit or database.
+- **Applied alone.** `migrations applied: 20261001060000_voided_invoice_never_gets_a_xero_draft.sql (skipped 25)`; no
+  data import. Hosted checksum matches the repo (`6dea75f6`).
+- **Checks, with no repair run:**
+
+| Check | Result |
+|---|---|
+| `npm run reconcile -- --dry-run` | RECON-20261001-095516-f11e COMPLETED: Airtable 231 / 0 drift, Drive 3/3, Xero 1/1, webhooks OK |
+| `npm run integrity:check` | 24 PASS, 3 WARNING (the same 3 as before), 0 FAIL; `voided_invoice_has_no_xero_write` PASS; hash chain intact |
+| `npm run security:check` | all privilege checks pass |
+
+### 10. Controlled live test (hosted, 2026-10-01)
+
+One operator void of INV-2026-0039 (PRJ-2026-0004; FINAL, APPROVED, SYNCED; Xero Demo draft RO-INV-2026-0039),
+run inside a transaction that is always rolled back, so an unexpected success could not have changed anything.
+
+- **Refused** (SQLSTATE 23514): "INV-2026-0039 cannot be voided: its Xero draft exists (RO-INV-2026-0039). Void or
+  delete it in Xero first".
+- **Nothing changed.** A snapshot of the invoice, project, the invoice's outbox rows and its links has the same digest
+  before and after (`13aba4cd…`):
+  - invoice APPROVED / SYNCED, `record_version` 3, `voided_reason` null;
+  - project COMPLETED, `record_version` 1;
+  - outbox: 7 rows, 1 Xero job (DONE, 1 attempt), 0 open;
+  - exceptions: 19 total, 4 open (no new exception);
+  - audit: 84 events (the refusal wrote none);
+  - dashboard XERO_DRAFT_CREATED.
+- **No Xero write.** n8n 05 had no executions after 23:50Z. The next dry-run (RECON-20261001-095746-5b1c) re-read the
+  Xero draft: 1/1 verified, 0 drift, and also 0 drift in Airtable and Drive.
+- **Integrity after the test:** 24 PASS, 3 WARNING, 0 FAIL; the new check PASS.
+- **Canonical fingerprint:** 173 values, `89d72adf…`, unchanged through deploy and test.
+- The only changes between deploy and test came from the observe dry-run itself: the Xero link's `last_synced_at`, the
+  dashboard's reconciliation timestamps, and its own audit event 115 `reconciliation.completed`.
+
+The queued, claimed, UNKNOWN and dead-letter paths, the claim and completion safety net, the needs-a-person block and
+the integrity FAIL stay offline-tested: a live test would need a new Demo invoice, and none was created.
+
+Evidence: [evidence/ac05-live-verification.json](../evidence/ac05-live-verification.json).
+
+### 11. Final verification
+
+Fresh run before commit: full suite **396 passed**, 33 skipped (PGlite and Postgres 17); `test/invoice-void.test.ts`
+8 of 8 on both engines; lint and typecheck exit 0.

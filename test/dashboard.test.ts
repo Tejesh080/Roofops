@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Db } from '../src/db/db.js';
 import { importBundle } from '../src/import/importer.js';
+import { DEMO_DATE } from '../src/config/demo.js';
 import { TARGETS, col, migratedDb } from './helpers/db.js';
 
 const prepareEvent = (id: string, project: string) => JSON.stringify({
@@ -62,10 +63,15 @@ describe.each(TARGETS)('dashboard read models [%s]', (target) => {
       expect((await col(db, `select project_number v from v_dashboard_projects limit 1`)).length).toBe(1);
       expect((await col(db, `select kind v from v_dashboard_project_timeline limit 1`)).length).toBe(1);
       await db.exec('savepoint s');
-      for (const sql of ['select * from projects limit 1', 'select * from customers limit 1', 'select * from approvals limit 1', 'select * from audit_events limit 1']) {
+      for (const sql of ['select * from projects limit 1', 'select * from customers limit 1', 'select * from approvals limit 1', 'select * from audit_events limit 1',
+                         'select key, value from app_settings']) {
         await expect(db.query(sql)).rejects.toThrow(/permission denied/);
         await db.exec('rollback to savepoint s');
       }
+    });
+
+    it('sees the pinned demo business date, so "overdue" and "past finish" do not drift with the real calendar', async () => {
+      expect(await col(db, `select app_today()::text v`)).toEqual([DEMO_DATE]);
     });
 
     it('can prepare a preview (the same entry point n8n uses) but can never approve or write', async () => {

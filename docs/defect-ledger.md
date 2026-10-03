@@ -1459,3 +1459,58 @@ Evidence: [evidence/ac05-live-verification.json](../evidence/ac05-live-verificat
 
 Fresh run before commit: full suite **396 passed**, 33 skipped (PGlite and Postgres 17); `test/invoice-void.test.ts`
 8 of 8 on both engines; lint and typecheck exit 0.
+
+## Reliability fix: the dashboard and Copilot used the server's real date (2026-10-04, owner-instructed)
+
+**Found** while re-running the full suite for AC-06. `test/copilot-tools.test.ts:35` failed on both engines once the
+real date passed PRJ-2026-0011's planned finish (2026-10-01): "Past the planned finish date" appeared. The test fails
+identically without the AC-06 migration.
+
+**Reproduced on hosted too** (read-only, through the web app's own login `roofops_web` and the real Copilot tool code):
+
+| Caller | Before | After |
+|---|---|---|
+| Owner (Postgres workflows run as it, through SECURITY DEFINER functions) | 2026-09-29 | 2026-09-29 |
+| Web login: `app_today()` / `v_dashboard_kpis.as_of` | **2026-10-04** / **2026-10-04** | 2026-09-29 / 2026-09-29 |
+| Copilot "today" (`what_needs_attention_today`) | **2026-10-04** | 2026-09-29 |
+| PRJ-2026-0011 risk reasons: web and Copilot | START_DATE_PASSED, **PAST_PLANNED_COMPLETION**, PM_FLAGGED | START_DATE_PASSED, PM_FLAGGED (the owner's answer) |
+| Web login reads `app_settings` | allowed, every row hidden by RLS | denied |
+
+**Root cause.** `app_today()` was a plain SQL function that read `app_settings.business_date_override` as the caller.
+`roofops_dashboard` had a column grant on `app_settings`, but RLS is enabled with no policy. The role therefore saw no
+row, and the function fell back to the real Brisbane date without any error.
+
+**Invariant.** One RoofOps business date, the same for every caller. Lacking access to the settings never substitutes
+another date, and the dashboard needs no access to configuration rows.
+
+**Fix:** migration `20261001065000_one_business_date_for_every_caller.sql`.
+- **`app_today()` resolves the date with the owner's rights.** It is now SECURITY DEFINER with a fixed search_path,
+  and was already in the security check's allow-list.
+  - The setting holds a date (YYYY-MM-DD): that date.
+  - The setting is missing or empty: no override is configured, so the real date in Brisbane. This is the documented
+    production behaviour.
+  - Anything else: an error ("business_date_override … is not a date"), never another date.
+- **The dashboard's column grant on `app_settings` is revoked.** The dashboard reads the date only through
+  `app_today()`.
+
+**Tests:** `test/business-date.test.ts`, on PGlite and Postgres 17.
+1. The dashboard role gets the configured business date.
+2. It cannot read ordinary app settings.
+3. Missing or empty means the real Brisbane date; three malformed values are refused, by the owner and by the
+   dashboard.
+4. The workflow role's invoice preview, the dashboard's as-of date and the Copilot's "today" are the same date.
+5. PRJ-2026-0011's risk reasons follow the business date (PAST_PLANNED_COMPLETION appears only with a business date
+   after 2026-10-01).
+
+| Check | Result |
+|---|---|
+| Red, before the fix | all 10 failed, plus the Copilot test on both engines |
+| Ablation A: not SECURITY DEFINER | tests 1, 3, 4, 5 and the Copilot test red |
+| Ablation B: the dashboard keeps its column grant | test 2 red |
+| Ablation C: a malformed value falls back to the real date | test 3 red |
+| Full suite, PGlite + Postgres 17 (AC-06 parked outside the repo) | **406 passed**, 33 skipped, **0 failed**; lint and typecheck clean |
+| Fresh PostgreSQL 17 chain | 27 applied, 0 on re-run; the dashboard gets 2026-09-29 and has no column privilege on `app_settings`; integrity 0 FAIL; workflow role 20 functions, all `wf_*`; nothing executable by PUBLIC; RLS everywhere |
+| Local dev DB | applied alone; integrity 23 PASS, 4 WARNING, 0 FAIL |
+| Hosted | applied alone (26 skipped); live before/after as above; dry-run `RECON-20261004-042200-a579` 0 drift; integrity 24 PASS, 3 WARNING, 0 FAIL; security all pass; no repair run; fingerprint 173 values `89d72adf…`, unchanged |
+
+Evidence: [evidence/business-date-live-verification.json](../evidence/business-date-live-verification.json).

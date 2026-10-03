@@ -1,0 +1,159 @@
+{
+ "defect": "Reliability: the dashboard role (web app and Copilot) silently used the server real date instead of the RoofOps business date",
+ "found": "2026-10-04, while re-running the full suite for AC-06: test/copilot-tools.test.ts:35 failed on both engines once the real date passed PRJ-2026-0011 planned finish (2026-10-01)",
+ "root_cause": "app_today() was a plain SQL function reading app_settings.business_date_override as the caller; roofops_dashboard had a column grant on app_settings, but RLS is enabled with no policy, so it saw no row and fell back to the real Brisbane date",
+ "fix": {
+  "migration": "supabase/migrations/20261001065000_one_business_date_for_every_caller.sql",
+  "checksum_prefix": "0ca127d2",
+  "rule": "app_today() is SECURITY DEFINER (fixed search_path): set date -> that date; missing or empty -> real Brisbane date; anything else -> error, never another date. Dashboard column grant on app_settings revoked."
+ },
+ "offline": {
+  "tests": "test/business-date.test.ts (5 tests x PGlite + Postgres 17)",
+  "ablations": [
+   "RED_no_migration Tests  12 failed | 10 passed (22) pglite:1., pglite:2., pglite:3., pglite:answers, pglite:4., pglite:5., postgres:1., postgres:2., postgres:3., postgres:4., postgres:5., postgres:answers",
+   "A_not_security_definer Tests  18 failed | 4 passed (22) pglite:1., pglite:3., pglite:4., pglite:5., pglite:answers, × test/copilot-tools.test.ts > Operations Copilot tools, as the dashboard role [, postgres:1., postgres:3., postgres:4., postgres:5., postgres:answers",
+   "B_dashboard_keeps_column_grant Tests  2 failed | 20 passed (22) pglite:2., postgres:2.",
+   "C_malformed_falls_back Tests  2 failed | 20 passed (22) pglite:3., postgres:3."
+  ],
+  "full_suite": [
+   "Test Files  19 passed | 3 skipped (22)",
+   "Tests  406 passed | 33 skipped (439)"
+  ],
+  "lint": "exit 0",
+  "typecheck": "exit 0",
+  "fresh_chain": {
+   "first": {
+    "applied": 27,
+    "skipped": 0,
+    "last": "20261001065000_one_business_date_for_every_caller.sql"
+   },
+   "second": {
+    "applied": 0,
+    "skipped": 27
+   },
+   "checks": {
+    "owner_today": "2026-09-29",
+    "app_today_definer": true,
+    "dashboard_exec_app_today": true,
+    "workflow_exec_app_today": false,
+    "dashboard_reads_settings_value": false,
+    "dashboard_reads_settings_key": false,
+    "integrity_fail": 0,
+    "integrity_pass": 23,
+    "integrity_warning": 4
+   },
+   "dashboard": {
+    "dashboard_today": "2026-09-29",
+    "kpis_as_of": "2026-09-29"
+   },
+   "privileges": {
+    "dashboard_readable_tables": [],
+    "dashboard_definer_functions": [
+     "app_today",
+     "at_link",
+     "integrity_check",
+     "invoice_final_preview",
+     "sm_label",
+     "wf_invoice_prepare"
+    ],
+    "workflow_functions_count": 20,
+    "workflow_only_wf": true,
+    "public_executable": [],
+    "tables_without_rls": []
+   }
+  },
+  "local_dev_db": [
+   "migrations applied: 20261001065000_one_business_date_for_every_caller.sql (skipped 26)",
+   "23 PASS, 4 WARNING, 0 FAIL  (local database)"
+  ],
+  "note": "Verified with the uncommitted AC-06 migration and test parked outside the repo, so this fix was tested and deployed alone"
+ },
+ "hosted": {
+  "deploy": [
+   "migrations applied: 20261001065000_one_business_date_for_every_caller.sql (skipped 26)",
+   "dataset 0dd5b61419f7… already imported (batch 243ef8f4-08fb-41d5-98c3-ab62f13560c6); nothing to do"
+  ],
+  "parity": [
+   "1. Histories aligned through AC-05: YES (26 versions)",
+   "2. Version 20261001065000 uses: {\"repo_files\":[\"20261001065000_one_business_date_for_every_caller.sql\"],\"git_history\":[],\"local\":[\"20261001065000_one_business_date_for_every_caller.sql\"],\"hosted\":[]}"
+  ],
+  "live_before": {
+   "at": "2026-10-03T18:21:10.909Z",
+   "owner": {
+    "app_today": "2026-09-29",
+    "override": "2026-09-29",
+    "brisbane_today": "2026-10-04",
+    "app_today_definer": false,
+    "prj_0011_risk_reasons": "{START_DATE_PASSED,PM_FLAGGED}"
+   },
+   "dashboard_login_role": "roofops_web",
+   "dashboard": {
+    "app_today": "2026-10-04",
+    "kpis_as_of": "2026-10-04",
+    "prj_0011_risk_reasons": "{START_DATE_PASSED,PAST_PLANNED_COMPLETION,PM_FLAGGED}"
+   },
+   "copilot": {
+    "today": "2026-10-04",
+    "prj_0011_risk_reasons": [
+     "Start date has passed and work hasn't started",
+     "Past the planned finish date",
+     "Project manager flagged a risk"
+    ]
+   },
+   "dashboard_reads_app_settings": "ALLOWED (rows hidden by RLS)"
+  },
+  "live_after": {
+   "at": "2026-10-03T18:21:39.209Z",
+   "owner": {
+    "app_today": "2026-09-29",
+    "override": "2026-09-29",
+    "brisbane_today": "2026-10-04",
+    "app_today_definer": true,
+    "prj_0011_risk_reasons": "{START_DATE_PASSED,PM_FLAGGED}"
+   },
+   "dashboard_login_role": "roofops_web",
+   "dashboard": {
+    "app_today": "2026-09-29",
+    "kpis_as_of": "2026-09-29",
+    "prj_0011_risk_reasons": "{START_DATE_PASSED,PM_FLAGGED}"
+   },
+   "copilot": {
+    "today": "2026-09-29",
+    "prj_0011_risk_reasons": [
+     "Start date has passed and work hasn't started",
+     "Project manager flagged a risk"
+    ]
+   },
+   "dashboard_reads_app_settings": "denied: permission denied for table app_settings"
+  },
+  "method": "Read-only. Owner connection in a read-only transaction; the web app own login (DASHBOARD_DATABASE_URL, role roofops_web) running the real Copilot tool code. No credential printed, nothing written.",
+  "dry_run": [
+   "RECON-20261004-042200-a579  mode=observe  status=COMPLETED",
+   "│ 0       │ 'AIRTABLE'     │ 231     │ 0           │ 0        │ 0            │ 0         │ 231    │",
+   "│ 1       │ 'GOOGLE_DRIVE' │ 3       │ 0           │ 0        │ 0            │ null      │ 3      │",
+   "│ 2       │ 'XERO'         │ 1       │ 0           │ 0        │ 0            │ null      │ 1      │",
+   "No drift found."
+  ],
+  "integrity": [
+   "24 PASS, 3 WARNING, 0 FAIL  (hosted database)"
+  ],
+  "security": [
+   "PASS  dashboard role: readable tables                []",
+   "PASS  dashboard role: SECURITY DEFINER functions     [\"app_today\",\"at_link\",\"integrity_check\",\"invoice_final_preview\",\"sm_label\",\"wf_invoice_prepare\"]",
+   "PASS  dashboard role: can it write via wf_* (other than prepare)? []",
+   "PASS  workflow role: executable functions            20 items",
+   "PASS  anon/authenticated: readable or writable objects []",
+   "PASS  functions executable by PUBLIC                 []",
+   "PASS  tables without row level security              []",
+   "PASS  Xero writes pinned to the proven Demo tenant   [\"96643bb0-3a0a-406e-96fb-ab8a933ee6b8\"]",
+   "PASS  reconcile trigger token stored only as a hash  [\"64\"]",
+   "all privilege checks pass"
+  ],
+  "repair_run": "none",
+  "canonical_fingerprint": {
+   "values": 173,
+   "before": "89d72adfc5a6ba3c",
+   "after": "89d72adfc5a6ba3c"
+  }
+ }
+}

@@ -118,7 +118,7 @@ describe.each(TARGETS)('AC-06: a Xero write is bound to its approved tenant [%s]
     it('3. an UNKNOWN (ambiguous) write blocks the pin, while its retry is scheduled and even once dead-lettered', async () => {
       const a = await k.approve('PRJ-2026-0002');
       expect(await k.claim(a.key, 'w1')).toMatchObject({ claimed: true });
-      expect(await k.fail(a.key, 'TIMEOUT', 'Xero POST timed out after 20s')).toMatchObject({ retry: true });
+      expect(await k.fail(a.key, 'TIMEOUT', 'create draft invoice: Xero POST timed out after 20s')).toMatchObject({ retry: true });
       expect(await k.job(a)).toMatchObject({ outbox: 'FAILED', sync_status: 'UNKNOWN' });
       expect(await k.change(B)).toMatch(blocked(a.invoice, 'ambiguous: it may already exist in Xero'));
       // An ambiguous attempt that is no longer retried (the outbox row is terminal) may still exist in Xero: still blocked.
@@ -146,7 +146,7 @@ describe.each(TARGETS)('AC-06: a Xero write is bound to its approved tenant [%s]
     it('4. a safely FAILED (dead-lettered, nothing created) write lets the pin move; re-queued under another tenant it is not claimed, and pinning its own tenant again lets it run', async () => {
       const a = await k.approve('PRJ-2026-0004');
       expect(await k.claim(a.key, 'w1')).toMatchObject({ claimed: true });
-      expect(await k.fail(a.key, 'VALIDATION_ERROR', 'Xero refused the contact')).toMatchObject({ retry: false });
+      expect(await k.fail(a.key, 'VALIDATION_ERROR', 'create contact: Xero refused the contact')).toMatchObject({ retry: false });
       expect(await k.job(a)).toMatchObject({ outbox: 'FAILED', sync_status: 'FAILED' });
       expect(await k.change('')).toBe(true);
       expect(await k.remove()).toBe(true);
@@ -173,7 +173,7 @@ describe.each(TARGETS)('AC-06: a Xero write is bound to its approved tenant [%s]
     it('7. a retry cannot run under another tenant: the pin cannot move while it is scheduled, and the retry runs in the same tenant', async () => {
       const a = await k.approve('PRJ-2026-0005');
       expect(await k.claim(a.key, 'w1')).toMatchObject({ claimed: true });
-      expect(await k.fail(a.key, 'RATE_LIMITED', 'Xero said 429')).toMatchObject({ retry: true });
+      expect(await k.fail(a.key, 'RATE_LIMITED', 'search by invoice number: Xero said 429')).toMatchObject({ retry: true });
       expect(await k.job(a)).toMatchObject({ outbox: 'FAILED', sync_status: 'PENDING' });
       for (const attempt of [k.change(B), k.change(''), k.remove()]) expect(await attempt).toMatch(blocked(a.invoice, 'retry scheduled'));
       await db.query(`update outbox set next_attempt_at = now() where idempotency_key = $1`, [a.key]);   // the retry is due

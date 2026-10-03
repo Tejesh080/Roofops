@@ -77,7 +77,7 @@ describe.each(TARGETS)('AC-05: a voided invoice never gets a Xero draft [%s]', (
     const a = await approve('PRJ-2026-0005');
     expect(await claim(a.key, 'w2')).toMatchObject({ claimed: true });
     expect(await voidIt(a.invoice)).toMatch(/cannot be voided: its Xero draft is being created/);
-    expect(await q1(`select wf_fail_side_effect($1, 'TIMEOUT', 'Xero POST timed out after 20s', null, null) r`, [a.key])).toMatchObject({ retry: true });
+    expect(await q1(`select wf_fail_side_effect($1, 'TIMEOUT', 'create draft invoice: Xero POST timed out after 20s', null, null) r`, [a.key])).toMatchObject({ retry: true });
     expect((await state(a.id)).sync_status).toBe('UNKNOWN');
     expect(await voidIt(a.invoice)).toMatch(/cannot be voided: .*may already exist in Xero/);
     expect(await state(a.id)).toMatchObject({ status: 'APPROVED', sync_status: 'UNKNOWN' });
@@ -87,7 +87,7 @@ describe.each(TARGETS)('AC-05: a voided invoice never gets a Xero draft [%s]', (
     const p = 'PRJ-2026-0002';
     const a = await approve(p);
     expect(await claim(a.key, 'w3')).toMatchObject({ claimed: true });
-    expect(await q1(`select wf_fail_side_effect($1, 'VALIDATION_ERROR', 'Xero refused the contact', null, null) r`, [a.key])).toMatchObject({ retry: false });
+    expect(await q1(`select wf_fail_side_effect($1, 'VALIDATION_ERROR', 'create contact: Xero refused the contact', null, null) r`, [a.key])).toMatchObject({ retry: false });
     expect(await state(a.id)).toMatchObject({ sync_status: 'FAILED', outbox: 'FAILED' });
     expect(await voidIt(a.invoice)).toBe(true);
     // Even if an operator re-queues the dead letter, 05 gets no job and completion links nothing.

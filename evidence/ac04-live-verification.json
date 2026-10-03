@@ -1,0 +1,201 @@
+{
+ "defect": "AC-04: a Xero draft that really exists was recorded as never created",
+ "migration": {
+  "file": "supabase/migrations/20261001080000_ambiguous_xero_create_stays_unknown.sql",
+  "checksum_prefix": "52ed3bb4",
+  "applied_to_hosted_alone": true,
+  "deploy_output": [
+   "migrations applied: 20261001080000_ambiguous_xero_create_stays_unknown.sql (skipped 28)",
+   "dataset 0dd5b61419f7… already imported (batch 243ef8f4-08fb-41d5-98c3-ab62f13560c6); nothing to do"
+  ]
+ },
+ "n8n_07": {
+  "workflow": "EiBs0AB2NfOua7AM",
+  "active_version": "1737a07a-215a-46db-9109-787f2a701d99",
+  "previous_active_version": "7b94b5df-1679-48f3-86c7-e5193e07fcf3",
+  "added_nodes": [
+   "Uncertain Xero Writes To Look Up",
+   "Any Uncertain Xero Writes?",
+   "Look Up Uncertain By Invoice Number",
+   "Look Up Uncertain By Reference",
+   "Settle Uncertain Xero Writes In Postgres"
+  ],
+  "wiring": "Record Xero Findings -> Uncertain Xero Writes To Look Up -> Any Uncertain Xero Writes? (true: by number -> by reference -> Settle; false: Settle) -> List Airtable Webhooks",
+  "deployed_parameters_identical_to_tested_sdk": true
+ },
+ "offline": {
+  "postgres_ablations": [
+   "RED_no_migration: Tests  20 failed | 4 passed (24)  red: pglite:1., pglite:2b., pglite:4., pglite:4b., pglite:6., pglite:7., pglite:8., pglite:9., pglite:10., pglite:11., postgres:1., postgres:2b., postgres:4., postgres:4b., postgres:6., postgres:7., postgres:8., postgres:9., postgres:10., postgres:11.",
+   "E1_no_new_evidence_is_not_sticky: Tests  12 failed | 12 passed (24)  red: pglite:4., pglite:6., pglite:7., pglite:8., pglite:10., pglite:11., postgres:4., postgres:6., postgres:7., postgres:8., postgres:10., postgres:11.",
+   "E2_after_create_counts_as_absent: Tests  2 failed | 22 passed (24)  red: pglite:4b., postgres:4b.",
+   "E3_lost_create_answer_counts_as_absent: Tests  16 failed | 8 passed (24)  red: pglite:2., pglite:2b., pglite:4., pglite:6., pglite:7., pglite:8., pglite:10., pglite:11., postgres:2., postgres:2b., postgres:4., postgres:6., postgres:7., postgres:8., postgres:10., postgres:11.",
+   "E5_refusal_without_explicit_http_counts_as_absent: Tests  2 failed | 22 passed (24)  red: pglite:2b., postgres:2b.",
+   "E4_before_create_counts_as_may_exist: Tests  2 failed | 22 passed (24)  red: pglite:1., postgres:1.",
+   "D1_uncertain_dead_letter_becomes_FAILED: Tests  14 failed | 10 passed (24)  red: pglite:4., pglite:4b., pglite:6., pglite:7., pglite:8., pglite:10., pglite:11., postgres:4., postgres:4b., postgres:6., postgres:7., postgres:8., postgres:10., postgres:11.",
+   "T1_targets_omit_uncertain_writes: Tests  2 failed | 22 passed (24)  red: pglite:4b., postgres:4b.",
+   "R1_reconcile_races_05: Tests  2 failed | 22 passed (24)  red: pglite:9., postgres:9.",
+   "R2_reconcile_ignores_tenant: Tests  2 failed | 22 passed (24)  red: pglite:11., postgres:11.",
+   "R3_reconcile_guesses_among_several: Tests  2 failed | 22 passed (24)  red: pglite:7., postgres:7.",
+   "R4_observe_mode_applies: Tests  2 failed | 22 passed (24)  red: pglite:4b., postgres:4b.",
+   "R5_failed_lookup_counts_as_absent: Tests  24 passed (24)  red: ",
+   "R6_no_recovery_transitions: Tests  6 failed | 18 passed (24)  red: pglite:4b., pglite:8., pglite:11., postgres:4b., postgres:8., postgres:11.",
+   "R7_settled_writes_reconciled_again: Tests  2 failed | 22 passed (24)  red: pglite:8., postgres:8."
+  ],
+  "r5_corrected": {
+   "R5_failed_lookup_counts_as_absent": {
+    "summary": "Tests  4 failed | 20 passed (24)",
+    "red": [
+     "pglite:6.",
+     "pglite:7.",
+     "postgres:6.",
+     "postgres:7."
+    ]
+   }
+  },
+  "orchestration_ablations": [
+   "O0_original_07_from_git: Tests  22 failed (22)",
+   "   red: 07 wiring | zero uncertain targets | one target, one exact match | no match in either successful lookup | number and reference lookups disagree | multiple candidates with its number | a Xero lookup failure | wrong tenant | a write 05 is processing | dry run | repeated repair runs are idempotent",
+   "O1_reference_lookup_not_in_bound_tenant: Tests  4 failed | 18 passed (22)",
+   "   red: one target, one exact match | wrong tenant",
+   "O2_reference_lookup_error_ignored: Tests  2 failed | 20 passed (22)",
+   "   red: a Xero lookup failure",
+   "O3_lookups_run_without_targets: Tests  6 failed | 16 passed (22)",
+   "   red: zero uncertain targets | a write 05 is processing | repeated repair runs are idempotent",
+   "O4_number_lookup_not_by_number: Tests  8 failed | 14 passed (22)",
+   "   red: one target, one exact match | multiple candidates with its number | dry run | repeated repair runs are idempotent",
+   "P1_only_number_lookup_must_answer: Tests  2 failed | 20 passed (22)",
+   "   red: a Xero lookup failure",
+   "P2_targets_include_writes_05_holds: Tests  2 failed | 20 passed (22)",
+   "   red: a write 05 is processing",
+   "P3_wrong_tenant_opens_no_exception: Tests  2 failed | 20 passed (22)",
+   "   red: wrong tenant"
+  ],
+  "full_suite": [
+   "Test Files  22 passed | 3 skipped (25)",
+   "Tests  470 passed | 35 skipped (505)"
+  ],
+  "lint": "exit 0",
+  "typecheck": "exit 0",
+  "sent_to_contact_fix": {
+   "red_with_old_default": [
+    "⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯",
+    "Tests  6 failed | 16 passed (22)"
+   ],
+   "green": [
+    "Tests  46 passed (46)"
+   ]
+  }
+ },
+ "live_lookup_probe": {
+  "workflow": "TYZNxiux4orQW78j (temporary, unpublished, archived after one manual run)",
+  "execution": "2141",
+  "nodes": "07 lookup nodes copied verbatim from n8n/07-reconcile.sdk.ts",
+  "known_invoice": {
+   "invoice_number": "INV-2026-0039",
+   "sync_status": "SYNCED",
+   "outbox": "DONE",
+   "xero_invoice_number": "RO-INV-2026-0039",
+   "reference": "PRJ-2026-0004",
+   "bound_tenant": "96643bb0-3a0a-406e-96fb-ab8a933ee6b8",
+   "pinned_tenant": "96643bb0-3a0a-406e-96fb-ab8a933ee6b8",
+   "xero_invoice_id": "7b74973c-a487-48f0-85b9-91ca8c5b2909"
+  },
+  "result": {
+   "tenant_used": "96643bb0-3a0a-406e-96fb-ab8a933ee6b8",
+   "xero_echoed_tenant": "96643bb0-3a0a-406e-96fb-ab8a933ee6b8",
+   "by_number": {
+    "http": 200,
+    "invoices": [
+     {
+      "InvoiceID": "7b74973c-a487-48f0-85b9-91ca8c5b2909",
+      "InvoiceNumber": "RO-INV-2026-0039",
+      "Reference": "PRJ-2026-0004",
+      "Status": "DRAFT",
+      "Type": "ACCREC",
+      "Total": 14664.49,
+      "TotalTax": 1333.14
+     }
+    ]
+   },
+   "by_reference": {
+    "http": 200,
+    "invoices": [
+     {
+      "InvoiceID": "7b74973c-a487-48f0-85b9-91ca8c5b2909",
+      "InvoiceNumber": "RO-INV-2026-0039",
+      "Reference": "PRJ-2026-0004",
+      "Status": "DRAFT",
+      "Type": "ACCREC",
+      "Total": 14664.49,
+      "TotalTax": 1333.14
+     }
+    ]
+   }
+  },
+  "finding": "GET /Invoices omits SentToContact unless true; the settle function treated a missing value as sent. Fixed before deployment (a DRAFT cannot be sent); proven red/green offline."
+ },
+ "hosted_checks": {
+  "before": {
+   "integrity": [
+    "24 PASS, 3 WARNING, 0 FAIL  (hosted database)"
+   ],
+   "security": [
+    "all privilege checks pass"
+   ]
+  },
+  "dry_run_after_deploy": [
+   "RECON-20261004-090303-440a  mode=observe  status=COMPLETED",
+   "│ 0       │ 'AIRTABLE'     │ 231     │ 0           │ 0        │ 0            │ 0         │ 231    │",
+   "│ 1       │ 'GOOGLE_DRIVE' │ 3       │ 0           │ 0        │ 0            │ null      │ 3      │",
+   "│ 2       │ 'XERO'         │ 1       │ 0           │ 0        │ 0            │ null      │ 1      │",
+   "No drift found."
+  ],
+  "live_run_summary": {
+   "run_key": "RECON-20261004-090303-440a",
+   "mode": "observe",
+   "status": "COMPLETED",
+   "xero_uncertain": {
+    "checked": 0,
+    "skipped": 0,
+    "recovered": 0,
+    "needs_person": 0,
+    "proven_absent": 0
+   },
+   "xero": {
+    "drift": 0,
+    "checked": 1,
+    "verified": 1
+   },
+   "findings": 0
+  },
+  "integrity_after": [
+   "24 PASS, 3 WARNING, 0 FAIL  (hosted database)"
+  ],
+  "security_after": [
+   "PASS  dashboard role: readable tables                []",
+   "PASS  dashboard role: SECURITY DEFINER functions     [\"app_today\",\"at_link\",\"integrity_check\",\"invoice_final_preview\",\"sm_label\",\"wf_invoice_prepare\"]",
+   "PASS  dashboard role: can it write via wf_* (other than prepare)? []",
+   "PASS  workflow role: executable functions            21 items",
+   "PASS  anon/authenticated: readable or writable objects []",
+   "PASS  functions executable by PUBLIC                 []",
+   "PASS  tables without row level security              []",
+   "PASS  Xero writes pinned to the proven Demo tenant   [\"96643bb0-3a0a-406e-96fb-ab8a933ee6b8\"]",
+   "PASS  reconcile trigger token stored only as a hash  [\"64\"]",
+   "all privilege checks pass"
+  ],
+  "repair_run": "none",
+  "inv_2026_0039": {
+   "before": "2994a25e19797510fa7b56ebf7628d4bd87392f39d97b9563187468b969a5960",
+   "after_migration": "2994a25e19797510fa7b56ebf7628d4bd87392f39d97b9563187468b969a5960",
+   "before_dry_run": "2994a25e19797510fa7b56ebf7628d4bd87392f39d97b9563187468b969a5960",
+   "after_dry_run": "c1a5022f8b0bf9920539cc0fe0675683ce815a1c74b26bd54a0958a50ece1156",
+   "dry_run_changed_only": "Xero link last_synced_at, dashboard reconciliation timestamps, its own audit event (reconciliation.completed)"
+  },
+  "canonical_fingerprint": {
+   "values": 173,
+   "before": "89d72adfc5a6ba3c",
+   "after": "89d72adfc5a6ba3c"
+  }
+ },
+ "not_done_live": "No lost-response Xero write was manufactured; recovery, proven-absent, needs-person, lookup-failure, wrong-tenant, dry-run and idempotency paths are proven offline against the real 07 node definitions."
+}

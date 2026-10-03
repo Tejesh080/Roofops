@@ -15,7 +15,7 @@ instruction).
 | AC-03 | P0 | Airtable Approve is not bound to the row or preview the approver saw | **Yes**, offline (PGlite and Postgres 17), with events shaped exactly as n8n 04 sends them | 3 failing tests: an Approve approved a Copilot re-prepared preview never shown in Airtable, another project's preview (edited Project Number cell), and a preview prepared after the click | 04's decision names no approval; `wf_invoice_decide` found the project by the editable Project Number text and decided whatever was PENDING at processing time | An Airtable decision applies only to the sending record's project and to the preview a Prepare showed on that row before the decision; other sources must name the approval; a sent hash must match | `test/invoice-approval-binding.test.ts:68`, `:98`, `:117`, `:129`, guards `:85`, `:108` | Migration `20261001010000_invoice_decision_bound_to_row_and_preview.sql` (Postgres only; n8n unchanged) | Chain from zero; 356 tests pass on PGlite and Postgres 17; red without the fix (4 of 6; both guards green); each of 5 rules ablated turns its own test red; lint, typecheck clean; local integrity 0 FAIL; grants and RLS checked | Done 2026-10-01 (§10–§11): deployed alone; dry-run 0 drift, integrity 0 FAIL, security all pass. On PRJ-2026-0005 an Approve of a Copilot preview never shown on the row was refused, with nothing approved; Prepare then showed the same preview; the state was reset and 0 drift remained. [evidence/ac03-live-verification.json](../evidence/ac03-live-verification.json) | **FIXED** (exact-preview binding live 2026-10-01, §13) |
 | AC-05 | P0 | Voiding an invoice does not cancel its queued Xero write | **Yes**, offline (PGlite and Postgres 17): approve, void, claim, complete | VOIDED + SYNCED, outbox DONE, Xero link; dashboard READY_TO_INVOICE, needs_attention false, integrity 0 FAIL | Nothing tied the outbox to the invoice status; claim and completion ignored it; the preview ignored voided finals | No Xero draft created, pending, ambiguous or linked for a VOIDED invoice; a voided final blocks the project for a person | `test/invoice-void.test.ts:65`, `:76`, `:86`, `:110` | Migration `20261001060000_voided_invoice_never_gets_a_xero_draft.sql` (Postgres only) | Chain from zero; 396 tests pass; red before (8 of 8); 5 ablations each red; lint, typecheck clean; local integrity 0 FAIL; grants checked | Done 2026-10-01 (§9–§10): deployed alone; dry-run 0 drift, integrity 0 FAIL (new check PASS), security all pass. A void of the SYNCED INV-2026-0039 on hosted was refused ("its Xero draft exists (RO-INV-2026-0039). Void or delete it in Xero first"); invoice, project, outbox, exceptions and Xero draft unchanged; 0 drift after. [evidence/ac05-live-verification.json](../evidence/ac05-live-verification.json) | **FIXED** |
 | AC-06 | P0 | Unpinning the Xero tenant is not a kill switch | **Yes**, offline (PGlite and Postgres 17): approve under tenant A, then clear or re-point the pin, then claim and complete | With the pin empty, and with it re-pointed to B, the queued job was claimed (`claimed=true`), the proof from the old tenant was RECORDED and the invoice became SYNCED | Claim and completion trusted the tenant copied into the payload at approval and never re-read the pin; nothing stopped the pin moving while a write for it was open | A Xero write runs only against the tenant it was approved for; the pin cannot move while a write for it is unfinished; no pin change leaves a draft recorded as failed | `test/xero-tenant-binding.test.ts:97`, `:108`, `:118`, `:130`, `:146`, `:173`, `:185`, `:195`, `:216`, `:233` | Migration `20261001070000_xero_write_bound_to_its_tenant.sql` (Postgres only): pin guard, one advisory lock for pin changes and claims, claim re-check, fixed tenant, completion re-check | Chain from zero; red before (16 of 18); 14 ablations each red (lock ablations caught only by the two-connection races); AC-05 8 of 8; complete suite 424 passed, 0 failed; lint, typecheck clean; local integrity 0 FAIL; grants checked | Done 2026-10-04 (§10–§11): deployed alone; dry-run 0 drift, integrity 0 FAIL, security all pass. Rollback-only tests on INV-2026-0039: re-pointing its job refused; clearing or deleting the pin allowed only inside rolled-back transactions (its only write is DONE); nothing changed, 0 drift after. [evidence/ac06-live-verification.json](../evidence/ac06-live-verification.json) | **FIXED** |
-| AC-04 | P0 | A Xero draft that exists is recorded as never created | – | – | – | – | – | – | – | – | Not started |
+| AC-04 | P0 | A Xero draft that exists is recorded as never created | **Yes**, offline (PGlite and Postgres 17), fake Xero answers: lost create answer, then 429s, then the dead letter; failures after the create; no reconciliation of uncertain writes | UNKNOWN downgraded to PENDING by a 429, then FAILED at the dead letter; post-create failures FAILED; nothing looked; AC-05 then allowed the void | `wf_fail_side_effect` judged by error class only and every dead letter became FAILED; reconciliation read only linked invoices | A timeout or transport failure after a create is never proof of absence: UNKNOWN until a read of Xero proves presence (link) or absence (then retry or fail safely); nothing guessed | `test/xero-ambiguous-create.test.ts` (cases 1–11, 2b), `test/reconcile-07-uncertain-xero.test.ts` (real 07 orchestration) | Migration `20261001080000_ambiguous_xero_create_stays_unknown.sql` + n8n 07: two read-only lookups (number, reference) per uncertain write in its bound tenant, settled by `wf_reconcile_xero_uncertain` | Chain from zero; red before (20/24 contract, 22/22 orchestration); every ablation red; AC-05 8/8, AC-06 18/18; full suite 470 passed, 0 failed; lint, typecheck clean; local integrity 0 FAIL; grants checked | Done 2026-10-04 (§9): the live lookup probe found RO-INV-2026-0039 once by number and once by reference in the pinned tenant (and exposed the SentToContact omission, fixed first); deployed alone + 07 published; dry-run 0 drift with the new path run (0 targets); INV-2026-0039 untouched; integrity 0 FAIL, security pass. [evidence/ac04-live-verification.json](../evidence/ac04-live-verification.json) | **FIXED** |
 | AC-08 | P0 | Over-billed projects are labelled "Fully invoiced" (`dashboard.test.ts:34` expects this) | – | – | – | – | – | – | – | – | Not started |
 | AC-09 | P0 | Final invoice under-bills once a variation is INVOICED | – | – | – | – | – | – | – | – | Not started |
 | AC-13A | P1 | Completion checklist has no editing surface, so new jobs can never be final-invoiced | – | – | – | – | – | – | – | – | Not started |
@@ -1706,3 +1706,183 @@ Privileges on the fresh chain:
 The guard's refusal, both races and the queued, in-progress, ambiguous and retrying paths stay offline-tested: on
 hosted they would need an open Xero write, which means a new Demo invoice. Evidence:
 [evidence/ac06-live-verification.json](../evidence/ac06-live-verification.json).
+
+## AC-04 evidence package
+
+### 1. Investigation: the current create, write, retry and reconciliation path
+
+- **05, before every create:** it searches Xero by the deterministic invoice number (`InvoiceNumbers=RO-INV-…`) and by
+  `Reference == PRJ-…`.
+  - Exactly one matching draft: it is adopted.
+  - Anything conflicting: refused with RECONCILIATION_MISMATCH at step `reconcile`.
+  - Nothing found: it creates, with `Idempotency-Key: roofops-<invoice uuid>`.
+- **The idempotency key.** Xero's API spec says it allows retries "without the risk of duplicate processing". The spec
+  states no retention period, so recovery does not rely on it alone.
+- **05 reports every failure with its step first** (`<step>: <message>`). For the create step, 05's `fail()` sets
+  `http_status` only from the create request's own response. Its `refuse()` (a 200 answer with no InvoiceID) carries
+  no HTTP status.
+- **`wf_fail_side_effect` judged the invoice by error class only,** and every dead letter became FAILED.
+- **Reconciliation read only invoices with a verified Xero link.**
+
+### 2. Reproduction (offline, fake Xero answers; no Xero call)
+
+`test/xero-ambiguous-create.test.ts`, before the fix: 20 of 24 failed on PGlite and Postgres 17. The 4 that passed
+(2 tests on 2 engines) were behaviour that was already correct. It showed four problems:
+- **The catalogue sequence downgraded the invoice.** A TIMEOUT at create, then RATE_LIMITED ×3, then UPSTREAM_5XX
+  went UNKNOWN → PENDING → **FAILED**, with the approval EXECUTION_FAILED.
+- **Failures after the create were recorded as failed.** A read-back or verify failure, or a conflicting search, gave
+  FAILED although the draft exists.
+- **A failure before Xero was even called was marked UNKNOWN.** A network error at a search step had that effect.
+- **Nothing ever looked up an uncertain write, and AC-05 then allowed the void.**
+
+### 3–4. First incorrect transition, and why
+
+The first incorrect transition was UNKNOWN → PENDING on a later failure that proved nothing. The damaging one was →
+FAILED at the dead letter. Each failure's evidence (where in 05 it happened) was ignored, and no read of Xero was ever
+required before leaving UNKNOWN.
+
+### 5. Invariant
+
+> A timeout or transport failure after a Xero create request is never proof that no draft exists. An invoice whose
+> draft may exist stays UNKNOWN until a read of Xero proves presence (link it) or absence (only then retry or fail
+> safely). Every RoofOps Xero draft maps to exactly one RoofOps invoice, and nothing is guessed.
+
+### 6. Fix
+
+**Postgres:** migration `20261001080000_ambiguous_xero_create_stays_unknown.sql`.
+1. **`xero_failure_evidence(class, message, http_status)`** reads 05's step:
+   - before the create request: no new evidence;
+   - the create explicitly refused by Xero, meaning the create request's own answer carries HTTP 4xx (including 429)
+     and the class is not a timeout or network class: absent;
+   - anything else at the create, anything after it, a conflicting `reconcile` search, or an unrecognised step: may
+     exist. "Anything else" includes a 5xx, a timeout, network, and a 200 with no InvoiceID (05's `refuse()`).
+2. **`wf_fail_side_effect` (v1.2).** The invoice stays UNKNOWN while the draft may exist, through retries and the dead
+   letter.
+   - An uncertain dead letter keeps the approval EXECUTING and gets one AMBIGUOUS_WRITE exception.
+   - FAILED only when absence is proven.
+3. **`wf_reconcile_targets`** lists `xero_uncertain`: UNKNOWN writes bound to the pinned tenant. A write 05 holds
+   (claimed) is left out.
+4. **`wf_reconcile_xero_uncertain(run, lookups)`** (workflow role only) settles them. It needs both lookups to have
+   answered HTTP 200, and acts in repair mode only.
+
+   | Outcome | When | Effect |
+   |---|---|---|
+   | RECOVERED | exactly one matching draft | linked, SYNCED, outbox DONE, approval EXECUTED, audit row, exception resolved |
+   | PROVEN_ABSENT | nothing in either lookup | a dead letter becomes FAILED (safe), a scheduled retry PENDING |
+   | NEEDS_PERSON | conflicting or multiple candidates | one exception; stays UNKNOWN |
+   | LOOKUP_FAILED | a failed lookup | no change |
+   | WRONG_TENANT | a lookup in another tenant | no change; a PERMISSION_DENIED exception is opened or updated |
+   | SKIPPED | already settled, or held by 05 | nothing |
+
+   A missing `SentToContact` counts as not sent: Xero's list endpoint omits it unless true (seen live), and a DRAFT
+   cannot have been sent.
+5. **Two explicit outbox transitions,** FAILED/PENDING → DONE, only when reconciliation proved the draft exists.
+
+**n8n 07** (`EiBs0AB2NfOua7AM`; active version `1737a07a…`, previous `7b94b5df…`). Five nodes are added after Record
+Xero Findings:
+
+```
+Record Xero Findings
+  → Uncertain Xero Writes To Look Up        (code: targets.xero_uncertain, or a "none" marker)
+  → Any Uncertain Xero Writes?
+       true  → Look Up Uncertain By Invoice Number   GET /Invoices?InvoiceNumbers=RO-INV-…&Statuses=all
+                                                      xero-tenant-id = the write's bound tenant
+             → Look Up Uncertain By Reference         GET /Invoices?where=Type=="ACCREC" AND Reference=="PRJ-…"
+                                                      same tenant
+             → Settle Uncertain Xero Writes In Postgres
+       false → Settle Uncertain Xero Writes In Postgres (with [])
+  → List Airtable Webhooks → … (unchanged)
+```
+
+- Both GETs continue on error, so a timeout, 429 or 5xx reaches Postgres as LOOKUP_FAILED.
+- Settle passes the key, tenant, both HTTP statuses, any error, and both result lists.
+- Nothing is created or changed in Xero.
+
+### 7. Tests
+
+**`test/xero-ambiguous-create.test.ts`** (Postgres contract), on both engines. Its cases:
+- **1:** a pre-request failure gives a safe retry (PENDING).
+- **2:** an explicit create refusal gives FAILED, even after ambiguity.
+- **2b:** only an explicit 4xx/429 from the create request proves absence. A 200 without an InvoiceID, a 429 with no
+  HTTP status, a 5xx, a timeout (even with HTTP 408) and a network error are all "may exist".
+- **3:** a normal create gives SYNCED.
+- **4:** a lost answer gives UNKNOWN through 429s and the dead letter, with an AMBIGUOUS_WRITE exception.
+- **4b/5:** a post-create failure gives UNKNOWN; a dry run changes nothing; a repair links the one draft.
+- **6:** nothing found: proven absent; a failed lookup proves nothing.
+- **7:** two drafts, another invoice with the reference, a differing total, only a voided one, or one sent to the
+  customer: a person decides.
+- **8:** idempotent.
+- **9:** while UNKNOWN, the same number and key on every attempt; a second draft is refused; no racing with 05.
+- **10:** AC-05: the void is refused while uncertain.
+- **11:** AC-06: the pin stays fixed; a wrong-tenant lookup opens an exception; recovery works in the bound tenant.
+
+**`test/reconcile-07-uncertain-xero.test.ts`** (the real 07 orchestration):
+- **How it runs.** `n8n/07-reconcile.sdk.ts` loads through a test-only recorder for `@n8n/workflow-sdk`
+  (`test/helpers/n8n-sdk-shim.ts`; vitest alias). Its real nodes then run in `test/helpers/n8n-runner.ts`:
+  - the code nodes' own JavaScript (in `node:vm`);
+  - the HTTP nodes' URL, query and header expressions, sent to a fake Xero that records every request;
+  - the Postgres nodes' own queries and parameter expressions, against a test database.
+  - The path runs from Read Request and Start Reconciliation Run through External Objects To Check and the new nodes to
+    Settle, following 07's own connections.
+- **Cases:**
+  - 07 wiring;
+  - zero targets (no Xero request);
+  - one exact match: exactly two read-only GETs in the pinned tenant, by number and by reference; SYNCED;
+  - no match: proven absent;
+  - number and reference disagreement;
+  - multiple candidates;
+  - lookup failure (429 on the number lookup, 503 on the reference lookup, no answer);
+  - wrong tenant: UNKNOWN plus an exception;
+  - a write 05 holds: not looked up, untouched;
+  - dry run: no invoice, outbox, approval or link change;
+  - repeated repair: idempotent, no second Xero request.
+- **The fake Xero mirrors the live list response** (probe below): `SentToContact` is omitted.
+
+**Existing tests changed (inputs only, no assertion):**
+- `test/invoice-void.test.ts:80`, `:90` and `test/xero-tenant-binding.test.ts:121`, `:149`, `:176` now carry 05's step
+  prefix.
+- `test/schema.test.ts` allow-lists `wf_reconcile_xero_uncertain`.
+- `vitest.config.ts` gains the SDK alias.
+
+### 8. Verification
+
+| Check | Result |
+|---|---|
+| Red, before the fix | Postgres contract 20 of 24 failed; orchestration 22 of 22 failed against 07 from git |
+| Postgres ablations | each red on its own tests: E1–E5 (evidence, including E5, refusal without an explicit HTTP 4xx), D1, T1, R1–R7 (R5 re-run with a corrected pattern) |
+| 07 ablations (orchestration) | each red: O1 reference lookup not in the bound tenant; O2 its error ignored; O3 lookups run without targets; O4 number lookup not by number; P1 only the number lookup must answer; P2 targets include writes 05 holds; P3 a wrong tenant opens no exception |
+| `SentToContact` fix | with the old default, 6 orchestration tests red; with the fix, 46/46 |
+| AC-05 / AC-06 | 8/8, 18/18 |
+| Full suite, PGlite + Postgres 17 | **470 passed**, 35 skipped, **0 failed**; lint and typecheck clean |
+| Fresh PostgreSQL 17 chain | 29 applied, 0 on re-run; recovery transitions present; integrity 0 FAIL |
+| Grants | settle and fail: workflow only; evidence helper: neither role; workflow role 21 `wf_*` functions; dashboard unchanged; nothing executable by PUBLIC; RLS everywhere |
+| Local dev DB | re-applied; integrity 23 PASS, 4 WARNING, 0 FAIL |
+
+### 9. Live verification (2026-10-04; no lost-response write was manufactured)
+
+- **Lookup probe.** A temporary, unpublished workflow (`TYZNxiux4orQW78j`, archived after one manual run, execution
+  2141) ran 07's two lookup nodes, copied verbatim, against the known Demo invoice RO-INV-2026-0039 / PRJ-2026-0004.
+  - The tenant was the bound and pinned 96643bb0…, and Xero echoed `xero-tenant-id: 96643bb0…`.
+  - **By number:** HTTP 200, exactly one invoice: 7b74973c… (the InvoiceID RoofOps has linked), DRAFT, ACCREC,
+    14664.49 / 1333.14.
+  - **By reference:** HTTP 200, the same single invoice.
+  - The probe exposed the `SentToContact` omission. It was fixed and proven offline before anything was deployed.
+- **Deploy.** The migration was applied alone (`52ed3bb4`), then 07 was updated. The draft's five new nodes were
+  parameter-for-parameter identical to the tested SDK, and the draft was published.
+- **Dry-run `RECON-20261004-090303-440a`:** Airtable 231 / 0 drift, Drive 3/3, Xero 1/1, webhooks OK. Its summary
+  records `xero_uncertain: {checked: 0}`, so the new path ran live (no uncertain targets, no lookups).
+- **INV-2026-0039 is untouched.** Its invoice, outbox and approval were unchanged through deploy and dry-run. Only the
+  observe run's own timestamps and audit event moved.
+- **After:** integrity 24 PASS, 3 WARNING, 0 FAIL; security all pass. Canonical fingerprint 173 values `89d72adf…`,
+  unchanged. No repair run.
+- **Not run live:** recovery, proven absence, needs-person, lookup failure, wrong tenant, dry-run and idempotency
+  would need a manufactured lost-response write. They are proven offline against the real 07 node definitions.
+
+Evidence: [evidence/ac04-live-verification.json](../evidence/ac04-live-verification.json).
+
+**Notes:**
+- **The FAILED → SYNCED re-queue limitation is not needed for AC-04 recovery.** An uncertain write never becomes FAILED.
+  - **Smallest separate fix (not done):** the re-queue also moves the invoice FAILED → PENDING and the approval back to
+    executing. Both transitions already exist.
+- **The GST cent difference on multi-line drafts** (catalogue path 2) is not fixed. Such a refusal is now UNKNOWN with
+  an exception, never FAILED.

@@ -190,6 +190,44 @@ const recordXero = node({ type: 'n8n-nodes-base.postgres', version: 2.7, config:
       "http: res.statusCode, status: inv.Status || null, total: inv.Total, expected_total: it.json.total, reference: inv.Reference || null, expected_reference: it.json.reference }; })) ] }}") } },
   credentials: PG }, output: [{ r: { ok: true, verified: 0, drift: 0 } }] });
 
+// AC-04: uncertain Xero writes (a create whose answer was lost: the draft may exist). Two independent read-only lookups
+// per write, in the tenant it is BOUND to (Postgres lists only writes bound to the pinned tenant, never one 05 holds):
+// by its deterministic Xero invoice number, and by reference. Postgres decides; nothing is created or changed in Xero.
+const XERO_ALL_STATUSES = 'DRAFT,SUBMITTED,AUTHORISED,PAID,VOIDED,DELETED';
+const uncertainItems = node({ type: 'n8n-nodes-base.code', version: 2, config: { name: 'Uncertain Xero Writes To Look Up',
+  parameters: { mode: 'runOnceForAllItems', jsCode: `
+const u = $('External Objects To Check').first().json.t.xero_uncertain || [];
+if (u.length === 0) return [{ json: { key: '__none__' } }];
+return u.map(function (i) { return { json: i }; });` } },
+  output: [{ key: 'xero:invoice:uuid', tenant_id: 't', xero_invoice_number: 'RO-INV-2026-0001', reference: 'PRJ-2026-0001' }] });
+
+const hasUncertain = ifElse({ version: 2.3, config: { name: 'Any Uncertain Xero Writes?', parameters: { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'loose' },
+  conditions: [{ leftValue: expr("{{ $json.key !== '__none__' && !!$json.tenant_id }}"), rightValue: true, operator: { type: 'boolean', operation: 'true', singleValue: true } }], combinator: 'and' } } } });
+
+const findUncertainByNumber = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Look Up Uncertain By Invoice Number', onError: 'continueRegularOutput',
+  parameters: { method: 'GET', url: 'https://api.xero.com/api.xro/2.0/Invoices', authentication: 'predefinedCredentialType', nodeCredentialType: 'xeroOAuth2Api', sendHeaders: true,
+    headerParameters: { parameters: [{ name: 'xero-tenant-id', value: expr('{{ $json.tenant_id }}') }, { name: 'Accept', value: 'application/json' }] },
+    sendQuery: true, queryParameters: { parameters: [{ name: 'InvoiceNumbers', value: expr('{{ $json.xero_invoice_number }}') }, { name: 'Statuses', value: XERO_ALL_STATUSES }] },
+    options: RAW },
+  credentials: XERO }, output: [{ statusCode: 200, body: { Invoices: [] } }] });
+
+const findUncertainByRef = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Look Up Uncertain By Reference', onError: 'continueRegularOutput',
+  parameters: { method: 'GET', url: 'https://api.xero.com/api.xro/2.0/Invoices', authentication: 'predefinedCredentialType', nodeCredentialType: 'xeroOAuth2Api', sendHeaders: true,
+    headerParameters: { parameters: [{ name: 'xero-tenant-id', value: expr("{{ $('Uncertain Xero Writes To Look Up').item.json.tenant_id }}") }, { name: 'Accept', value: 'application/json' }] },
+    sendQuery: true, queryParameters: { parameters: [
+      { name: 'where', value: expr("Type==\"ACCREC\" AND Reference==\"{{ $('Uncertain Xero Writes To Look Up').item.json.reference }}\"") }, { name: 'Statuses', value: XERO_ALL_STATUSES }] },
+    options: RAW },
+  credentials: XERO }, output: [{ statusCode: 200, body: { Invoices: [] } }] });
+
+const settleUncertain = node({ type: 'n8n-nodes-base.postgres', version: 2.7, config: { name: 'Settle Uncertain Xero Writes In Postgres', executeOnce: true,
+  parameters: { operation: 'executeQuery', query: 'select wf_reconcile_xero_uncertain($1, $2::jsonb) as u',
+    options: { queryReplacement: expr("{{ [ $('Start Reconciliation Run').first().json.r.run_key, JSON.stringify(!$('Look Up Uncertain By Invoice Number').isExecuted ? [] : " +
+      "$('Uncertain Xero Writes To Look Up').all().map((it, i) => { const n = $('Look Up Uncertain By Invoice Number').all()[i].json; " +
+      "const r = $('Look Up Uncertain By Reference').all()[i].json; const err = (x) => x.error ? String(x.error.message || x.error).slice(0, 200) : null; " +
+      "return { key: it.json.key, invoice_number: it.json.invoice_number, tenant_id: it.json.tenant_id, http_number: n.statusCode || null, http_reference: r.statusCode || null, " +
+      "error: err(n) || err(r), by_number: ((n.body || {}).Invoices || []), by_reference: ((r.body || {}).Invoices || []) }; })) ] }}") } },
+  credentials: PG }, output: [{ u: { ok: true, checked: 0 } }] });
+
 const listHooks = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'List Airtable Webhooks', executeOnce: true,
   parameters: { method: 'GET', url: HOOKS, authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi', options: RAW },
   credentials: AIRTABLE }, output: [{ statusCode: 200, body: { webhooks: [] } }] });
@@ -259,7 +297,10 @@ export default workflow('roofops-reconcile', '[RoofOps] 07 Reconcile & Webhook S
   .add(xeroItems).to(hasXero
     .onTrue(readInvoice.to(recordXero))
     .onFalse(recordXero))
-  .add(recordXero).to(listHooks).to(checkHooks).to(finish).to(actions).to(route
+  .add(recordXero).to(uncertainItems).to(hasUncertain
+    .onTrue(findUncertainByNumber.to(findUncertainByRef).to(settleUncertain))
+    .onFalse(settleUncertain))
+  .add(settleUncertain).to(listHooks).to(checkHooks).to(finish).to(actions).to(route
     .onCase(0, createHook.to(checkAction))
     .onCase(1, refreshHook.to(checkAction))
     .onCase(2, drain.to(checkAction)));

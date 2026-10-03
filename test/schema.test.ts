@@ -187,7 +187,7 @@ describe.each(ALL)('schema constraints [%s]', (target) => {
       where n.nspname = 'public' and has_function_privilege('roofops_workflow', p.oid, 'execute') order by 1`);
     expect(wf.map((r) => r.f)).toEqual(['wf_airtable_change', 'wf_airtable_cursor', 'wf_airtable_cursor_advance', 'wf_airtable_writeback_verified', 'wf_claim_side_effect',
       'wf_complete_side_effect', 'wf_drive_call_decision', 'wf_fail_side_effect', 'wf_invoice_decide', 'wf_invoice_prepare', 'wf_invoice_preview_verified', 'wf_quote_accepted', 'wf_reconcile_airtable', 'wf_reconcile_drive_unavailable',
-      'wf_reconcile_external', 'wf_reconcile_finish', 'wf_reconcile_start', 'wf_reconcile_targets', 'wf_record_health', 'wf_webhook_check']);
+      'wf_reconcile_external', 'wf_reconcile_finish', 'wf_reconcile_start', 'wf_reconcile_targets', 'wf_reconcile_xero_uncertain', 'wf_record_health', 'wf_webhook_check']);
   });
 
   it('Supabase public roles (anon, authenticated) cannot read or write any RoofOps table', async () => {

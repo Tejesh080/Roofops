@@ -87,7 +87,7 @@ export const TOOLS: Record<string, ToolDef> = {
 
   what_needs_attention_today: {
     tier: 'GREEN',
-    description: 'Everything that needs a person today: at-risk jobs with reasons, open automation issues, invoices waiting for approval, jobs ready to invoice, overdue payments.',
+    description: 'Everything that needs a person today: at-risk jobs with reasons, open automation issues, invoices waiting for approval, jobs ready to invoice, over-billed jobs, overdue payments.',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
     run: async (_a, { query }) => {
       const [k, rows, exc] = await Promise.all([getKpis(query), listProjects(query, 'all'), getExceptions(query, { openOnly: true })]);
@@ -97,6 +97,8 @@ export const TOOLS: Record<string, ToolDef> = {
         invoices_awaiting_approval: rows.filter((p) => p.invoice_status === 'AWAITING_APPROVAL').map((p) => ({ project: p.project_number, customer: p.customer_name, amount_inc_gst: p.invoice_amount_inc_gst })),
         ready_to_invoice: rows.filter((p) => p.invoice_status === 'READY_TO_INVOICE').map((p) => ({ project: p.project_number, customer: p.customer_name, amount_inc_gst: p.invoice_amount_inc_gst,
                                                                                                     state: 'not prepared yet' })),
+        over_billed: rows.filter((p) => p.invoice_status === 'OVER_BILLED').map((p) => ({ project: p.project_number, customer: p.customer_name,
+          over_by_inc_gst: Number(/over by ([0-9]+(?:\.[0-9]+)?)/.exec(p.invoice_blocker ?? '')?.[1] ?? NaN), detail: p.invoice_blocker })),
         overdue_payments: rows.filter((p) => p.has_overdue_invoice).map((p) => ({ project: p.project_number, customer: p.customer_name, outstanding_inc_gst: p.outstanding_inc_gst })),
         open_automation_issues: exc.map((e) => ({ project_or_quote: e.project_number ?? e.business_reference,
                                                    status: label(EXCEPTION_STATUS, e.resolution_status).text,
@@ -188,7 +190,7 @@ export const TOOLS: Record<string, ToolDef> = {
       const p = await getProject(query, n);
       if (!p) return { data: { error: `No project ${n}` } };
       // Don't file a rejection for something we can already explain: say why it isn't ready.
-      if (p.status !== 'COMPLETED' || ['NOT_READY', 'FULLY_INVOICED', 'PAYMENT_OVERDUE', 'PROGRESS_INVOICED', 'NOT_YET_DUE'].includes(p.invoice_status)) {
+      if (p.status !== 'COMPLETED' || ['NOT_READY', 'FULLY_INVOICED', 'OVER_BILLED', 'PAYMENT_OVERDUE', 'PROGRESS_INVOICED', 'NOT_YET_DUE'].includes(p.invoice_status)) {
         return { data: { project: n, prepared: false, invoice_status: label(INVOICE_STATUS, p.invoice_status).text,
                          reason: p.status === 'CANCELLED' ? `${n} is cancelled; a cancelled job is never final-invoiced (earlier invoices stay as they are)`
                            : p.invoice_blocker ?? (p.is_active ? `${n} is still ${label(PROJECT_STAGE, p.status).text.toLowerCase()}; only completed jobs get a final invoice` : 'Nothing left to invoice') } };

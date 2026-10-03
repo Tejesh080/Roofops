@@ -38,6 +38,7 @@ export const INVOICE_STATUS: Record<string, Label> = {
   AWAITING_APPROVAL: L('Awaiting approval', 'warn'),
   READY_TO_INVOICE: L('Ready to invoice', 'info'),
   FULLY_INVOICED: L('Fully invoiced', 'good'),
+  OVER_BILLED: L('Over-billed: needs attention', 'bad'),
   NOT_READY: L('Not ready to invoice', 'bad'),
   PAYMENT_OVERDUE: L('Payment overdue', 'bad'),
   PROGRESS_INVOICED: L('Progress invoiced', 'neutral'),

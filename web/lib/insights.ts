@@ -43,7 +43,7 @@ export function materialsAction(p: ProjectRow, pos: PurchaseOrder[], fmtDate: (d
   return null;
 }
 
-export interface AttentionItem { project: string; customer: string; severity: 'high' | 'medium'; summary: string; kind: 'risk' | 'issue' | 'approval' | 'payment' }
+export interface AttentionItem { project: string; customer: string; severity: 'high' | 'medium'; summary: string; kind: 'risk' | 'issue' | 'approval' | 'payment' | 'billing' }
 
 /** "What needs me today?": the few items worth a business owner's attention, most serious first. */
 export function attentionToday(rows: ProjectRow[], issues: ExceptionRow[], max = 5): AttentionItem[] {
@@ -51,13 +51,19 @@ export function attentionToday(rows: ProjectRow[], issues: ExceptionRow[], max =
     .map((p): AttentionItem => ({ project: p.project_number, customer: p.customer_name, severity: projectSeverity(p), kind: 'risk',
       summary: [...p.risk_reasons].sort((a, b) => Number(RED.has(b)) - Number(RED.has(a))).map((r) => RISK_SHORT[r] ?? r).join(' · ') }))
     .sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'high' ? -1 : 1) || b.summary.split('·').length - a.summary.split('·').length);
+  // AC-08: billed more than the quote and approved variations allow; a person must correct it before the job can close.
+  const billing = rows.filter((p) => p.invoice_status === 'OVER_BILLED').map((p): AttentionItem => {
+    const over = Number(/over by ([0-9]+(?:\.[0-9]+)?)/.exec(p.invoice_blocker ?? '')?.[1] ?? NaN);
+    return { project: p.project_number, customer: p.customer_name, severity: 'high', kind: 'billing',
+      summary: 'Billed more than the quote and approved variations' + (Number.isFinite(over) ? ': over by ' + over.toLocaleString('en-AU', { style: 'currency', currency: 'AUD' }) : '') };
+  });
   const approvals = rows.filter((p) => p.invoice_status === 'AWAITING_APPROVAL').map((p): AttentionItem => ({
     project: p.project_number, customer: p.customer_name, severity: 'medium', kind: 'approval',
     summary: `Invoice ${p.invoice_amount_inc_gst?.toLocaleString('en-AU', { style: 'currency', currency: 'AUD' }) ?? ''} awaiting finance approval` }));
   const issueItems = issues.filter((e) => e.project_number && (e.resolution_status === 'OPEN' || e.resolution_status === 'RETRY_QUEUED'))
     .map((e): AttentionItem => ({ project: e.project_number!, customer: rows.find((r) => r.project_number === e.project_number)?.customer_name ?? '',
       severity: 'medium', kind: 'issue', summary: describeIssue(e).title }));
-  return [...risk, ...approvals, ...issueItems].slice(0, max);
+  return [...risk, ...billing, ...approvals, ...issueItems].slice(0, max);
 }
 
 /** Business language first; the technical class and reference are for "Technical details". */
@@ -82,7 +88,9 @@ export function describeIssue(e: Pick<ExceptionRow, 'error_class' | 'error_messa
     case 'AUTH_FAILURE': return { title: 'A connection needed re-authorising', explanation: 'An integration login expired; it was reconnected.' };
     case 'AMBIGUOUS_WRITE': return { title: 'Unclear whether a save went through', explanation: 'RoofOps checked the other system before retrying, so nothing was duplicated.' };
     case 'PERMISSION_DENIED': return { title: 'Blocked an action that needs approval', explanation: 'The assistant asked for an action only a person may take; it was blocked.' };
-    case 'ARITHMETIC_MISMATCH': return { title: "Supplier totals didn't add up", explanation: 'The supplier total did not match RoofOps’ own calculation, so it was held for review.' };
+    case 'ARITHMETIC_MISMATCH':
+      if (/over-billed/i.test(m)) return { title: 'Project is over-billed', explanation: 'More has been invoiced than the quote and approved variations allow; a person must correct the billing before the job can be closed.' };
+      return { title: "Supplier totals didn't add up", explanation: 'The supplier total did not match RoofOps’ own calculation, so it was held for review.' };
     case 'RECONCILIATION_MISMATCH': return { title: 'Two systems disagreed', explanation: 'An invoice status in another system differed from RoofOps; it was reconciled.' };
     case 'NOT_FOUND': return { title: 'Record not found', explanation: 'The referenced record does not exist, so nothing was changed.' };
     default: return { title: 'Automation stopped safely', explanation: 'RoofOps paused this step for a person to review.' };

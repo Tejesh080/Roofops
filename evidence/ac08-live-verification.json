@@ -1,0 +1,180 @@
+{
+ "defect": "AC-08: an over-billed project was labelled Fully invoiced, with no flag, and could be closed",
+ "gst_basis": {
+  "finding": "quote_versions.total_inc_gst, variations.amount_inc_gst and invoices.total_inc_gst are all GST-inclusive; invoice totals are derived from lines by gst_split whatever the line-amount type",
+  "test": "test/over-billing.test.ts: quote, variations and invoices are compared on the same basis (an EXCLUSIVE invoice 17,000.00 ex = 18,700.00 inc is over-billing by 868.09; 16,210.83 ex = 17,831.91 inc is exactly billed)",
+  "proven": "red when billed is compared ex GST (⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯ Tests  2 failed | 16 skipped (18))"
+ },
+ "migration": {
+  "file": "supabase/migrations/20261001090000_over_billed_project_is_never_fully_invoiced.sql",
+  "checksum_prefix": "d938cbb6",
+  "applied_to_hosted_alone": true,
+  "deploy_output": [
+   "migrations applied: 20261001090000_over_billed_project_is_never_fully_invoiced.sql (skipped 29)",
+   "dataset 0dd5b61419f7… already imported (batch 243ef8f4-08fb-41d5-98c3-ab62f13560c6); nothing to do"
+  ]
+ },
+ "hosted_checks": {
+  "before": {
+   "integrity": [
+    "24 PASS, 3 WARNING, 0 FAIL  (hosted database)"
+   ],
+   "security": [
+    "all privilege checks pass"
+   ]
+  },
+  "after_deploy": {
+   "dry_run": [
+    "RECON-20261004-092906-566c  mode=observe  status=COMPLETED",
+    "│ 0       │ 'AIRTABLE'     │ 231     │ 0           │ 0        │ 0            │ 0         │ 231    │",
+    "│ 1       │ 'GOOGLE_DRIVE' │ 3       │ 0           │ 0        │ 0            │ null      │ 3      │",
+    "│ 2       │ 'XERO'         │ 1       │ 0           │ 0        │ 0            │ null      │ 1      │"
+   ],
+   "integrity": [
+    "24 PASS, 3 WARNING, 0 FAIL  (hosted database)"
+   ],
+   "security": [
+    "PASS  dashboard role: readable tables                []",
+    "PASS  dashboard role: SECURITY DEFINER functions     [\"app_today\",\"at_link\",\"integrity_check\",\"invoice_final_preview\",\"project_over_billing\",\"sm_label\",\"wf_invoice_prepare\"]",
+    "PASS  dashboard role: can it write via wf_* (other than prepare)? []",
+    "PASS  workflow role: executable functions            21 items",
+    "PASS  anon/authenticated: readable or writable objects []",
+    "PASS  functions executable by PUBLIC                 []",
+    "PASS  tables without row level security              []",
+    "PASS  Xero writes pinned to the proven Demo tenant   [\"96643bb0-3a0a-406e-96fb-ab8a933ee6b8\"]",
+    "PASS  reconcile trigger token stored only as a hash  [\"64\"]",
+    "all privilege checks pass"
+   ]
+  },
+  "after_live_checks": {
+   "dry_run": [
+    "RECON-20261004-093533-7f2b  mode=observe  status=COMPLETED",
+    "│ 0       │ 'AIRTABLE'     │ 231     │ 0           │ 0        │ 0            │ 0         │ 231    │",
+    "│ 1       │ 'GOOGLE_DRIVE' │ 3       │ 0           │ 0        │ 0            │ null      │ 3      │",
+    "│ 2       │ 'XERO'         │ 1       │ 0           │ 0        │ 0            │ null      │ 1      │"
+   ],
+   "integrity": [
+    "24 PASS, 3 WARNING, 0 FAIL  (hosted database)"
+   ]
+  },
+  "repair_run": "none"
+ },
+ "live": {
+  "web_login": "roofops_web",
+  "dashboard": [
+   {
+    "project_number": "PRJ-2026-0006",
+    "invoice_status": "OVER_BILLED",
+    "needs_attention": true,
+    "invoice_blocker": "PRJ-2026-0006 is over-billed: billed 30888.72 (INV-2026-0006, INV-2026-0036) against quote 25740.60 + approved variations 0.00 = 25740.60; over by 5148.12. Correct the billing before it can be closed (for example void the unpaid duplicate invoice)"
+   },
+   {
+    "project_number": "PRJ-2026-0008",
+    "invoice_status": "OVER_BILLED",
+    "needs_attention": true,
+    "invoice_blocker": "PRJ-2026-0008 is over-billed: billed 59687.64 (INV-2026-0008, INV-2026-0038) against quote 49739.70 + approved variations 0.00 = 49739.70; over by 9947.94. Correct the billing before it can be closed (for example void the unpaid duplicate invoice)"
+   }
+  ],
+  "prepare_in_rolled_back_transaction": {
+   "PRJ-2026-0006": {
+    "outcome": "INVALID_STATE",
+    "error_class": "ARITHMETIC_MISMATCH",
+    "message": "PRJ-2026-0006 is over-billed: billed 30888.72 (INV-2026-0006, INV-2026-0036) against quote 25740.60 + approved variations 0.00 = 25740.60; over by 5148.12. Correct the billing before it can be closed (for example void the unpaid duplicate invoice)"
+   },
+   "PRJ-2026-0008": {
+    "outcome": "INVALID_STATE",
+    "error_class": "ARITHMETIC_MISMATCH",
+    "message": "PRJ-2026-0008 is over-billed: billed 59687.64 (INV-2026-0008, INV-2026-0038) against quote 49739.70 + approved variations 0.00 = 49739.70; over by 9947.94. Correct the billing before it can be closed (for example void the unpaid duplicate invoice)"
+   }
+  },
+  "close_prj_2026_0006_in_rolled_back_transaction": {
+   "outcome": "REFUSED",
+   "message": "state machine check failed: project COMPLETED -> CLOSED refused: PRJ-2026-0006 cannot be closed: it is over-billed by 5148.12 (billed 30888.72 against 25740.60: INV-2026-0006, INV-2026-0036). Correct the billing first, for example void the unpaid duplicate invoice"
+  },
+  "copilot": {
+   "prepare_invoice": {
+    "PRJ-2026-0006": {
+     "project": "PRJ-2026-0006",
+     "prepared": false,
+     "invoice_status": "Over-billed: needs attention",
+     "reason": "PRJ-2026-0006 is over-billed: billed 30888.72 (INV-2026-0006, INV-2026-0036) against quote 25740.60 + approved variations 0.00 = 25740.60; over by 5148.12. Correct the billing before it can be closed (for example void the unpaid duplicate invoice)"
+    },
+    "PRJ-2026-0008": {
+     "project": "PRJ-2026-0008",
+     "prepared": false,
+     "invoice_status": "Over-billed: needs attention",
+     "reason": "PRJ-2026-0008 is over-billed: billed 59687.64 (INV-2026-0008, INV-2026-0038) against quote 49739.70 + approved variations 0.00 = 49739.70; over by 9947.94. Correct the billing before it can be closed (for example void the unpaid duplicate invoice)"
+    }
+   },
+   "get_project": {
+    "PRJ-2026-0006": "PRJ-2026-0006 is over-billed: billed 30888.72 (INV-2026-0006, INV-2026-0036) against quote 25740.60 + approved variations 0.00 = 25740.60; over by 5148.12. Correct the billing before it can be closed (for example void the unpaid duplicate invoice)",
+    "PRJ-2026-0008": "PRJ-2026-0008 is over-billed: billed 59687.64 (INV-2026-0008, INV-2026-0038) against quote 49739.70 + approved variations 0.00 = 49739.70; over by 9947.94. Correct the billing before it can be closed (for example void the unpaid duplicate invoice)"
+   },
+   "what_needs_attention_today_over_billed": [
+    {
+     "project": "PRJ-2026-0006",
+     "customer": "Ava Parker",
+     "over_by_inc_gst": 5148.12,
+     "detail": "PRJ-2026-0006 is over-billed: billed 30888.72 (INV-2026-0006, INV-2026-0036) against quote 25740.60 + approved variations 0.00 = 25740.60; over by 5148.12. Correct the billing before it can be closed (for example void the unpaid duplicate invoice)"
+    },
+    {
+     "project": "PRJ-2026-0008",
+     "customer": "Chloe Bennett",
+     "over_by_inc_gst": 9947.94,
+     "detail": "PRJ-2026-0008 is over-billed: billed 59687.64 (INV-2026-0008, INV-2026-0038) against quote 49739.70 + approved variations 0.00 = 49739.70; over by 9947.94. Correct the billing before it can be closed (for example void the unpaid duplicate invoice)"
+    }
+   ]
+  },
+  "nothing_persisted": {
+   "counts_before": {
+    "exceptions": 19,
+    "approvals": 11,
+    "events": 212,
+    "audits": 93,
+    "invoices": {
+     "INV-2026-0006": "PAID 5148.12",
+     "INV-2026-0008": "PAID 9947.94",
+     "INV-2026-0036": "ISSUED 25740.60",
+     "INV-2026-0038": "ISSUED 49739.70"
+    }
+   },
+   "counts_after": {
+    "exceptions": 19,
+    "approvals": 11,
+    "events": 212,
+    "audits": 93,
+    "invoices": {
+     "INV-2026-0006": "PAID 5148.12",
+     "INV-2026-0008": "PAID 9947.94",
+     "INV-2026-0036": "ISSUED 25740.60",
+     "INV-2026-0038": "ISSUED 49739.70"
+    }
+   },
+   "projects_after": [
+    {
+     "project_number": "PRJ-2026-0006",
+     "status": "COMPLETED"
+    },
+    {
+     "project_number": "PRJ-2026-0008",
+     "status": "COMPLETED"
+    }
+   ],
+   "duplicate_invoices": "unchanged (INV-2026-0036 ISSUED 25740.60, INV-2026-0038 ISSUED 49739.70); left for a human decision"
+  },
+  "inv_2026_0039": {
+   "before": "c1a5022f8b0bf9920539cc0fe0675683ce815a1c74b26bd54a0958a50ece1156",
+   "after_deploy": "c1a5022f8b0bf9920539cc0fe0675683ce815a1c74b26bd54a0958a50ece1156",
+   "before_live": "d7f4879db93bcd60856c4c4f836c0f9c2a642afef2bde5951a6a096745db75a2",
+   "after_live": "d7f4879db93bcd60856c4c4f836c0f9c2a642afef2bde5951a6a096745db75a2",
+   "final": "151e9c189ee8eedbb2a359ca2aa691ff3aec4d4ac02547a92401e8819cb3d202",
+   "changes": "only the two observe dry-runs: Xero link last_synced_at, dashboard reconciliation timestamps, their audit events"
+  },
+  "canonical_fingerprint": {
+   "values": 173,
+   "before": "89d72adfc5a6ba3c",
+   "after": "89d72adfc5a6ba3c"
+  }
+ },
+ "found_during_live_check": "The Copilot what_needs_attention_today and the dashboard attention list had no over-billed category (PRJ-2026-0006 did not appear), and an over-billing exception would have been described as supplier totals. Fixed in web/lib (tests first), re-verified live through the web login."
+}

@@ -67,6 +67,18 @@ describe('business interpretations', () => {
     expect(items[0]).toMatchObject({ project: 'PRJ-2026-0011', severity: 'high', summary: 'Start date passed · Supplier confirmation overdue · Flagged by project manager' });
     expect(items[1]).toMatchObject({ project: 'PRJ-B', severity: 'medium' });
   });
+  it('AC-08: an over-billed project is in "needs me today", high severity, with the excess in plain words', () => {
+    const blocker = 'PRJ-2026-0006 is over-billed: billed 30888.72 (INV-2026-0006, INV-2026-0036) against quote 25740.60 + approved variations 0.00 = 25740.60; over by 5148.12. Correct the billing before it can be closed (for example void the unpaid duplicate invoice)';
+    const items = attentionToday([row({ project_number: 'PRJ-2026-0006', is_active: false, status: 'COMPLETED', risk_level: 'LOW', risk_reasons: [],
+      invoice_status: 'OVER_BILLED', invoice_blocker: blocker, needs_attention: true })], [], 5);
+    expect(items).toEqual([expect.objectContaining({ project: 'PRJ-2026-0006', severity: 'high', kind: 'billing',
+      summary: 'Billed more than the quote and approved variations: over by $5,148.12' })]);
+  });
+  it('AC-08: an over-billing refusal is described as over-billing, not as supplier totals', () => {
+    expect(describeIssue({ error_class: 'ARITHMETIC_MISMATCH', error_message: 'PRJ-2026-0006 is over-billed: billed 30888.72 (…) against quote 25740.60 …; over by 5148.12.', attempt_count: 1 }))
+      .toEqual({ title: 'Project is over-billed', explanation: 'More has been invoiced than the quote and approved variations allow; a person must correct the billing before the job can be closed.' });
+    expect(describeIssue({ error_class: 'ARITHMETIC_MISMATCH', error_message: 'Supplier total 1200 != 1100', attempt_count: 1 }).title).toBe("Supplier totals didn't add up");
+  });
   it('technical issue classes are never the headline', () => {
     const d = describeIssue({ error_class: 'SCHEMA_MISMATCH', error_message: 'Supplier payload missing expected field', attempt_count: 1 });
     expect(d).toEqual({ title: 'Supplier information was incomplete', explanation: 'RoofOps stopped safely because a required supplier field was missing.' });

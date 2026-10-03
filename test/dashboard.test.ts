@@ -31,7 +31,10 @@ describe.each(TARGETS)('dashboard read models [%s]', (target) => {
     expect(Number((await row('PRJ-2026-0004')).invoice_amount_inc_gst)).toBe(14664.49);
     expect(await row('PRJ-2026-0007')).toMatchObject({ invoice_status: 'NOT_READY', invoice_blocker: expect.stringMatching(/completion documents/) as unknown });
     expect(await row('PRJ-2026-0003')).toMatchObject({ invoice_status: 'NOT_READY', invoice_blocker: expect.stringMatching(/unapproved invoices/) as unknown });
-    expect(await row('PRJ-2026-0006')).toMatchObject({ invoice_status: 'FULLY_INVOICED', invoice_blocker: null });
+    // AC-08: PRJ-2026-0006 is billed 30,888.72 against 25,740.60 (deposit billed twice). This line used to assert FULLY_INVOICED
+    // with no blocker, which enshrined the defect; it is over-billed and needs attention.
+    expect(await row('PRJ-2026-0006')).toMatchObject({ invoice_status: 'OVER_BILLED', needs_attention: true,
+      invoice_blocker: expect.stringMatching(/over-billed: billed 30888\.72 .* over by 5148\.12/) as unknown });
   });
 
   it('needs_attention is always true/false (never unknown), so attention sorts first', async () => {

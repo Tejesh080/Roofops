@@ -16,7 +16,7 @@ instruction).
 | AC-05 | P0 | Voiding an invoice does not cancel its queued Xero write | **Yes**, offline (PGlite and Postgres 17): approve, void, claim, complete | VOIDED + SYNCED, outbox DONE, Xero link; dashboard READY_TO_INVOICE, needs_attention false, integrity 0 FAIL | Nothing tied the outbox to the invoice status; claim and completion ignored it; the preview ignored voided finals | No Xero draft created, pending, ambiguous or linked for a VOIDED invoice; a voided final blocks the project for a person | `test/invoice-void.test.ts:65`, `:76`, `:86`, `:110` | Migration `20261001060000_voided_invoice_never_gets_a_xero_draft.sql` (Postgres only) | Chain from zero; 396 tests pass; red before (8 of 8); 5 ablations each red; lint, typecheck clean; local integrity 0 FAIL; grants checked | Done 2026-10-01 (§9–§10): deployed alone; dry-run 0 drift, integrity 0 FAIL (new check PASS), security all pass. A void of the SYNCED INV-2026-0039 on hosted was refused ("its Xero draft exists (RO-INV-2026-0039). Void or delete it in Xero first"); invoice, project, outbox, exceptions and Xero draft unchanged; 0 drift after. [evidence/ac05-live-verification.json](../evidence/ac05-live-verification.json) | **FIXED** |
 | AC-06 | P0 | Unpinning the Xero tenant is not a kill switch | **Yes**, offline (PGlite and Postgres 17): approve under tenant A, then clear or re-point the pin, then claim and complete | With the pin empty, and with it re-pointed to B, the queued job was claimed (`claimed=true`), the proof from the old tenant was RECORDED and the invoice became SYNCED | Claim and completion trusted the tenant copied into the payload at approval and never re-read the pin; nothing stopped the pin moving while a write for it was open | A Xero write runs only against the tenant it was approved for; the pin cannot move while a write for it is unfinished; no pin change leaves a draft recorded as failed | `test/xero-tenant-binding.test.ts:97`, `:108`, `:118`, `:130`, `:146`, `:173`, `:185`, `:195`, `:216`, `:233` | Migration `20261001070000_xero_write_bound_to_its_tenant.sql` (Postgres only): pin guard, one advisory lock for pin changes and claims, claim re-check, fixed tenant, completion re-check | Chain from zero; red before (16 of 18); 14 ablations each red (lock ablations caught only by the two-connection races); AC-05 8 of 8; complete suite 424 passed, 0 failed; lint, typecheck clean; local integrity 0 FAIL; grants checked | Done 2026-10-04 (§10–§11): deployed alone; dry-run 0 drift, integrity 0 FAIL, security all pass. Rollback-only tests on INV-2026-0039: re-pointing its job refused; clearing or deleting the pin allowed only inside rolled-back transactions (its only write is DONE); nothing changed, 0 drift after. [evidence/ac06-live-verification.json](../evidence/ac06-live-verification.json) | **FIXED** |
 | AC-04 | P0 | A Xero draft that exists is recorded as never created | **Yes**, offline (PGlite and Postgres 17), fake Xero answers: lost create answer, then 429s, then the dead letter; failures after the create; no reconciliation of uncertain writes | UNKNOWN downgraded to PENDING by a 429, then FAILED at the dead letter; post-create failures FAILED; nothing looked; AC-05 then allowed the void | `wf_fail_side_effect` judged by error class only and every dead letter became FAILED; reconciliation read only linked invoices | A timeout or transport failure after a create is never proof of absence: UNKNOWN until a read of Xero proves presence (link) or absence (then retry or fail safely); nothing guessed | `test/xero-ambiguous-create.test.ts` (cases 1–11, 2b), `test/reconcile-07-uncertain-xero.test.ts` (real 07 orchestration) | Migration `20261001080000_ambiguous_xero_create_stays_unknown.sql` + n8n 07: two read-only lookups (number, reference) per uncertain write in its bound tenant, settled by `wf_reconcile_xero_uncertain` | Chain from zero; red before (20/24 contract, 22/22 orchestration); every ablation red; AC-05 8/8, AC-06 18/18; full suite 470 passed, 0 failed; lint, typecheck clean; local integrity 0 FAIL; grants checked | Done 2026-10-04 (§9): the live lookup probe found RO-INV-2026-0039 once by number and once by reference in the pinned tenant (and exposed the SentToContact omission, fixed first); deployed alone + 07 published; dry-run 0 drift with the new path run (0 targets); INV-2026-0039 untouched; integrity 0 FAIL, security pass. [evidence/ac04-live-verification.json](../evidence/ac04-live-verification.json) | **FIXED** |
-| AC-08 | P0 | Over-billed projects are labelled "Fully invoiced" (`dashboard.test.ts:34` expects this) | – | – | – | – | – | – | – | – | Not started |
+| AC-08 | P0 | Over-billed projects are labelled "Fully invoiced", with no flag, and can be closed | **Yes**, offline (PGlite and Postgres 17) and read-only on hosted: PRJ-2026-0006 and PRJ-2026-0008 billed above quote | FULLY_INVOICED, no blocker, needs_attention false (0006); Prepare says "nothing left to invoice"; once paid, CLOSED accepted | The preview lumped amount <= 0 together; the dashboard and the close guard treated that as fully invoiced | Billed <= quote + approved/invoiced variations at every stage; otherwise OVER_BILLED, needs attention, named excess, CLOSED refused until corrected | `test/over-billing.test.ts`; `test/dashboard.test.ts:34` corrected (it enshrined the defect) | Migration `20261001090000_over_billed_project_is_never_fully_invoiced.sql` (one rule `project_over_billing`; preview, close guard, dashboard view) + web label and Copilot refusal | Chain from zero (30); red before (12/16); 6 ablations each red; full suite 490 passed, 0 failed; lint, typecheck clean; local integrity 0 FAIL; grants checked | Done 2026-10-04 (§9–§10): tax basis proven (all GST-inclusive; new test, red on an ex-GST comparison); deployed alone; dry-run 0 drift, integrity 0 FAIL, security pass. Live via the web login and Copilot: PRJ-2026-0006 and PRJ-2026-0008 OVER_BILLED (over by 5,148.12 / 9,947.94), need attention, Prepare and Copilot refuse with the reason, rolled-back CLOSED refused; nothing persisted; duplicates left for a person; INV-2026-0039 untouched. [evidence/ac08-live-verification.json](../evidence/ac08-live-verification.json) | **FIXED** |
 | AC-09 | P0 | Final invoice under-bills once a variation is INVOICED | – | – | – | – | – | – | – | – | Not started |
 | AC-13A | P1 | Completion checklist has no editing surface, so new jobs can never be final-invoiced | – | – | – | – | – | – | – | – | Not started |
 | AC-13B | P1 | Pre-start checklist (SWMS, material review) is not enforced on Scheduled → In Progress | – | – | – | – | – | – | – | – | Not started |
@@ -1886,3 +1886,151 @@ Evidence: [evidence/ac04-live-verification.json](../evidence/ac04-live-verificat
     executing. Both transitions already exist.
 - **The GST cent difference on multi-line drafts** (catalogue path 2) is not fixed. Such a refusal is now UNKNOWN with
   an exception, never FAILED.
+
+## AC-08 evidence package
+
+### 1. Reproduction (offline probe on the imported data; hosted checked read-only)
+
+| | PRJ-2026-0006 | PRJ-2026-0008 |
+|---|---|---|
+| Entitled (quote + variations) | 25,740.60 | 49,739.70 |
+| Billed | **30,888.72** (INV-2026-0006 paid + INV-2026-0036 issued) | **59,687.64** (INV-2026-0008 paid + INV-2026-0038 issued) |
+| Preview | ARITHMETIC_MISMATCH, "−5,148.12; nothing left to invoice" | same, −9,947.94 |
+| Dashboard | **FULLY_INVOICED**, no blocker, **needs_attention false** | FULLY_INVOICED, no blocker (attention only from an unrelated supplier timeout) |
+| Prepare | an exception saying "nothing left to invoice" | same |
+| Invoices paid, then CLOSED (rolled back) | **accepted** | **accepted** |
+
+Hosted (read-only, 2026-10-04) has the same two over-billed projects, in the same state.
+
+`test/dashboard.test.ts:34` asserted PRJ-2026-0006 FULLY_INVOICED with a null blocker: the test enshrined the defect.
+
+### 2–4. Classification, first incorrect transition, why
+
+This is a true bug. `invoice_final_preview` answered "nothing left to invoice" for any amount ≤ 0, so exactly billed and
+over-billed looked the same. The dashboard mapped that answer to FULLY_INVOICED, and `project_transition_guard`
+accepted it as "no final invoice needed" when closing. The first incorrect transition was COMPLETED → CLOSED with
+billed > entitled.
+
+### 5. Invariant
+
+> Billed ≤ entitled, always, at every stage. Entitled is the accepted quote version plus variations the customer
+> approved (APPROVED or INVOICED). Billed is invoices APPROVED, ISSUED, PARTIALLY_PAID or PAID. Otherwise the project is
+> OVER_BILLED: it needs attention, names the excess and the invoices, and cannot be closed until a person corrects the
+> billing.
+
+### 6. Fix (owner decisions 2026-10-04: a new OVER_BILLED status; closing refused until the billing is corrected, with no credit-note model)
+
+Migration `20261001090000_over_billed_project_is_never_fully_invoiced.sql`:
+1. **`project_over_billing(project)`** is the one rule. It returns billed, quote, variations, entitled, excess,
+   invoices and a message, or null. It is SECURITY DEFINER and read-only, and is executable by the dashboard role (the
+   view calls it with the caller's rights, as it does `invoice_final_preview`). The workflow role cannot execute it.
+2. **`invoice_final_preview`** (redefined in place from AC-05's definition) answers over-billing with
+   `over_billed: true`, `over_billed_by`, the billed and entitled amounts, and the message. It keeps the
+   ARITHMETIC_MISMATCH class, so Prepare's existing contract holds. "Nothing left to invoice" now means exactly
+   billed.
+3. **`project_transition_guard`** (redefined in place) refuses CLOSED while over-billed: "… cannot be closed: it is
+   over-billed by … Correct the billing first".
+4. **`v_dashboard_projects`** (redefined in place):
+   - OVER_BILLED comes first among invoice statuses, at any project stage;
+   - the blocker is the over-billing message;
+   - `needs_attention` is true.
+
+Web:
+- `web/lib/labels.ts` adds "Over-billed: needs attention".
+- The Copilot's prepare tool refuses OVER_BILLED up front with the reason, filing nothing.
+- `scripts/security-check.ts` allow-lists `project_over_billing` among the dashboard's read functions.
+
+### 7. Tests
+
+`test/over-billing.test.ts`, on PGlite and Postgres 17:
+- the preview names billed, entitled, excess and invoices;
+- the dashboard shows OVER_BILLED with the reason and needs attention, for exactly PRJ-2026-0006 and PRJ-2026-0008;
+- Prepare refuses with the reason (one exception, no approval);
+- CLOSED is refused even with every invoice paid, and nothing changes;
+- voiding the unpaid duplicate clears it, and closing is then judged on the normal rules (guard);
+- exactly billed stays FULLY_INVOICED, and an INVOICED variation is entitlement, not a false alarm (guard);
+- over-billing is flagged on a job still in progress;
+- the Copilot shows it and its prepare tool refuses, filing nothing.
+
+**Existing assertion changed:** `test/dashboard.test.ts:34` now expects OVER_BILLED with the over-billing blocker. It
+had enshrined the defect, as the catalogue noted.
+
+### 8. Verification (offline)
+
+| Check | Result |
+|---|---|
+| Red, before the fix | 12 of 16 failed (6 behaviours × 2 engines); the 4 passes are the two guards |
+| Ablation A: the preview ignores over-billing | preview and Prepare tests red |
+| Ablation B: no OVER_BILLED status | dashboard, any-stage, Copilot and `dashboard.test.ts:34` red |
+| Ablation C: over-billed needs no attention | dashboard and `dashboard.test.ts:34` red |
+| Ablation D: closing ignores over-billing | the CLOSED test red |
+| Ablation E: INVOICED variations not entitled | the no-false-alarm test red |
+| Ablation F: exactly billed counts as over-billed | the exactly-billed and dashboard tests red |
+| Full suite, PGlite + Postgres 17 | **486 passed**, 35 skipped, 0 failed; lint and typecheck clean |
+| Fresh PostgreSQL 17 chain | 30 applied, 0 on re-run; OVER_BILLED is exactly PRJ-2026-0006 and PRJ-2026-0008, also as the dashboard role; integrity 0 FAIL |
+| Grants | `project_over_billing`: dashboard yes, workflow no; dashboard reads no table; workflow role 21 `wf_*` functions; nothing executable by PUBLIC; RLS everywhere |
+| Local dev DB | applied alone; integrity 23 PASS, 4 WARNING, 0 FAIL |
+| Migration parity (read-only) | aligned through AC-04; `20261001090000` unused anywhere else |
+
+**Interplay with AC-09 (not fixed here):**
+- The final-invoice amount still adds only APPROVED variations; that is AC-09's defect.
+- The over-billing rule counts APPROVED and INVOICED variations, so it does not raise a false alarm in AC-09's
+  scenario.
+
+### 9. Before deployment: the tax basis (owner-required)
+
+All three compared amounts are GST-inclusive:
+- `quote_versions.total_inc_gst`;
+- `variations.amount_inc_gst`;
+- `invoices.total_inc_gst`, which `derive_invoice_totals` derives from the invoice lines through `gst_split`, whatever
+  the line-amount type.
+
+No existing test proved this, so one was added: "quote, variations and invoices are compared on the same basis".
+- A GST-exclusive invoice of 16,210.83 ex (17,831.91 inc) exactly completes PRJ-2026-0005: FULLY_INVOICED.
+- One of 17,000.00 ex (18,700.00 inc) over-bills it by 868.09: OVER_BILLED, although its ex-GST amount is below the
+  17,831.91 left.
+- With billed compared ex GST, the test fails (2 of 2), so it detects a basis mismatch.
+
+### 10. Hosted deploy and live verification (2026-10-04; no repair run; the duplicate invoices were not touched)
+
+- **Applied alone** (`d938cbb6`; 29 skipped).
+- **Checks after deploy:**
+  - dry-run `RECON-20261004-092906-566c`: 0 drift (Airtable 231, Drive 3/3, Xero 1/1);
+  - integrity 24 PASS, 3 WARNING, 0 FAIL;
+  - security all pass, with `project_over_billing` the only new dashboard function, as approved.
+- **Through the web app's own login (`roofops_web`) and the real Copilot tool code:**
+
+  | | PRJ-2026-0006 | PRJ-2026-0008 |
+  |---|---|---|
+  | Dashboard | OVER_BILLED, needs attention | OVER_BILLED, needs attention |
+  | Excess | over by 5,148.12 (billed 30,888.72 against 25,740.60; INV-2026-0006, INV-2026-0036) | over by 9,947.94 (billed 59,687.64 against 49,739.70; INV-2026-0008, INV-2026-0038) |
+  | Copilot `get_project` | "Over-billed: needs attention", with the same reason | same |
+  | Copilot `prepare_invoice` | refused, with the reason; nothing filed | refused, with the reason; nothing filed |
+  | Copilot "what needs attention today" | listed, over by 5,148.12 | listed, over by 9,947.94 |
+
+- **Prepare** (`wf_invoice_prepare`, as n8n 04 calls it) in an always-rolled-back transaction: INVALID_STATE /
+  ARITHMETIC_MISMATCH, "… is over-billed …".
+- **CLOSED on PRJ-2026-0006** in an always-rolled-back transaction: refused, "PRJ-2026-0006 cannot be closed: it is
+  over-billed by 5148.12 … Correct the billing first".
+- **Nothing persisted:**
+  - exception, approval, event and audit counts were identical before and after;
+  - both projects are still COMPLETED;
+  - the duplicate invoices are unchanged (INV-2026-0036 and INV-2026-0038 ISSUED). They are left for a person.
+- **INV-2026-0039 is untouched.** Only the observe dry-runs' own timestamps and audit events moved.
+- **After:** dry-run `RECON-20261004-093533-7f2b` 0 drift; integrity 24 PASS, 3 WARNING, 0 FAIL. Canonical
+  fingerprint 173 values `89d72adf…`, unchanged.
+
+**Found during the live check, and fixed before committing (web/lib, tests first):**
+- The Copilot's "what needs attention today" and the dashboard's attention list had no over-billed category, so
+  PRJ-2026-0006 did not appear in either.
+- An over-billing refusal would have been described as "Supplier totals didn't add up".
+
+Now:
+- the Copilot lists `over_billed` with `over_by_inc_gst`;
+- the attention list has a high-severity "billing" item ("over by $5,148.12");
+- `describeIssue` says "Project is over-billed".
+
+The new tests were red before and green after, and both lists were re-verified live through the web login.
+Full suite **490 passed**, 0 failed; lint and typecheck clean.
+
+Evidence: [evidence/ac08-live-verification.json](../evidence/ac08-live-verification.json).

@@ -1,0 +1,205 @@
+{
+ "defect": "AC-06: unpinning or re-pointing the Xero tenant did not stop queued writes; a claimed write could still land in the old tenant",
+ "migration": {
+  "file": "supabase/migrations/20261001070000_xero_write_bound_to_its_tenant.sql",
+  "checksum_prefix": "e84e1dc4",
+  "applied_to_hosted_alone": true,
+  "deploy_output": [
+   "migrations applied: 20261001070000_xero_write_bound_to_its_tenant.sql (skipped 27)",
+   "dataset 0dd5b61419f7… already imported (batch 243ef8f4-08fb-41d5-98c3-ab62f13560c6); nothing to do"
+  ]
+ },
+ "offline": {
+  "red_and_ablations": [
+   "migration restored",
+   "RED_no_migration: Tests  16 failed | 2 passed | 2 skipped (20)  red: pglite:1., pglite:2., pglite:3., pglite:4., pglite:7., pglite:8., pglite:defence in depth, postgres:1., postgres:2., postgres:3., postgres:4., postgres:7., postgres:8., postgres:defence in depth, postgres:5., postgres:6.",
+   "A_claim_does_not_check_pin: Tests  4 failed | 14 passed | 2 skipped (20)  red: pglite:4., postgres:4., postgres:5., postgres:6.",
+   "B_claim_takes_no_pin_lock: Tests  2 failed | 16 passed | 2 skipped (20)  red: postgres:5., postgres:6.",
+   "H_pin_change_takes_no_pin_lock: Tests  2 failed | 16 passed | 2 skipped (20)  red: postgres:5., postgres:6.",
+   "G1_guard_ignores_PENDING: Tests  2 failed | 16 passed | 2 skipped (20)  red: pglite:1., postgres:1.",
+   "G2_guard_ignores_IN_PROGRESS: Tests  8 failed | 10 passed | 2 skipped (20)  red: pglite:2., pglite:4., pglite:8., postgres:2., postgres:4., postgres:8., postgres:5., postgres:6.",
+   "G3_guard_ignores_UNKNOWN: Tests  2 failed | 16 passed | 2 skipped (20)  red: pglite:3., postgres:3.",
+   "G4_guard_ignores_retry_scheduled: Tests  2 failed | 16 passed | 2 skipped (20)  red: pglite:7., postgres:7.",
+   "G5_guard_counts_safe_dead_letters: Tests  2 failed | 16 passed | 2 skipped (20)  red: pglite:4., postgres:4.",
+   "G6_guard_counts_writes_for_other_tenants: Tests  9 failed | 9 passed | 2 skipped (20)  red: pglite:4., pglite:7., pglite:8., pglite:defence in depth, postgres:4., postgres:7., postgres:8., postgres:defence in depth, postgres:6.",
+   "G7_guard_ignores_delete: Tests  10 failed | 8 passed | 2 skipped (20)  red: pglite:1., pglite:2., pglite:3., pglite:7., pglite:8., postgres:1., postgres:2., postgres:3., postgres:7., postgres:8.",
+   "C_completion_does_not_check_pin: Tests  2 failed | 16 passed | 2 skipped (20)  red: pglite:defence in depth, postgres:defence in depth",
+   "E_tenant_not_fixed: Tests  2 failed | 16 passed | 2 skipped (20)  red: pglite:2., postgres:2.",
+   "F_refused_claim_opens_no_exception: Tests  3 failed | 15 passed | 2 skipped (20)  red: pglite:4., postgres:4., postgres:6."
+  ],
+  "gate": {
+   "ac05_ac06": [
+    "Tests  26 passed | 2 skipped (28)"
+   ],
+   "complete_suite": [
+    "Test Files  20 passed | 3 skipped (23)",
+    "Tests  424 passed | 35 skipped (459)"
+   ],
+   "lint": "exit 0",
+   "typecheck": "exit 0"
+  }
+ },
+ "hosted_before_deploy": {
+  "parity": [
+   "OK   20261001065000_one_business_date_for_every_caller.sql      repo:0ca127d2 local:same     hosted:same",
+   "OK   20261001070000_xero_write_bound_to_its_tenant.sql          repo:e84e1dc4 local:same     hosted:—",
+   "1. Histories aligned through the date fix: YES (26 versions)",
+   "2. Version 20261001070000 uses: {\"repo_files\":[\"20261001070000_xero_write_bound_to_its_tenant.sql\"],\"git_history\":[],\"local\":[\"20261001070000_xero_write_bound_to_its_tenant.sql\"],\"hosted\":[]}"
+  ],
+  "integrity": [
+   "24 PASS, 3 WARNING, 0 FAIL  (hosted database)"
+  ],
+  "security": [
+   "all privilege checks pass"
+  ]
+ },
+ "hosted_after_deploy": {
+  "dry_run": [
+   "RECON-20261004-042635-bb75  mode=observe  status=COMPLETED",
+   "│ 0       │ 'AIRTABLE'     │ 231     │ 0           │ 0        │ 0            │ 0         │ 231    │",
+   "│ 1       │ 'GOOGLE_DRIVE' │ 3       │ 0           │ 0        │ 0            │ null      │ 3      │",
+   "│ 2       │ 'XERO'         │ 1       │ 0           │ 0        │ 0            │ null      │ 1      │"
+  ],
+  "integrity": [
+   "24 PASS, 3 WARNING, 0 FAIL  (hosted database)"
+  ],
+  "security": [
+   "PASS  dashboard role: readable tables                []",
+   "PASS  dashboard role: SECURITY DEFINER functions     [\"app_today\",\"at_link\",\"integrity_check\",\"invoice_final_preview\",\"sm_label\",\"wf_invoice_prepare\"]",
+   "PASS  dashboard role: can it write via wf_* (other than prepare)? []",
+   "PASS  workflow role: executable functions            20 items",
+   "PASS  anon/authenticated: readable or writable objects []",
+   "PASS  functions executable by PUBLIC                 []",
+   "PASS  tables without row level security              []",
+   "PASS  Xero writes pinned to the proven Demo tenant   [\"96643bb0-3a0a-406e-96fb-ab8a933ee6b8\"]",
+   "PASS  reconcile trigger token stored only as a hash  [\"64\"]",
+   "all privilege checks pass"
+  ],
+  "repair_run": "none"
+ },
+ "live_rollback_tests": {
+  "at": "2026-10-03T18:27:12.894Z",
+  "1_repoint_the_done_job_to_another_tenant": {
+   "statements": [
+    "update outbox set payload = jsonb_set(payload, '{xero_tenant_id}', '\"00000000-0000-0000-0000-000000000000\"') where idempotency_key = (select o.idempotency_key from outbox o join invoices i on i.id = o.aggregate_id where i.invoice_number = 'INV-2026-0039' and o.topic = 'xero.create_draft_invoice') returning status"
+   ],
+   "outcome": "REFUSED",
+   "sqlstate": "23514",
+   "message": "The Xero tenant of xero:invoice:f4e519c4-ee4f-4d73-ae5a-0f5e3118b363 is fixed when it is approved (96643bb0…): it cannot be changed to 00000000-0000-0000-0000-000000000000",
+   "rolled_back": true
+  },
+  "2_clear_the_pin_while_its_only_write_is_done": {
+   "statements": [
+    "update app_settings set value = '' where key = 'xero.demo_tenant_id' returning key, value",
+    "select wf_claim_side_effect((select o.idempotency_key from outbox o join invoices i on i.id = o.aggregate_id where i.invoice_number = 'INV-2026-0039' and o.topic = 'xero.create_draft_invoice'), 'ac06-live-rollback', 1) - 'result' - 'last_error' as claim",
+    "select count(*)::int open_exceptions_in_txn from workflow_exceptions where resolution_status in ('OPEN', 'RETRY_QUEUED')"
+   ],
+   "outcome": "ALLOWED",
+   "results": [
+    {
+     "key": "xero.demo_tenant_id",
+     "value": ""
+    },
+    {
+     "claim": {
+      "key": "xero:invoice:f4e519c4-ee4f-4d73-ae5a-0f5e3118b363",
+      "topic": "xero.create_draft_invoice",
+      "status": "DONE",
+      "claimed": false,
+      "attempts": 1,
+      "retry_at": null,
+      "locked_until": null
+     }
+    },
+    {
+     "open_exceptions_in_txn": 4
+    }
+   ],
+   "rolled_back": true
+  },
+  "3_delete_the_pin_while_its_only_write_is_done": {
+   "statements": [
+    "delete from app_settings where key = 'xero.demo_tenant_id' returning key"
+   ],
+   "outcome": "ALLOWED",
+   "results": [
+    {
+     "key": "xero.demo_tenant_id"
+    }
+   ],
+   "rolled_back": true
+  },
+  "after": {
+   "pin": "96643bb0-3a0a-406e-96fb-ab8a933ee6b8",
+   "ac06_triggers": 2
+  }
+ },
+ "state": {
+  "before_tests": {
+   "invoice": {
+    "status": "APPROVED",
+    "sync_status": "SYNCED",
+    "record_version": 3
+   },
+   "outbox": [
+    {
+     "status": "DONE",
+     "attempts": 1,
+     "tenant": "96643bb0-3a0a-406e-96fb-ab8a933ee6b8"
+    }
+   ],
+   "counts": {
+    "outbox_total": "7",
+    "xero_jobs_total": "1",
+    "outbox_open": "0",
+    "exceptions_total": "19",
+    "exceptions_open": "4",
+    "audit_total": "90"
+   },
+   "digest": "887bd2039fe3135ad57107725569030a54b464cee8006fe0f3f82a0ac2dad92b"
+  },
+  "after_tests": {
+   "invoice": {
+    "status": "APPROVED",
+    "sync_status": "SYNCED",
+    "record_version": 3
+   },
+   "outbox": [
+    {
+     "status": "DONE",
+     "attempts": 1,
+     "tenant": "96643bb0-3a0a-406e-96fb-ab8a933ee6b8"
+    }
+   ],
+   "counts": {
+    "outbox_total": "7",
+    "xero_jobs_total": "1",
+    "outbox_open": "0",
+    "exceptions_total": "19",
+    "exceptions_open": "4",
+    "audit_total": "90"
+   },
+   "digest": "887bd2039fe3135ad57107725569030a54b464cee8006fe0f3f82a0ac2dad92b"
+  },
+  "unchanged": true,
+  "between_deploy_and_tests": "only the observe dry-run RECON-20261004-042635-bb75: Xero link last_synced_at, dashboard reconciliation timestamps, audit event 121 reconciliation.completed"
+ },
+ "hosted_after_tests": {
+  "integrity": [
+   "24 PASS, 3 WARNING, 0 FAIL  (hosted database)"
+  ],
+  "dry_run": [
+   "RECON-20261004-042944-572f  mode=observe  status=COMPLETED",
+   "│ 0       │ 'AIRTABLE'     │ 231     │ 0           │ 0        │ 0            │ 0         │ 231    │",
+   "│ 1       │ 'GOOGLE_DRIVE' │ 3       │ 0           │ 0        │ 0            │ null      │ 3      │",
+   "│ 2       │ 'XERO'         │ 1       │ 0           │ 0        │ 0            │ null      │ 1      │"
+  ]
+ },
+ "canonical_fingerprint": {
+  "values": 173,
+  "before": "89d72adfc5a6ba3c",
+  "after_deploy": "89d72adfc5a6ba3c",
+  "after_tests": "89d72adfc5a6ba3c"
+ },
+ "offline_only": "The guard refusal, both two-connection races, queued/in-progress/ambiguous/retrying paths and the bypass defence are proven offline (test/xero-tenant-binding.test.ts); on hosted they would need an open Xero write (a new Demo invoice), which was not created."
+}

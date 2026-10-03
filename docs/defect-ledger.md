@@ -14,7 +14,7 @@ instruction).
 | AC-10 | P0 | 06 applies its own stale correction back as a staff edit | **Yes**, offline (PGlite and Postgres 17), with a harness that replays 06's real batch order, Airtable's echo transactions and the cursor | Ping-pong: after one transient read-back failure and a staff edit, every run applied RoofOps's own write, flipping canonical, and the cursor never advanced. Related: a staff member's fix of their own refused edit was refused as a conflict (below) | A correction is computed when 06 processes an item but written after later items; a landed-but-overtaken write never verifies; its echo passes compare-and-set; compare-and-set judged the staff member's `previous` against canonical, not against what Airtable showed | A value RoofOps wrote is never applied back as a staff edit; after the staff member's last edit, Airtable and canonical converge and every run advances the cursor | `test/state-integrity.test.ts:628`, `:650`, `:663`, `:685`, guard `:707`, echo-window tests `:729`, `:747`, retention `:764`; harness `Airtable06` `:62` | Migration `20261001000000_roofops_writes_are_not_staff_edits.sql` (+ one line in n8n 06, not yet deployed) | Chain from zero; 344 tests pass on PGlite and Postgres 17; red without the fix (7 of 8; the guard stays green); each of 7 parts ablated turns its own tests red; lint, typecheck clean; local integrity 0 FAIL; grants and RLS checked | Done 2026-10-01 (§10–§11): deployed alone; dry-run 0 drift, integrity 0 FAIL, security all pass. The live test on PRJ-2026-0029 reproduced the stale write for real and it converged: the fix was applied, the echo ignored, the cursor consumed, 0 drift, the hash chain intact, and the value restored. [evidence/ac10-live-verification.json](../evidence/ac10-live-verification.json). The 06 `origin` line is live and verified (§12) | **FIXED** (origin propagation live 2026-10-01, §12) |
 | AC-03 | P0 | Airtable Approve is not bound to the row or preview the approver saw | **Yes**, offline (PGlite and Postgres 17), with events shaped exactly as n8n 04 sends them | 3 failing tests: an Approve approved a Copilot re-prepared preview never shown in Airtable, another project's preview (edited Project Number cell), and a preview prepared after the click | 04's decision names no approval; `wf_invoice_decide` found the project by the editable Project Number text and decided whatever was PENDING at processing time | An Airtable decision applies only to the sending record's project and to the preview a Prepare showed on that row before the decision; other sources must name the approval; a sent hash must match | `test/invoice-approval-binding.test.ts:68`, `:98`, `:117`, `:129`, guards `:85`, `:108` | Migration `20261001010000_invoice_decision_bound_to_row_and_preview.sql` (Postgres only; n8n unchanged) | Chain from zero; 356 tests pass on PGlite and Postgres 17; red without the fix (4 of 6; both guards green); each of 5 rules ablated turns its own test red; lint, typecheck clean; local integrity 0 FAIL; grants and RLS checked | Done 2026-10-01 (§10–§11): deployed alone; dry-run 0 drift, integrity 0 FAIL, security all pass. On PRJ-2026-0005 an Approve of a Copilot preview never shown on the row was refused, with nothing approved; Prepare then showed the same preview; the state was reset and 0 drift remained. [evidence/ac03-live-verification.json](../evidence/ac03-live-verification.json) | **FIXED** (exact-preview binding live 2026-10-01, §13) |
 | AC-05 | P0 | Voiding an invoice does not cancel its queued Xero write | **Yes**, offline (PGlite and Postgres 17): approve, void, claim, complete | VOIDED + SYNCED, outbox DONE, Xero link; dashboard READY_TO_INVOICE, needs_attention false, integrity 0 FAIL | Nothing tied the outbox to the invoice status; claim and completion ignored it; the preview ignored voided finals | No Xero draft created, pending, ambiguous or linked for a VOIDED invoice; a voided final blocks the project for a person | `test/invoice-void.test.ts:65`, `:76`, `:86`, `:110` | Migration `20261001060000_voided_invoice_never_gets_a_xero_draft.sql` (Postgres only) | Chain from zero; 396 tests pass; red before (8 of 8); 5 ablations each red; lint, typecheck clean; local integrity 0 FAIL; grants checked | Done 2026-10-01 (§9–§10): deployed alone; dry-run 0 drift, integrity 0 FAIL (new check PASS), security all pass. A void of the SYNCED INV-2026-0039 on hosted was refused ("its Xero draft exists (RO-INV-2026-0039). Void or delete it in Xero first"); invoice, project, outbox, exceptions and Xero draft unchanged; 0 drift after. [evidence/ac05-live-verification.json](../evidence/ac05-live-verification.json) | **FIXED** |
-| AC-06 | P0 | Unpinning the Xero tenant is not a kill switch | – | – | – | – | – | – | – | – | Not started |
+| AC-06 | P0 | Unpinning the Xero tenant is not a kill switch | **Yes**, offline (PGlite and Postgres 17): approve under tenant A, then clear or re-point the pin, then claim and complete | With the pin empty, and with it re-pointed to B, the queued job was claimed (`claimed=true`), the proof from the old tenant was RECORDED and the invoice became SYNCED | Claim and completion trusted the tenant copied into the payload at approval and never re-read the pin; nothing stopped the pin moving while a write for it was open | A Xero write runs only against the tenant it was approved for; the pin cannot move while a write for it is unfinished; no pin change leaves a draft recorded as failed | `test/xero-tenant-binding.test.ts:97`, `:108`, `:118`, `:130`, `:146`, `:173`, `:185`, `:195`, `:216`, `:233` | Migration `20261001070000_xero_write_bound_to_its_tenant.sql` (Postgres only): pin guard, one advisory lock for pin changes and claims, claim re-check, fixed tenant, completion re-check | Chain from zero; red before (16 of 18); 14 ablations each red (lock ablations caught only by the two-connection races); AC-05 8 of 8; complete suite 424 passed, 0 failed; lint, typecheck clean; local integrity 0 FAIL; grants checked | Done 2026-10-04 (§10–§11): deployed alone; dry-run 0 drift, integrity 0 FAIL, security all pass. Rollback-only tests on INV-2026-0039: re-pointing its job refused; clearing or deleting the pin allowed only inside rolled-back transactions (its only write is DONE); nothing changed, 0 drift after. [evidence/ac06-live-verification.json](../evidence/ac06-live-verification.json) | **FIXED** |
 | AC-04 | P0 | A Xero draft that exists is recorded as never created | – | – | – | – | – | – | – | – | Not started |
 | AC-08 | P0 | Over-billed projects are labelled "Fully invoiced" (`dashboard.test.ts:34` expects this) | – | – | – | – | – | – | – | – | Not started |
 | AC-09 | P0 | Final invoice under-bills once a variation is INVOICED | – | – | – | – | – | – | – | – | Not started |
@@ -1514,3 +1514,195 @@ another date, and the dashboard needs no access to configuration rows.
 | Hosted | applied alone (26 skipped); live before/after as above; dry-run `RECON-20261004-042200-a579` 0 drift; integrity 24 PASS, 3 WARNING, 0 FAIL; security all pass; no repair run; fingerprint 173 values `89d72adf…`, unchanged |
 
 Evidence: [evidence/business-date-live-verification.json](../evidence/business-date-live-verification.json).
+
+## AC-06 evidence package
+
+### 1. Reproduction (offline, before the fix)
+
+A probe ran on PGlite and Postgres 17. It used the real `wf_*` path and synthetic Xero proof; the real Xero account
+was never touched. It pinned a fake tenant A, approved final invoices through 04's contract, then changed the pin:
+
+| Scenario | Claim | Completion with proof from A | End state |
+|---|---|---|---|
+| A. Job queued, then the pin cleared (`xero.demo_tenant_id = ''`, the documented "no writes possible" state) | `claimed=true`, payload tenant A | RECORDED | SYNCED, linked, pin empty |
+| B. Job queued, then the pin re-pointed to tenant B | `claimed=true`, payload tenant A | RECORDED | SYNCED, linked, pin B |
+| C. Job claimed under A, then the pin changed to B | (claimed before) | RECORDED | SYNCED, linked, pin B |
+
+No exception was opened in any of them. Proof from a tenant other than the payload's was already refused.
+
+### 2. Classification: a true bug
+
+The pin is the only kill switch for Xero writes (ADR-030), and it did not stop approved, queued or retrying writes.
+Re-pointing it did not move them either: 05 kept writing to the old tenant, and Postgres recorded them as done.
+
+### 3–4. First incorrect transition, and why it was possible
+
+The first incorrect transition was outbox PENDING → DISPATCHING (the claim) while the pin was empty or different from
+the job's tenant, in `wf_claim_side_effect`. It was possible because:
+- the tenant is copied into the outbox payload at approval, and the claim and the completion compared only against
+  that copy, never against the current pin;
+- 05 takes the tenant from the claimed payload (`xero-tenant-id` header), so it wrote wherever the payload said;
+- nothing stopped the pin from moving while a write for it was queued, running or ambiguous.
+
+### 5. Invariant
+
+> A Xero write is bound for good to the tenant it was approved for. The pin cannot move while a write for the pinned
+> tenant can still run or may already have run, and a write never runs while its tenant is not the pinned one. So no
+> pin change can leave a draft in Xero that RoofOps records as failed.
+
+### 6. First fix, rejected by the owner (2026-10-04), and why
+
+The first version re-checked the pin at claim and at completion, and flagged stopped writes. It left one unsafe
+sequence: a worker claims → the pin changes → the worker still POSTs to the old tenant → the completion refuses to link
+→ a draft may exist while RoofOps records a failure. That would also break AC-05's assumption that a dead-lettered
+invoice failed safely. The fix below closes it at the database boundary. It was never committed or deployed; the
+same migration file was rewritten.
+
+### 7. Fix
+
+Migration `20261001070000_xero_write_bound_to_its_tenant.sql`. It changes Postgres only; n8n is unchanged.
+1. **`app_settings_xero_pin_guard`** (`xero_pin_change_guard`, before insert, update or delete). Changing, clearing
+   or deleting the pin is refused while a Xero write bound to the pinned tenant is not finished:
+   - queued (PENDING);
+   - being written (DISPATCHING);
+   - retry scheduled (FAILED, not dead-lettered);
+   - ambiguous (invoice `sync_status = UNKNOWN`, even if dead-lettered).
+
+   The refusal names each invoice and its state. Finished means DONE, or dead-lettered with nothing created.
+   A write held for another tenant can never run, so it does not block; its own tenant can always be pinned again.
+   Blocking on it too would deadlock the configuration after race B below.
+2. **One advisory lock serializes pin changes and claims.** The guard takes it exclusive; the claim takes it shared
+   before reading the pin. A race therefore has two outcomes only:
+   - **Worker first:** the claim succeeds, the change waits, and is then refused because the write is open. The worker
+     stays bound to, and completes in, the same tenant.
+   - **Change first:** the change succeeds, and the claim waits. It then sees the missing or different pin and does
+     not claim, so there is no Xero call.
+
+   An advisory lock rather than a row lock also covers deleting and re-inserting the setting.
+3. **`wf_claim_side_effect`** (redefined in place, keeping AC-05's voided check). A write whose tenant is not pinned
+   is not claimed:
+   - it returns `TENANT_NOT_PINNED`, `TENANT_CHANGED` or `TENANT_MISSING`, with the message;
+   - it opens or updates one PERMISSION_DENIED exception on the project (needs attention).
+
+   This covers every retry and a re-queued dead letter, because 05 re-claims before each attempt.
+4. **`outbox_xero_tenant_fixed`**: a Xero job's tenant (and topic) cannot be changed after approval.
+5. **`wf_complete_side_effect`** (redefined in place), as defence in depth. A proof is linked only if the job has a
+   tenant and the pin is still that tenant. With the guard in place this is reachable only if triggers are bypassed.
+   The unchanged core still refuses proof from another tenant.
+
+The guard, the trigger functions and the helper are executable by neither app role. The claim and the completion keep
+their grants.
+
+### 8. Tests
+
+`test/xero-tenant-binding.test.ts` uses fake tenants A, B and C, and synthetic proof. It never runs 05, and no Demo
+invoice is created. Numbers follow the owner's list.
+- **`:97` 1.** A queued write blocks changing, clearing and deleting the pin. It then runs in its own tenant, and once
+  done the pin may move.
+- **`:108` 2.** A write being written blocks the pin, and its tenant cannot be edited. It completes in its own tenant.
+- **`:118` 3.** An ambiguous (UNKNOWN) write blocks the pin, while its retry is scheduled and even once its outbox row
+  is dead-lettered.
+- **`:146` 4.** A safely failed write (dead-lettered, `sync_status = FAILED`) lets the pin be cleared, deleted and set
+  to B.
+  - Re-queued while B is pinned, it is not claimed, and one exception per cause appears.
+  - Being held for another tenant, it does not block the pin.
+  - Pinning A again lets it be claimed in A, after which the pin is fixed once more.
+- **`:216` 5.** (Postgres 17, two connections) The worker claims first: the change waits for the claim, is then
+  refused, and the worker completes in the same tenant.
+- **`:233` 6.** (Postgres 17, two connections) The pin changes first: a write approved meanwhile, bound to A, is
+  claimed only after the change commits. The claim then answers `TENANT_CHANGED` with no attempt counted, and one
+  exception appears. Pinning A again lets it run there.
+- **`:173` 7.** A retry cannot run under another tenant: the pin cannot move while the retry is scheduled, and the
+  retry runs in the same tenant.
+- **`:185` 8.** While 05 writes, clearing, re-pointing and deleting the pin are all refused. The draft is recorded
+  (SYNCED, linked), and `sync_status` was never FAILED.
+- **`:130`** (guard) Proof from a tenant other than the job's is refused, and so is proof with no tenant. This was
+  already enforced.
+- **`:195`** (defence in depth) With triggers bypassed (`session_replication_role = replica`), the completion still
+  refuses to link a draft read back after the pin moved or was cleared.
+
+### 9. Verification (offline)
+
+| Check | Result |
+|---|---|
+| Red, before the fix | 16 failed; 2 passed (the guard, both engines); 2 skipped (the races, on PGlite) |
+| Ablation A: the claim does not check the pin | 4 (both engines), 5, 6 red |
+| Ablation B: the claim takes no pin lock | 5, 6 red (two-connection races only) |
+| Ablation H: a pin change takes no pin lock | 5, 6 red (two-connection races only) |
+| Ablation G1: the guard ignores PENDING | 1 red |
+| Ablation G2: the guard ignores DISPATCHING | 2, 4, 8 (both engines), 5, 6 red |
+| Ablation G3: the guard ignores UNKNOWN | 3 red |
+| Ablation G4: the guard ignores a scheduled retry | 7 red |
+| Ablation G5: the guard also counts safe dead letters | 4 red |
+| Ablation G6: the guard counts writes held for other tenants | 4, 6 red (then knock-on 7, 8, defence) |
+| Ablation G7: the guard ignores DELETE | 1, 2, 3, 7, 8 red |
+| Ablation C: the completion does not check the pin | defence red |
+| Ablation E: the job's tenant can be edited | 2 red |
+| Ablation F: a refused claim opens no exception | 4, 6 red |
+| AC-05 re-run (`test/invoice-void.test.ts`) | 8 of 8, PGlite + Postgres 17 |
+| Full suite, PGlite + Postgres 17.11 | 412 passed, 2 failed at the time (`test/copilot-tools.test.ts:35`, the business-date defect below); **424 passed, 0 failed** after its fix (§10) |
+| Lint, typecheck | exit 0 |
+| Fresh PostgreSQL 17 chain | 27 applied, 0 on re-run; both triggers present; integrity 23 PASS, 4 WARNING, 0 FAIL |
+| Privileges (fresh chain, `security:check` queries) | See below |
+| Local dev DB | The first version's objects removed (local only); the new version applied alone; integrity 23 PASS, 4 WARNING (local only), 0 FAIL |
+| Migration parity (read-only) | Repo, local and hosted aligned through AC-05 (26 versions); `20261001070000` unused anywhere else; checksum `e84e1dc4` |
+| Hosted Xero writes today (read-only) | One: INV-2026-0039, DONE, bound to the pinned tenant. The guard does not block, and the deploy changes nothing that runs now |
+
+Privileges on the fresh chain:
+- The claim, completion and fail entry points are executable by the workflow role only.
+- The cores, the guard, the helper, the trigger functions and `wf_open_sync_exception` are executable by neither role.
+- The workflow role runs 20 functions, all `wf_*`, the same count as on hosted.
+- No function is executable by PUBLIC, and every table has RLS.
+- The dashboard role reads no table and runs the same 5 functions.
+
+**The `copilot-tools` failure was a separate defect, not AC-06.** The dashboard role silently used the real date. It failed identically without the AC-06 migration, and it was fixed, deployed and committed separately first (`10bb994`, "Reliability fix" section above).
+
+**Limits (not changed here):**
+- **Changing the pin needs every write for the pinned tenant finished first.** An ambiguous one must be reconciled,
+  and a stuck one (claimed by a worker that died) must be failed. This is intended: the pin is no longer an instant
+  kill switch for writes already queued.
+- **A write approved while a pin change is in progress is bound to the tenant it read** (race B). It is held, with an
+  exception, until that tenant is pinned again or a person decides.
+- **05's note to Airtable for a held claim is generic:** "Held by another worker or waiting for its retry window
+  (TENANT_CHANGED)". The exception is exact.
+- **Held-write exceptions are not closed automatically;** close them with `npm run exception:resolve`.
+- **A re-queued dead-lettered Xero write cannot be completed.** The invoice_sync state machine refuses
+  FAILED → SYNCED. This is pre-existing (the re-queue script was written for Drive), outside AC-06; see test 4.
+
+### 10. Pre-deploy gate (owner-required, 2026-10-04, after the business-date fix `10bb994`)
+
+| Check | Result |
+|---|---|
+| AC-06 tests | 18 of 18 (2 race tests skipped on PGlite, run on Postgres 17) |
+| AC-05 tests | 8 of 8, PGlite + Postgres 17 |
+| Complete suite, PGlite + Postgres 17 | **424 passed**, 35 skipped (hosted-only and the PGlite race skips), **0 failed** |
+| Lint, typecheck | exit 0 |
+| Hosted, before deploy | parity aligned through `20261001065000`; integrity 24 PASS, 3 WARNING, 0 FAIL; security all pass |
+
+### 11. Hosted deploy and rollback-only live tests (2026-10-04)
+
+- **Applied alone:** `migrations applied: 20261001070000_xero_write_bound_to_its_tenant.sql (skipped 27)`, with no data
+  import. Hosted checksum matches the repo (`e84e1dc4`).
+- **Checks after deploy, with no repair run:**
+  - dry-run `RECON-20261004-042635-bb75`: Airtable 231 / 0 drift, Drive 3/3, Xero 1/1;
+  - integrity 24 PASS, 3 WARNING, 0 FAIL;
+  - security all pass (the workflow role still runs 20 `wf_*` functions).
+- **Live tests.** Each ran in its own transaction, always rolled back. There was no Xero call and no new invoice.
+
+| Step | Outcome |
+|---|---|
+| Re-point INV-2026-0039's job to another tenant | **Refused** (23514): "The Xero tenant of xero:invoice:f4e519c4-… is fixed when it is approved (96643bb0…): it cannot be changed to 00000000-…" |
+| Clear the pin (its only write is DONE) | Allowed inside the transaction, as designed; that job's claim still answers DONE (not claimed); no exception opened; rolled back |
+| Delete the pin (its only write is DONE) | Allowed inside the transaction; rolled back |
+
+- **After:**
+  - The pin is still `96643bb0-…` and both triggers are present.
+  - A snapshot of INV-2026-0039 (invoice, project, outbox, links) and the counts has the same digest before and after the
+    tests (`887bd203…`): 7 outbox rows, 1 Xero job, 19 exceptions with 4 open, and 90 audit events.
+  - Between deploy and test, only the observe dry-run touched this data (reconciliation timestamps and its audit event).
+- **After the tests:** integrity 24 PASS, 3 WARNING, 0 FAIL. Dry-run `RECON-20261004-042944-572f`: 0 drift in
+  Airtable, Drive and Xero. Canonical fingerprint 173 values `89d72adf…`, unchanged throughout.
+
+The guard's refusal, both races and the queued, in-progress, ambiguous and retrying paths stay offline-tested: on
+hosted they would need an open Xero write, which means a new Demo invoice. Evidence:
+[evidence/ac06-live-verification.json](../evidence/ac06-live-verification.json).

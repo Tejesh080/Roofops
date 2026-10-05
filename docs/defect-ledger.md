@@ -17,9 +17,10 @@ instruction).
 | AC-06 | P0 | Unpinning the Xero tenant is not a kill switch | **Yes**, offline (PGlite and Postgres 17): approve under tenant A, then clear or re-point the pin, then claim and complete | With the pin empty, and with it re-pointed to B, the queued job was claimed (`claimed=true`), the proof from the old tenant was RECORDED and the invoice became SYNCED | Claim and completion trusted the tenant copied into the payload at approval and never re-read the pin; nothing stopped the pin moving while a write for it was open | A Xero write runs only against the tenant it was approved for; the pin cannot move while a write for it is unfinished; no pin change leaves a draft recorded as failed | `test/xero-tenant-binding.test.ts:97`, `:108`, `:118`, `:130`, `:146`, `:173`, `:185`, `:195`, `:216`, `:233` | Migration `20261001070000_xero_write_bound_to_its_tenant.sql` (Postgres only): pin guard, one advisory lock for pin changes and claims, claim re-check, fixed tenant, completion re-check | Chain from zero; red before (16 of 18); 14 ablations each red (lock ablations caught only by the two-connection races); AC-05 8 of 8; complete suite 424 passed, 0 failed; lint, typecheck clean; local integrity 0 FAIL; grants checked | Done 2026-10-04 (§10–§11): deployed alone; dry-run 0 drift, integrity 0 FAIL, security all pass. Rollback-only tests on INV-2026-0039: re-pointing its job refused; clearing or deleting the pin allowed only inside rolled-back transactions (its only write is DONE); nothing changed, 0 drift after. [evidence/ac06-live-verification.json](../evidence/ac06-live-verification.json) | **FIXED** |
 | AC-04 | P0 | A Xero draft that exists is recorded as never created | **Yes**, offline (PGlite and Postgres 17), fake Xero answers: lost create answer, then 429s, then the dead letter; failures after the create; no reconciliation of uncertain writes | UNKNOWN downgraded to PENDING by a 429, then FAILED at the dead letter; post-create failures FAILED; nothing looked; AC-05 then allowed the void | `wf_fail_side_effect` judged by error class only and every dead letter became FAILED; reconciliation read only linked invoices | A timeout or transport failure after a create is never proof of absence: UNKNOWN until a read of Xero proves presence (link) or absence (then retry or fail safely); nothing guessed | `test/xero-ambiguous-create.test.ts` (cases 1–11, 2b), `test/reconcile-07-uncertain-xero.test.ts` (real 07 orchestration) | Migration `20261001080000_ambiguous_xero_create_stays_unknown.sql` + n8n 07: two read-only lookups (number, reference) per uncertain write in its bound tenant, settled by `wf_reconcile_xero_uncertain` | Chain from zero; red before (20/24 contract, 22/22 orchestration); every ablation red; AC-05 8/8, AC-06 18/18; full suite 470 passed, 0 failed; lint, typecheck clean; local integrity 0 FAIL; grants checked | Done 2026-10-04 (§9): the live lookup probe found RO-INV-2026-0039 once by number and once by reference in the pinned tenant (and exposed the SentToContact omission, fixed first); deployed alone + 07 published; dry-run 0 drift with the new path run (0 targets); INV-2026-0039 untouched; integrity 0 FAIL, security pass. [evidence/ac04-live-verification.json](../evidence/ac04-live-verification.json) | **FIXED** |
 | AC-08 | P0 | Over-billed projects are labelled "Fully invoiced", with no flag, and can be closed | **Yes**, offline (PGlite and Postgres 17) and read-only on hosted: PRJ-2026-0006 and PRJ-2026-0008 billed above quote | FULLY_INVOICED, no blocker, needs_attention false (0006); Prepare says "nothing left to invoice"; once paid, CLOSED accepted | The preview lumped amount <= 0 together; the dashboard and the close guard treated that as fully invoiced | Billed <= quote + approved/invoiced variations at every stage; otherwise OVER_BILLED, needs attention, named excess, CLOSED refused until corrected | `test/over-billing.test.ts`; `test/dashboard.test.ts:34` corrected (it enshrined the defect) | Migration `20261001090000_over_billed_project_is_never_fully_invoiced.sql` (one rule `project_over_billing`; preview, close guard, dashboard view) + web label and Copilot refusal | Chain from zero (30); red before (12/16); 6 ablations each red; full suite 490 passed, 0 failed; lint, typecheck clean; local integrity 0 FAIL; grants checked | Done 2026-10-04 (§9–§10): tax basis proven (all GST-inclusive; new test, red on an ex-GST comparison); deployed alone; dry-run 0 drift, integrity 0 FAIL, security pass. Live via the web login and Copilot: PRJ-2026-0006 and PRJ-2026-0008 OVER_BILLED (over by 5,148.12 / 9,947.94), need attention, Prepare and Copilot refuse with the reason, rolled-back CLOSED refused; nothing persisted; duplicates left for a person; INV-2026-0039 untouched. [evidence/ac08-live-verification.json](../evidence/ac08-live-verification.json) | **FIXED** |
-| AC-09 | P0 | Final invoice under-bills once a variation is INVOICED | – | – | – | – | – | – | – | – | Not started |
+| AC-09 | P0 | The final invoice under-bills once a variation is marked INVOICED | **Yes**, offline (PGlite and Postgres 17): PRJ-2026-0004 with a 1,100.00 variation billed then marked INVOICED | Final 14,664.49 -> 13,564.49, exactly the variation short; AC-08 used a different entitlement (APPROVED + INVOICED). No real project affected (no variations local or hosted) | The preview added only APPROVED variations but subtracted every billed invoice incl. the variation's own VARIATION invoice | remaining_billable = (quote + APPROVED/INVOICED variations) - valid billed (APPROVED, ISSUED, PARTIALLY_PAID, PAID), GST-inclusive; final + prior valid invoices = entitlement exactly | `test/billing-entitlement.test.ts` (independent cents oracle; cases 1-13) | Migration `20261001100000_one_canonical_billing_entitlement.sql`: one `project_billing` used by the preview (so dashboard, close guard, Copilot, Prepare/decide), AC-08 over-billing, and a new integrity check | Chain from zero (31); red before (10/24); 9 ablations each red; AC-08/05/04 126/126; full suite 514 passed, 0 failed; lint, typecheck clean; local integrity 0 FAIL; grants checked | Done 2026-10-06 (§7): deployed alone; dry-run 0 drift, integrity 25 PASS / 0 FAIL (new check PASS), security pass. Ready amounts (PRJ-2026-0002 15,155.98, PRJ-2026-0005 17,831.91), OVER_BILLED excesses (5,148.12 / 9,947.94) and the billing view of all 33 projects unchanged; preview, dashboard and Copilot agree via the web login. Rolled-back catalogue case on both ready projects: the final stays whole when the variation moves APPROVED → INVOICED (the old formula: 1,100.00 short); nothing persisted, no Xero invoice; INV-2026-0039 untouched. [evidence/ac09-live-verification.json](../evidence/ac09-live-verification.json) | **FIXED** |
 | AC-13A | P1 | Completion checklist has no editing surface, so new jobs can never be final-invoiced | – | – | – | – | – | – | – | – | Not started |
 | AC-13B | P1 | Pre-start checklist (SWMS, material review) is not enforced on Scheduled → In Progress | – | – | – | – | – | – | – | – | Not started |
+| FIN-GST-01 | P2 | A multi-line final invoice (one with variation lines) can differ from Xero by one cent of GST | Not yet (found while fixing AC-09; tracked separately, not part of AC-09) | – | RoofOps rounds the final's GST once on the total; Xero may round per line | The GST RoofOps records equals the GST on the Xero draft | – | – | – | – | Not started (today a mismatch is refused at read-back and left UNKNOWN with an exception, AC-04; single-line finals, like the only real one, are unaffected) |
 | ENV-01 | P2 | The local dev DB had an unversioned migration, `20260929001700_drift_performance.sql`, that is not in git | Yes | `schema_migrations` row (applied 2026-09-29 12:52 AEST) and schema diff (§10) | Applied locally, never committed | Every applied migration exists in `supabase/migrations` | – | Local DB reset to repo migrations (`npm run db:reset`); its 6 object definitions saved as evidence | Repo = local = 18; hosted = 17 + AC-01 = 18; hosted never had it | No | **Resolved** (whether to re-propose the performance change is the owner's call) |
 
 ---
@@ -2034,3 +2035,152 @@ The new tests were red before and green after, and both lists were re-verified l
 Full suite **490 passed**, 0 failed; lint and typecheck clean.
 
 Evidence: [evidence/ac08-live-verification.json](../evidence/ac08-live-verification.json).
+
+## AC-09 evidence package
+
+### 1. How RoofOps calculated billing, before the fix
+
+| Quantity | Where | Rule |
+|---|---|---|
+| Quote entitlement | `invoice_final_preview` | `quote_versions.total_inc_gst` of the accepted version (GST-inclusive quotes only) |
+| Approved variations | `invoice_final_preview` | `variations.amount_inc_gst` with status **APPROVED only** |
+| Invoiced variations | `invoice_final_preview` | **not counted** (status INVOICED is set by hand or the import; nothing sets it automatically) |
+| Entitlement for over-billing | `project_over_billing` (AC-08) | quote + variations **APPROVED or INVOICED**: a second, different formula |
+| Already billed | both | invoices APPROVED, ISSUED, PARTIALLY_PAID, PAID at `total_inc_gst`, VARIATION invoices included; VOIDED excluded; DRAFT/PENDING_APPROVAL block Prepare |
+| Progress invoices | both | part of "already billed" |
+| Final amount | `invoice_final_preview` | `quote + APPROVED variations − billed`; line 1 = `quote − billed`, plus one line per APPROVED variation |
+| GST / rounding | preview, `gst_split` | invoice totals derive from their lines (`gst_split`: inclusive GST = round(total/11, 2), exclusive GST = round(subtotal × 10%, 2)); the final's GST = round(amount × 0.1/1.1, 2) |
+
+Consumers of the preview: Prepare and `wf_invoice_decide` (staleness re-check), the dashboard's readiness and amount,
+the close guard, two integrity checks, and the Copilot (via the dashboard).
+
+**The arithmetic defect.** A variation billed on its own VARIATION invoice is subtracted (its invoice is in "billed")
+but no longer added once its status is INVOICED. The final invoice is short by exactly that variation. Reproduced on
+PRJ-2026-0004 with a $1,100.00 variation:
+- with the variation APPROVED and billed: 14,664.49;
+- after marking it INVOICED: **13,564.49**.
+
+**Affected real projects: none.** Local and hosted data have no variations at all. Hosted's only FINAL invoice
+(INV-2026-0039, PRJ-2026-0004) brings billing to exactly the quote (20,949.27). The defect was latent.
+
+### 2. Canonical formula
+
+`project_billing(project)` is the one calculation:
+- `total_entitlement = accepted quote total (inc GST) + variations APPROVED or INVOICED`; PROPOSED and REJECTED never
+  count (there is no CANCELLED status);
+- `valid_billed = invoices APPROVED, ISSUED, PARTIALLY_PAID or PAID at total_inc_gst`; VOIDED never counts; DRAFT and
+  PENDING_APPROVAL block the final invoice;
+- `remaining_billable = total_entitlement − valid_billed`: > 0 ready, = 0 fully invoiced, < 0 over-billed (AC-08).
+
+All terms are GST-inclusive cents, so the remaining amount involves no rounding. The final's GST is round(amount/11, 2),
+and line 1 (`remaining − not-yet-invoiced approved variations`) plus the variation lines add up to the amount exactly.
+
+### 3. Fix
+
+Migration `20261001100000_one_canonical_billing_entitlement.sql`:
+- **`project_billing`** (SECURITY DEFINER, read-only; neither app role executes it directly).
+- **`invoice_final_preview`** is redefined in place from AC-08's definition.
+  - Amount, billed list, variations (APPROVED + INVOICED) and lines come from `project_billing`.
+  - The "variations" figure that 04 and the Copilot show in "quote + variations − already invoiced" now makes that
+    sum equal the amount.
+  - Line 1's description adds "plus variations already invoiced …" only when there are any.
+  - The dashboard, close guard, Copilot, Prepare/decide and integrity read it unchanged.
+- **`project_over_billing`** (AC-08) reads `project_billing`; its message and contract are unchanged.
+- **`integrity_check`** (AC-05 wrapper, redefined in place) adds `final_invoice_settles_entitlement`: once a final
+  invoice exists, `remaining` must be 0. Anything left over (for example a variation approved later) is a WARNING.
+
+### 4. Tests
+
+`test/billing-entitlement.test.ts` checks against an **independent oracle**: integer cents, Postgres half-away-from-zero
+rounding, and `gst_split` modelled in the test, never calling RoofOps. Each case checks the preview's amount, GST, billed
+total, line sum and the dashboard amount.
+
+| # | Case |
+|---|---|
+| 1 | no variations |
+| 2 | one approved, not yet invoiced variation, with its own line |
+| 3 | an already-invoiced variation (VARIATION invoice billed, status INVOICED) |
+| 4 + 9 | mixed states: APPROVED and INVOICED count; PROPOSED and REJECTED do not |
+| 5 + 13 | progress invoices + a variation + the final invoice through Prepare and approval: final + all prior valid invoices = entitlement exactly; GST per the oracle; then a later variation shows in integrity as WARNING |
+| 6 | exactly fully invoiced: FULLY_INVOICED, not over-billed |
+| 7 | over-billing stays AC-08's, by exactly the excess |
+| 8 | a voided invoice is never billed |
+| 10 | GST-inclusive and GST-exclusive invoices: 1,000.05 ex is 1,100.06 inc |
+| 11 | one-cent boundaries (0.01 left is ready with GST 0.00; 0 is fully invoiced; 0.01 over is over-billed by 0.01) and half-cent GST rounding |
+| 12 | repeated Prepare is idempotent: same approval, same amount, one pending approval |
+| — | one rule everywhere: preview, `project_billing` and AC-08 agree |
+
+### 5. Verification (offline)
+
+| Check | Result |
+|---|---|
+| Red, before the fix | 10 of 24 failed (cases 3, 4+9, 5+13, 12, and the one-rule test, on both engines), each short by exactly the INVOICED variation |
+| Ablation A: INVOICED not entitlement | 3, 4+9, 5+13, 6, 12, one rule, AC-08's exact-billing test red |
+| Ablation B: PROPOSED counts | 4+9 red |
+| Ablation C: REJECTED counts | 4+9 red |
+| Ablation D: VOIDED billed | 8 and AC-08 tests red |
+| Ablation E: billed ex GST | 18 tests red |
+| Ablation F: line 1 ignores variation lines | 2, 4+9, 5+13 red |
+| Ablation G: the old final formula | 3, 4+9, 5+13, 12 red |
+| Ablation H: over-billing on its own (old) entitlement | 5+13, 6, AC-08's exact-billing test red |
+| Ablation I: no settlement check | 5+13 red |
+| AC-08, AC-05, AC-04 (+ 07 orchestration), invoice flow, approval binding | 126/126 |
+| Full suite, PGlite + Postgres 17 | **514 passed**, 35 skipped, 0 failed; lint and typecheck clean |
+| Fresh PostgreSQL 17 chain | 31 applied, 0 on re-run; ready amounts unchanged (PRJ-2026-0004 14,664.49 also as the dashboard role); OVER_BILLED still exactly 0006/0008; new check PASS; integrity 0 FAIL |
+| Grants | `project_billing`: neither app role (reached only through the definer functions); dashboard functions unchanged; workflow role 21 `wf_*`; nothing executable by PUBLIC; RLS everywhere |
+| Local dev DB | applied alone; integrity 24 PASS, 4 WARNING, 0 FAIL (new check PASS) |
+| Migration parity (read-only) | aligned through AC-08; `20261001100000` unused anywhere else |
+
+**Not changed (noted):**
+- The final's GST is rounded once on the total, as before. Xero may round per line on a multi-line draft (one with
+  variation lines) and differ by a cent. That would be refused at read-back and left UNKNOWN with an exception
+  (AC-04), never mis-recorded. Single-line finals, like the only real one so far, are unaffected.
+
+### 6. Proposed hosted verification (approved by the owner 2026-10-06)
+
+1. **Deploy** the migration alone, then run the dry-run, integrity and security checks, with no repair run.
+2. **Read-only, through the web login:**
+   - the ready-to-invoice amounts and statuses are unchanged (hosted has no variations, so the canonical formula equals
+     the old one everywhere);
+   - PRJ-2026-0006/0008 are still OVER_BILLED with the same excess;
+   - `final_invoice_settles_entitlement` PASSes (PRJ-2026-0004 is settled).
+3. **In an always-rolled-back transaction** on a ready project, run the catalogue case: add a $1,100.00 variation and
+   its VARIATION invoice, mark it INVOICED, and read the preview. Expected: the amount is unchanged (not $1,100.00
+   short), and the lines add up to it.
+4. **Confirm** INV-2026-0039 is untouched and the fingerprint is unchanged.
+
+### 7. Hosted verification (2026-10-06)
+
+Evidence: [evidence/ac09-live-verification.json](../evidence/ac09-live-verification.json). No repair run; no Xero invoice created.
+
+| Check | Result |
+|---|---|
+| Deploy | `20261001100000_one_canonical_billing_entitlement.sql` alone (30 skipped); dataset already imported, nothing else changed |
+| Reconciliation dry-run (after deploy, after live checks) | observe, COMPLETED; Airtable 231, Google Drive 3, Xero 1 all in sync, 0 drift |
+| Integrity | before 24 PASS, 3 WARNING, 0 FAIL; after 25 PASS, 3 WARNING, 0 FAIL (the same three warnings); `final_invoice_settles_entitlement` PASS |
+| Security / grants | all privilege checks pass; dashboard functions unchanged; workflow role 21; nothing executable by PUBLIC; `project_billing` refused to the web login (permission denied) |
+| Ready-to-invoice amounts | unchanged: PRJ-2026-0002 15,155.98, PRJ-2026-0005 17,831.91 |
+| Over-billed | unchanged: PRJ-2026-0006 over by 5,148.12, PRJ-2026-0008 over by 9,947.94; Copilot's attention list names both with the same excess |
+| Billing view of all 33 projects (preview + dashboard status, amount, blocker, needs-attention) | digest identical before, after deploy and after the live checks |
+| Web login (`roofops_web`, read-only) | preview, dashboard and Copilot `get_project` agree on every project (0 disagreements); every ready preview's lines add up to its amount |
+| PRJ-2026-0004 | project row and its billing unchanged (XERO_DRAFT_CREATED, 14,664.49; remaining 0, so the new check passes) |
+| INV-2026-0039 | invoice row, lines and outbox identical; only the Xero link's `last_synced_at` moved (set by the observe dry-runs, as in AC-08) |
+| Fingerprint | 173 date values: same sha256 throughout; counts unchanged except the two dry-runs (+2 reconciliation runs, +2 audit events); audit sequence skipped 129–130, ids taken by the rolled-back rows |
+
+**Rolled-back catalogue case** (owner connection, one transaction per ready project, always ROLLBACK):
+
+| Step | PRJ-2026-0005 final | PRJ-2026-0002 final | Old formula would give |
+|---|---|---|---|
+| As is | 17,831.91 | 15,155.98 | same |
+| + variation 1,100.00 APPROVED | 18,931.91 (2 lines) | 16,255.98 (2 lines) | same |
+| + its VARIATION invoice 1,100.00 PAID | 17,831.91 | 15,155.98 | same |
+| Variation marked INVOICED | **17,831.91** (1 line) | **15,155.98** (1 line) | 16,731.91 / 14,055.98 (**1,100.00 short**) |
+
+- At every step `total_entitlement − valid_billed = remaining_billable` (for example 45,679.78 − 27,847.87 = 17,831.91),
+  and the preview's lines add up to its amount.
+- In the same transaction, the dashboard, Copilot `get_project` and Copilot `prepare_invoice` agree (17,831.91, GST
+  1,621.08; basis "quote 44579.78 + variations 1100 - already invoiced 27847.87").
+- Integrity in the transaction: PASS.
+- After the rollback nothing is left: 0 variations, 0 test invoices, 0 events, approvals or outbox rows from the run.
+
+**Follow-up, tracked separately:** FIN-GST-01 (per-line GST rounding in Xero on multi-line finals). Not part of AC-09.

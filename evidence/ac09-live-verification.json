@@ -1,0 +1,594 @@
+{
+ "defect": "AC-09: the final invoice under-billed once a billed variation was marked INVOICED",
+ "migration": {
+  "file": "supabase/migrations/20261001100000_one_canonical_billing_entitlement.sql",
+  "checksum_prefix": "00194dbf",
+  "applied_to_hosted_alone": true,
+  "deploy_output": [
+   "migrations applied: 20261001100000_one_canonical_billing_entitlement.sql (skipped 30)",
+   "dataset 0dd5b61419f7… already imported (batch 243ef8f4-08fb-41d5-98c3-ab62f13560c6); nothing to do"
+  ]
+ },
+ "canonical_rule": {
+  "total_entitlement": "accepted quote total (inc GST) + variations APPROVED or INVOICED; PROPOSED and REJECTED never count",
+  "valid_billed": "invoices APPROVED, ISSUED, PARTIALLY_PAID or PAID at total_inc_gst; VOIDED never counts; DRAFT/PENDING_APPROVAL block the final",
+  "remaining_billable": "total_entitlement - valid_billed (> 0 ready, = 0 fully invoiced, < 0 over-billed)",
+  "one_function": "project_billing(project), read by invoice_final_preview (Prepare, approval re-check, dashboard, close guard, Copilot), project_over_billing (AC-08) and integrity_check"
+ },
+ "hosted_checks": {
+  "before": {
+   "integrity": [
+    "24 PASS, 3 WARNING, 0 FAIL  (hosted database)"
+   ],
+   "security": [
+    "all privilege checks pass"
+   ]
+  },
+  "after_deploy": {
+   "dry_run": [
+    "RECON-20261006-032624-b91c  mode=observe  status=COMPLETED",
+    "│ 0       │ 'AIRTABLE'     │ 231     │ 0           │ 0        │ 0            │ 0         │ 231    │",
+    "│ 1       │ 'GOOGLE_DRIVE' │ 3       │ 0           │ 0        │ 0            │ null      │ 3      │",
+    "│ 2       │ 'XERO'         │ 1       │ 0           │ 0        │ 0            │ null      │ 1      │"
+   ],
+   "integrity": [
+    "  PASS    final_invoice_settles_entitlement  After the final invoice, quote + approved/invoiced variations - everything billed = 0 (left over means under-billed; a variation approved later needs its own invoice)",
+    "25 PASS, 3 WARNING, 0 FAIL  (hosted database)"
+   ],
+   "security": [
+    "PASS  dashboard role: readable tables                []",
+    "PASS  dashboard role: SECURITY DEFINER functions     [\"app_today\",\"at_link\",\"integrity_check\",\"invoice_final_preview\",\"project_over_billing\",\"sm_label\",\"wf_invoice_prepare\"]",
+    "PASS  dashboard role: can it write via wf_* (other than prepare)? []",
+    "PASS  workflow role: executable functions            21 items",
+    "PASS  anon/authenticated: readable or writable objects []",
+    "PASS  functions executable by PUBLIC                 []",
+    "PASS  tables without row level security              []",
+    "PASS  Xero writes pinned to the proven Demo tenant   [\"96643bb0-3a0a-406e-96fb-ab8a933ee6b8\"]",
+    "PASS  reconcile trigger token stored only as a hash  [\"64\"]",
+    "all privilege checks pass"
+   ]
+  },
+  "after_live_checks": {
+   "dry_run": [
+    "RECON-20261006-032915-d669  mode=observe  status=COMPLETED",
+    "│ 0       │ 'AIRTABLE'     │ 231     │ 0           │ 0        │ 0            │ 0         │ 231    │",
+    "│ 1       │ 'GOOGLE_DRIVE' │ 3       │ 0           │ 0        │ 0            │ null      │ 3      │",
+    "│ 2       │ 'XERO'         │ 1       │ 0           │ 0        │ 0            │ null      │ 1      │"
+   ],
+   "integrity": [
+    "  PASS    final_invoice_settles_entitlement  After the final invoice, quote + approved/invoiced variations - everything billed = 0 (left over means under-billed; a variation approved later needs its own invoice)",
+    "25 PASS, 3 WARNING, 0 FAIL  (hosted database)"
+   ],
+   "security": [
+    "all privilege checks pass"
+   ]
+  },
+  "repair_run": "none"
+ },
+ "ready_to_invoice_unchanged": {
+  "before": [
+   {
+    "project": "PRJ-2026-0002",
+    "amount": 15155.98
+   },
+   {
+    "project": "PRJ-2026-0005",
+    "amount": 17831.91
+   }
+  ],
+  "after_deploy": [
+   {
+    "project": "PRJ-2026-0002",
+    "amount": 15155.98
+   },
+   {
+    "project": "PRJ-2026-0005",
+    "amount": 17831.91
+   }
+  ],
+  "after_live": [
+   {
+    "project": "PRJ-2026-0002",
+    "amount": 15155.98
+   },
+   {
+    "project": "PRJ-2026-0005",
+    "amount": 17831.91
+   }
+  ],
+  "identical": true
+ },
+ "over_billed_unchanged": {
+  "before": [
+   {
+    "project": "PRJ-2026-0006",
+    "excess": null
+   },
+   {
+    "project": "PRJ-2026-0008",
+    "excess": null
+   }
+  ],
+  "after": [
+   {
+    "project": "PRJ-2026-0006",
+    "excess": null
+   },
+   {
+    "project": "PRJ-2026-0008",
+    "excess": null
+   }
+  ],
+  "identical": true
+ },
+ "billing_view_unchanged": {
+  "note": "invoice_final_preview + dashboard invoice status/amount/blocker/needs_attention for all 33 projects",
+  "before": {
+   "billing_view_all_33_projects": "3d3b72ccbb9b0feba7253e116ae0c70c069cd1257a090eb8fde197d3e103162c",
+   "prj_0004": "72d08be91c7ee5bc31bf1829c0dc7fd23b92050f52ae631dd87417a6c5346b18",
+   "all_invoices": "93fad44032af36c4f2a6cdebdaebacb4a70a8d96a7df17051c1bdf9d02d9793a"
+  },
+  "after_deploy": {
+   "billing_view_all_33_projects": "3d3b72ccbb9b0feba7253e116ae0c70c069cd1257a090eb8fde197d3e103162c",
+   "prj_0004": "72d08be91c7ee5bc31bf1829c0dc7fd23b92050f52ae631dd87417a6c5346b18",
+   "all_invoices": "93fad44032af36c4f2a6cdebdaebacb4a70a8d96a7df17051c1bdf9d02d9793a"
+  },
+  "after_live": {
+   "billing_view_all_33_projects": "3d3b72ccbb9b0feba7253e116ae0c70c069cd1257a090eb8fde197d3e103162c",
+   "prj_0004": "72d08be91c7ee5bc31bf1829c0dc7fd23b92050f52ae631dd87417a6c5346b18",
+   "all_invoices": "93fad44032af36c4f2a6cdebdaebacb4a70a8d96a7df17051c1bdf9d02d9793a"
+  },
+  "final": {
+   "billing_view_all_33_projects": "3d3b72ccbb9b0feba7253e116ae0c70c069cd1257a090eb8fde197d3e103162c",
+   "prj_0004": "72d08be91c7ee5bc31bf1829c0dc7fd23b92050f52ae631dd87417a6c5346b18",
+   "all_invoices": "93fad44032af36c4f2a6cdebdaebacb4a70a8d96a7df17051c1bdf9d02d9793a"
+  },
+  "identical": true
+ },
+ "web_login_read_only": {
+  "role": "roofops_web",
+  "projects_checked": 33,
+  "preview_dashboard_copilot_disagreements": [],
+  "ready_and_flagged": [
+   {
+    "project": "PRJ-2026-0002",
+    "dashboard": "READY_TO_INVOICE",
+    "amount": "15155.98",
+    "preview_ok": true,
+    "preview_amount": 15155.98,
+    "copilot_status": "Ready to invoice",
+    "copilot_amount": 15155.98,
+    "over_by": null
+   },
+   {
+    "project": "PRJ-2026-0004",
+    "dashboard": "XERO_DRAFT_CREATED",
+    "amount": "14664.49",
+    "preview_ok": false,
+    "preview_amount": null,
+    "copilot_status": "Draft invoice in Xero",
+    "copilot_amount": 14664.49,
+    "over_by": null
+   },
+   {
+    "project": "PRJ-2026-0005",
+    "dashboard": "READY_TO_INVOICE",
+    "amount": "17831.91",
+    "preview_ok": true,
+    "preview_amount": 17831.91,
+    "copilot_status": "Ready to invoice",
+    "copilot_amount": 17831.91,
+    "over_by": null
+   },
+   {
+    "project": "PRJ-2026-0006",
+    "dashboard": "OVER_BILLED",
+    "amount": null,
+    "preview_ok": false,
+    "preview_amount": null,
+    "copilot_status": "Over-billed: needs attention",
+    "copilot_amount": null,
+    "over_by": 5148.12
+   },
+   {
+    "project": "PRJ-2026-0008",
+    "dashboard": "OVER_BILLED",
+    "amount": null,
+    "preview_ok": false,
+    "preview_amount": null,
+    "copilot_status": "Over-billed: needs attention",
+    "copilot_amount": null,
+    "over_by": 9947.94
+   }
+  ],
+  "copilot_what_needs_attention_over_billed": [
+   {
+    "project": "PRJ-2026-0006",
+    "over_by_inc_gst": 5148.12
+   },
+   {
+    "project": "PRJ-2026-0008",
+    "over_by_inc_gst": 9947.94
+   }
+  ],
+  "integrity_final_invoice_settles_entitlement": [
+   {
+    "check_key": "final_invoice_settles_entitlement",
+    "status": "PASS",
+    "failing": 0,
+    "refs": null
+   }
+  ],
+  "project_billing_direct_call": "refused: permission denied for function project_billing"
+ },
+ "rolled_back_catalogue_case": {
+  "note": "owner connection, one transaction per project, always ROLLBACK; a 1,100.00 variation APPROVED, billed on a VARIATION invoice (PAID), then marked INVOICED; no Xero call",
+  "at": "2026-10-05T17:28:49.111Z",
+  "projects": {
+   "PRJ-2026-0005": {
+    "steps": [
+     {
+      "step": "0. as is",
+      "preview_ok": true,
+      "amount": 17831.91,
+      "gst": 1621.08,
+      "lines_sum": 17831.91,
+      "line_count": 1,
+      "quote": 44579.78,
+      "approved_variations": 0,
+      "invoiced_variations": 0,
+      "entitlement": 44579.78,
+      "billed": 26747.87,
+      "remaining": 17831.91,
+      "identity_holds": true,
+      "old_formula_would_give": 17831.91,
+      "dashboard": {
+       "status": "READY_TO_INVOICE",
+       "amount": "17831.91"
+      },
+      "over_billed": null
+     },
+     {
+      "step": "1. variation 1,100.00 APPROVED, not invoiced",
+      "preview_ok": true,
+      "amount": 18931.91,
+      "gst": 1721.08,
+      "lines_sum": 18931.91,
+      "line_count": 2,
+      "quote": 44579.78,
+      "approved_variations": 1100,
+      "invoiced_variations": 0,
+      "entitlement": 45679.78,
+      "billed": 26747.87,
+      "remaining": 18931.91,
+      "identity_holds": true,
+      "old_formula_would_give": 18931.91,
+      "dashboard": {
+       "status": "READY_TO_INVOICE",
+       "amount": "18931.91"
+      },
+      "over_billed": null
+     },
+     {
+      "step": "2. its VARIATION invoice 1,100.00 PAID (variation still APPROVED)",
+      "preview_ok": true,
+      "amount": 17831.91,
+      "gst": 1621.08,
+      "lines_sum": 17831.91,
+      "line_count": 2,
+      "quote": 44579.78,
+      "approved_variations": 1100,
+      "invoiced_variations": 0,
+      "entitlement": 45679.78,
+      "billed": 27847.87,
+      "remaining": 17831.91,
+      "identity_holds": true,
+      "old_formula_would_give": 17831.91,
+      "dashboard": {
+       "status": "READY_TO_INVOICE",
+       "amount": "17831.91"
+      },
+      "over_billed": null
+     },
+     {
+      "step": "3. variation marked INVOICED",
+      "preview_ok": true,
+      "amount": 17831.91,
+      "gst": 1621.08,
+      "lines_sum": 17831.91,
+      "line_count": 1,
+      "quote": 44579.78,
+      "approved_variations": 0,
+      "invoiced_variations": 1100,
+      "entitlement": 45679.78,
+      "billed": 27847.87,
+      "remaining": 17831.91,
+      "identity_holds": true,
+      "old_formula_would_give": 16731.91,
+      "dashboard": {
+       "status": "READY_TO_INVOICE",
+       "amount": "17831.91"
+      },
+      "over_billed": null
+     }
+    ],
+    "copilot_get_project": {
+     "status": "Ready to invoice",
+     "why_not_ready": null,
+     "amount_inc_gst": 17831.91,
+     "xero_invoice_number": null,
+     "xero_invoice_id": null,
+     "awaiting_approval": null,
+     "invoices": [
+      {
+       "invoice": "INV-2026-0005",
+       "status": "Paid",
+       "total_inc_gst": 4457.98,
+       "owed_by_customer": 0,
+       "overdue": false
+      },
+      {
+       "invoice": "INV-2026-0035",
+       "status": "Sent to customer",
+       "total_inc_gst": 22289.89,
+       "owed_by_customer": 22289.89,
+       "overdue": false
+      },
+      {
+       "invoice": "INV-AC09-LIVE",
+       "status": "Paid",
+       "total_inc_gst": 1100,
+       "owed_by_customer": 0,
+       "overdue": false
+      }
+     ]
+    },
+    "copilot_prepare": {
+     "outcome": "Prepared: awaiting approval",
+     "amount": 17831.91,
+     "gst": 1621.08,
+     "basis": "quote Q-2026-0005 v2 44579.78 + variations 1100 - already invoiced 27847.87"
+    },
+    "integrity_in_tx": {
+     "status": "PASS",
+     "failing": 0,
+     "refs": null
+    },
+    "verdict": {
+     "final_unchanged_by_invoiced_variation": true,
+     "old_formula_short_by": 1100,
+     "identity_every_step": true,
+     "lines_add_up_every_step": true,
+     "preview_dashboard_copilot_agree": true
+    },
+    "after_rollback": {
+     "v": "0",
+     "i": "0"
+    }
+   },
+   "PRJ-2026-0002": {
+    "steps": [
+     {
+      "step": "0. as is",
+      "preview_ok": true,
+      "amount": 15155.98,
+      "gst": 1377.82,
+      "lines_sum": 15155.98,
+      "line_count": 1,
+      "quote": 50519.92,
+      "approved_variations": 0,
+      "invoiced_variations": 0,
+      "entitlement": 50519.92,
+      "billed": 35363.94,
+      "remaining": 15155.98,
+      "identity_holds": true,
+      "old_formula_would_give": 15155.98,
+      "dashboard": {
+       "status": "READY_TO_INVOICE",
+       "amount": "15155.98"
+      },
+      "over_billed": null
+     },
+     {
+      "step": "1. variation 1,100.00 APPROVED, not invoiced",
+      "preview_ok": true,
+      "amount": 16255.98,
+      "gst": 1477.82,
+      "lines_sum": 16255.98,
+      "line_count": 2,
+      "quote": 50519.92,
+      "approved_variations": 1100,
+      "invoiced_variations": 0,
+      "entitlement": 51619.92,
+      "billed": 35363.94,
+      "remaining": 16255.98,
+      "identity_holds": true,
+      "old_formula_would_give": 16255.98,
+      "dashboard": {
+       "status": "READY_TO_INVOICE",
+       "amount": "16255.98"
+      },
+      "over_billed": null
+     },
+     {
+      "step": "2. its VARIATION invoice 1,100.00 PAID (variation still APPROVED)",
+      "preview_ok": true,
+      "amount": 15155.98,
+      "gst": 1377.82,
+      "lines_sum": 15155.98,
+      "line_count": 2,
+      "quote": 50519.92,
+      "approved_variations": 1100,
+      "invoiced_variations": 0,
+      "entitlement": 51619.92,
+      "billed": 36463.94,
+      "remaining": 15155.98,
+      "identity_holds": true,
+      "old_formula_would_give": 15155.98,
+      "dashboard": {
+       "status": "READY_TO_INVOICE",
+       "amount": "15155.98"
+      },
+      "over_billed": null
+     },
+     {
+      "step": "3. variation marked INVOICED",
+      "preview_ok": true,
+      "amount": 15155.98,
+      "gst": 1377.82,
+      "lines_sum": 15155.98,
+      "line_count": 1,
+      "quote": 50519.92,
+      "approved_variations": 0,
+      "invoiced_variations": 1100,
+      "entitlement": 51619.92,
+      "billed": 36463.94,
+      "remaining": 15155.98,
+      "identity_holds": true,
+      "old_formula_would_give": 14055.98,
+      "dashboard": {
+       "status": "READY_TO_INVOICE",
+       "amount": "15155.98"
+      },
+      "over_billed": null
+     }
+    ],
+    "copilot_get_project": {
+     "status": "Ready to invoice",
+     "why_not_ready": null,
+     "amount_inc_gst": 15155.98,
+     "xero_invoice_number": null,
+     "xero_invoice_id": null,
+     "awaiting_approval": null,
+     "invoices": [
+      {
+       "invoice": "INV-2026-0032",
+       "status": "Sent to customer",
+       "total_inc_gst": 10103.98,
+       "owed_by_customer": 10103.98,
+       "overdue": true
+      },
+      {
+       "invoice": "INV-2026-0002",
+       "status": "Paid",
+       "total_inc_gst": 25259.96,
+       "owed_by_customer": 0,
+       "overdue": false
+      },
+      {
+       "invoice": "INV-AC09-LIVE",
+       "status": "Paid",
+       "total_inc_gst": 1100,
+       "owed_by_customer": 0,
+       "overdue": false
+      }
+     ]
+    },
+    "copilot_prepare": {
+     "outcome": "Prepared: awaiting approval",
+     "amount": 15155.98,
+     "gst": 1377.82,
+     "basis": "quote Q-2026-0002 v2 50519.92 + variations 1100 - already invoiced 36463.94"
+    },
+    "integrity_in_tx": {
+     "status": "PASS",
+     "failing": 0,
+     "refs": null
+    },
+    "verdict": {
+     "final_unchanged_by_invoiced_variation": true,
+     "old_formula_short_by": 1100,
+     "identity_every_step": true,
+     "lines_add_up_every_step": true,
+     "preview_dashboard_copilot_agree": true
+    },
+    "after_rollback": {
+     "v": "0",
+     "i": "0"
+    }
+   }
+  }
+ },
+ "inv_2026_0039": {
+  "before": {
+   "status": "APPROVED",
+   "sync_status": "SYNCED",
+   "total_inc_gst": 14664.49,
+   "updated_at": "2026-09-28T22:55:06.181971+00:00",
+   "lines": 1,
+   "outbox": [
+    "xero.create_draft_invoice DONE"
+   ],
+   "xero_link_last_synced_at": [
+    "XERO 2026-10-05T16:31:18.22983+00:00"
+   ]
+  },
+  "final": {
+   "status": "APPROVED",
+   "sync_status": "SYNCED",
+   "total_inc_gst": 14664.49,
+   "updated_at": "2026-09-28T22:55:06.181971+00:00",
+   "lines": 1,
+   "outbox": [
+    "xero.create_draft_invoice DONE"
+   ],
+   "xero_link_last_synced_at": [
+    "XERO 2026-10-05T17:29:21.933489+00:00"
+   ]
+  },
+  "invoice_row_lines_and_outbox_identical": true,
+  "only_change": "the Xero link last_synced_at, set by the two observe dry-runs (same as AC-08)"
+ },
+ "fingerprint": {
+  "date_values_173": {
+   "before": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6",
+   "after_deploy": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6",
+   "after_live": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6"
+  },
+  "counts": {
+   "before": {
+    "variations": "0",
+    "invoices": "39",
+    "outbox": "7",
+    "xero_jobs": "1",
+    "exceptions": "19",
+    "exceptions_open": "4",
+    "audit_events": "96",
+    "audit_max_seq": "127",
+    "reconciliation_runs": "38"
+   },
+   "after_deploy": {
+    "variations": "0",
+    "invoices": "39",
+    "outbox": "7",
+    "xero_jobs": "1",
+    "exceptions": "19",
+    "exceptions_open": "4",
+    "audit_events": "97",
+    "audit_max_seq": "128",
+    "reconciliation_runs": "39"
+   },
+   "final": {
+    "variations": "0",
+    "invoices": "39",
+    "outbox": "7",
+    "xero_jobs": "1",
+    "exceptions": "19",
+    "exceptions_open": "4",
+    "audit_events": "98",
+    "audit_max_seq": "131",
+    "reconciliation_runs": "40"
+   }
+  },
+  "changes": "only the two observe dry-runs: +2 reconciliation runs, +2 audit events, Xero link last_synced_at; audit sequence skipped 129-130 (ids taken by the rolled-back rows, never committed)",
+  "nothing_persisted_from_rollback": {
+   "automation_events_ac09": 0,
+   "approvals_last_2h": 0,
+   "variations": 0,
+   "ac09_invoices": 0,
+   "outbox_last_2h": 0
+  }
+ },
+ "xero_invoices_created": 0,
+ "follow_up": "FIN-GST-01 (tracked separately, not part of AC-09): Xero may round GST per line on a multi-line final (one with variation lines) and differ from the header-rounded GST by a cent"
+}

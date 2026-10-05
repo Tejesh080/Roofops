@@ -5,7 +5,7 @@
  */
 export interface SdkNode { kind: 'node' | 'trigger' | 'if' | 'switch'; type: string; name: string; config: Record<string, unknown>; }
 export interface Edge { from: string; branch: string; to: string }
-interface Linkable { head: SdkNode; tail: SdkNode; to(next: Linkable): Linkable }
+interface Linkable { head: SdkNode; tail: SdkNode; to(next: Linkable): Linkable; onError(next: Linkable): Linkable }
 
 export const recorded: { nodes: Map<string, SdkNode>; edges: Edge[] } = { nodes: new Map(), edges: [] };
 const edge = (from: SdkNode, branch: string, to: SdkNode) => {
@@ -14,6 +14,7 @@ const edge = (from: SdkNode, branch: string, to: SdkNode) => {
 const chain = (head: SdkNode, tail: SdkNode): Linkable => ({
   head, tail,
   to(next: Linkable) { edge(tail, 'main', next.head); return chain(head, next.tail); },
+  onError(next: Linkable) { edge(tail, 'error', next.head); return chain(head, tail); },   // the node's error output
 });
 const make = (kind: SdkNode['kind'], type: string, config: Record<string, unknown>) => {
   const n: SdkNode = { kind, type, name: String(config.name), config };

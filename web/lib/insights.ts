@@ -74,7 +74,7 @@ export function describeIssue(e: Pick<ExceptionRow, 'error_class' | 'error_messa
       return /drive/i.test(m) ? { title: 'Google Drive was temporarily unavailable', explanation: `RoofOps tried ${e.attempt_count} times, then stopped safely instead of risking duplicate folders.` }
         : { title: 'A connected service was unavailable', explanation: 'RoofOps stopped safely and waited for a person.' };
     case 'MISSING_DOCUMENT':
-      return { title: 'Completion paperwork is missing', explanation: /photos/i.test(m) ? 'Compliance photos must be uploaded before the final invoice can be prepared.' : 'A required document is missing, so the next step was held back.' };
+      return { title: 'Completion paperwork is missing', explanation: /completion documents/i.test(m) ? 'Set Completion Photos and Compliance Certificate to Done on the project in Airtable (or Waived / Not applicable with a reason in the Note); then the final invoice can be prepared.' : 'A required document is missing, so the next step was held back.' };
     case 'INVALID_STATE':
       if (/quote .* is LOST/i.test(m)) return { title: 'A lost quote was marked accepted', explanation: 'RoofOps refused to create a project because the quote had already been marked lost.' };
       if (/only a COMPLETED project/i.test(m)) return { title: 'Invoice requested before the job was finished', explanation: 'Only completed jobs get a final invoice, so nothing was prepared.' };

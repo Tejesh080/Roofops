@@ -51,7 +51,9 @@ const WATCHED = new Set(['fldhhnQXlbuFaveK3','fld08eKCeuDCsJLjz','fldG4mPoV6sUkA
   'fldPXNXPyYie2kKQk','fldDClu1e0ffwnojn',
   'fldIy8ab7Ky67jL31','fldu0CsGG5uPOVbRN','fldl6gKbKuZSF9MJG','fldYjfr3STs04XDZr','flduw5J4VyRoOqEE2','fldMH8wYXmkAYXCxe','fldhsHUPCZ0pMbXeV',
   'fldP4PWGxdLZrA5ge','fldVpX0MOcA8TnGvo','fldm6rtleyV6yp8ZS',
-  'fldNy5hhua9oCbrge','fldmyVulHN1hsCE8f','fldPtnT9heTBGTFEM','fldtNq7DluPgIM1rn','fldfXKzmQJYzbzgZY','fldLNYP5FsVaR6TFk']);
+  'fldNy5hhua9oCbrge','fldmyVulHN1hsCE8f','fldPtnT9heTBGTFEM','fldtNq7DluPgIM1rn','fldfXKzmQJYzbzgZY','fldLNYP5FsVaR6TFk',
+  // AC-13A: the completion gate (Completion Photos, Compliance Certificate); their Note fields travel in "current".
+  'fldbbksVL3dT6cqyS','fldf7iJiyHFxOQgUy']);
 const TABLES = new Set(['tblHKX79FJFHn5FDc','tbloPJwCIcdIZQFVK','tblSYcCqId9wTMg3c','tblzenPRNVV5O7lZP','tblvUPIoebC3zoacv','tbluIbl4zpMiAlMVw']);
 const hook = $('Validate Ping').first().json.webhook_id;
 let next = Number($('Load Payload Cursor').first().json.cursor);

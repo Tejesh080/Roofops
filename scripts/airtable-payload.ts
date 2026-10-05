@@ -71,11 +71,15 @@ try {
     case 'projects': {
       const f = AT.projects.f;
       const rows = await db.query<Record<string, string | null>>(`select p.id, p.project_number, q.quote_number, c.customer_number, p.status, e.full_name pm,
-        p.planned_start_date::text ps, p.planned_completion_date::text pc, p.actual_start_date::text as_, p.actual_completion_date::text ac
+        p.planned_start_date::text ps, p.planned_completion_date::text pc, p.actual_start_date::text as_, p.actual_completion_date::text ac,
+        (select case ci.status when 'OPEN' then 'To do' when 'DONE' then 'Done' when 'WAIVED' then 'Waived' when 'NOT_APPLICABLE' then 'Not applicable' end
+           from project_checklist_items ci where ci.project_id = p.id and ci.item_code = 'COMPLETION_PHOTOS') photos,
+        (select case ci.status when 'OPEN' then 'To do' when 'DONE' then 'Done' when 'WAIVED' then 'Waived' when 'NOT_APPLICABLE' then 'Not applicable' end
+           from project_checklist_items ci where ci.project_id = p.id and ci.item_code = 'COMPLIANCE_CERTIFICATE') cert
         from projects p join quotes q on q.id = p.quote_id join customers c on c.id = p.customer_id left join employees e on e.id = p.project_manager_id order by p.project_number`);
       records = rows.map((r) => clean({ [f.number]: r.project_number, [f.quote]: link(r.quote_number), [f.customer]: link(r.customer_number),
         [f.status]: title(r.status), [f.pm]: r.pm, [f.plannedStart]: r.ps, [f.plannedCompletion]: r.pc, [f.actualStart]: r.as_, [f.actualCompletion]: r.ac,
-        [f.roofopsId]: r.id }));
+        [f.roofopsId]: r.id, [f.completionPhotos]: r.photos, [f.complianceCertificate]: r.cert }));
       break;
     }
     case 'purchase_orders': {

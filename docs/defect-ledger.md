@@ -18,8 +18,9 @@ instruction).
 | AC-04 | P0 | A Xero draft that exists is recorded as never created | **Yes**, offline (PGlite and Postgres 17), fake Xero answers: lost create answer, then 429s, then the dead letter; failures after the create; no reconciliation of uncertain writes | UNKNOWN downgraded to PENDING by a 429, then FAILED at the dead letter; post-create failures FAILED; nothing looked; AC-05 then allowed the void | `wf_fail_side_effect` judged by error class only and every dead letter became FAILED; reconciliation read only linked invoices | A timeout or transport failure after a create is never proof of absence: UNKNOWN until a read of Xero proves presence (link) or absence (then retry or fail safely); nothing guessed | `test/xero-ambiguous-create.test.ts` (cases 1–11, 2b), `test/reconcile-07-uncertain-xero.test.ts` (real 07 orchestration) | Migration `20261001080000_ambiguous_xero_create_stays_unknown.sql` + n8n 07: two read-only lookups (number, reference) per uncertain write in its bound tenant, settled by `wf_reconcile_xero_uncertain` | Chain from zero; red before (20/24 contract, 22/22 orchestration); every ablation red; AC-05 8/8, AC-06 18/18; full suite 470 passed, 0 failed; lint, typecheck clean; local integrity 0 FAIL; grants checked | Done 2026-10-04 (§9): the live lookup probe found RO-INV-2026-0039 once by number and once by reference in the pinned tenant (and exposed the SentToContact omission, fixed first); deployed alone + 07 published; dry-run 0 drift with the new path run (0 targets); INV-2026-0039 untouched; integrity 0 FAIL, security pass. [evidence/ac04-live-verification.json](../evidence/ac04-live-verification.json) | **FIXED** |
 | AC-08 | P0 | Over-billed projects are labelled "Fully invoiced", with no flag, and can be closed | **Yes**, offline (PGlite and Postgres 17) and read-only on hosted: PRJ-2026-0006 and PRJ-2026-0008 billed above quote | FULLY_INVOICED, no blocker, needs_attention false (0006); Prepare says "nothing left to invoice"; once paid, CLOSED accepted | The preview lumped amount <= 0 together; the dashboard and the close guard treated that as fully invoiced | Billed <= quote + approved/invoiced variations at every stage; otherwise OVER_BILLED, needs attention, named excess, CLOSED refused until corrected | `test/over-billing.test.ts`; `test/dashboard.test.ts:34` corrected (it enshrined the defect) | Migration `20261001090000_over_billed_project_is_never_fully_invoiced.sql` (one rule `project_over_billing`; preview, close guard, dashboard view) + web label and Copilot refusal | Chain from zero (30); red before (12/16); 6 ablations each red; full suite 490 passed, 0 failed; lint, typecheck clean; local integrity 0 FAIL; grants checked | Done 2026-10-04 (§9–§10): tax basis proven (all GST-inclusive; new test, red on an ex-GST comparison); deployed alone; dry-run 0 drift, integrity 0 FAIL, security pass. Live via the web login and Copilot: PRJ-2026-0006 and PRJ-2026-0008 OVER_BILLED (over by 5,148.12 / 9,947.94), need attention, Prepare and Copilot refuse with the reason, rolled-back CLOSED refused; nothing persisted; duplicates left for a person; INV-2026-0039 untouched. [evidence/ac08-live-verification.json](../evidence/ac08-live-verification.json) | **FIXED** |
 | AC-09 | P0 | The final invoice under-bills once a variation is marked INVOICED | **Yes**, offline (PGlite and Postgres 17): PRJ-2026-0004 with a 1,100.00 variation billed then marked INVOICED | Final 14,664.49 -> 13,564.49, exactly the variation short; AC-08 used a different entitlement (APPROVED + INVOICED). No real project affected (no variations local or hosted) | The preview added only APPROVED variations but subtracted every billed invoice incl. the variation's own VARIATION invoice | remaining_billable = (quote + APPROVED/INVOICED variations) - valid billed (APPROVED, ISSUED, PARTIALLY_PAID, PAID), GST-inclusive; final + prior valid invoices = entitlement exactly | `test/billing-entitlement.test.ts` (independent cents oracle; cases 1-13) | Migration `20261001100000_one_canonical_billing_entitlement.sql`: one `project_billing` used by the preview (so dashboard, close guard, Copilot, Prepare/decide), AC-08 over-billing, and a new integrity check | Chain from zero (31); red before (10/24); 9 ablations each red; AC-08/05/04 126/126; full suite 514 passed, 0 failed; lint, typecheck clean; local integrity 0 FAIL; grants checked | Done 2026-10-06 (§7): deployed alone; dry-run 0 drift, integrity 25 PASS / 0 FAIL (new check PASS), security pass. Ready amounts (PRJ-2026-0002 15,155.98, PRJ-2026-0005 17,831.91), OVER_BILLED excesses (5,148.12 / 9,947.94) and the billing view of all 33 projects unchanged; preview, dashboard and Copilot agree via the web login. Rolled-back catalogue case on both ready projects: the final stays whole when the variation moves APPROVED → INVOICED (the old formula: 1,100.00 short); nothing persisted, no Xero invoice; INV-2026-0039 untouched. [evidence/ac09-live-verification.json](../evidence/ac09-live-verification.json) | **FIXED** |
-| AC-13A | P1 | Completion checklist has no editing surface, so new jobs can never be final-invoiced | – | – | – | – | – | – | – | – | Not started |
+| AC-13A | P1 | Completion checklist has no editing surface, so new jobs can never be final-invoiced | **Yes**, offline (PGlite and Postgres 17): accept Q-2026-0041, walk PRJ-2026-0031 to Completed | Preview and Prepare MISSING_DOCUMENT forever; dashboard NOT_READY; close refused with "the final invoice has not been raised yet"; no function anywhere updates checklist status. Hosted: PRJ-2026-0007 stuck now (Completed, 25,587.26 left to bill); PRJ-2026-0031..0033 latent | The required COMPLETION items had no write path (field contract: "no staff UI; NOT SUPPORTED"); the preview checked paperwork before billing; the close guard judged by the preview's error class | Project and financial lifecycles never contradict: completion items change only through a supported, validated, attributed path; fully billed is billed whatever the paperwork; Closed = settled (project_billing remaining 0), paid, gate satisfied, no Xero write in flight | `test/project-lifecycle.test.ts` (cases 1-13), `test/n8n-completion-fields.test.ts` (06 and 03, real node code) | Airtable Projects: Completion Photos / Compliance Certificate + a Note each (additive); migration `20261001110000_completion_gate_has_a_supported_path.sql` (`checklist_apply_change` behind `wf_airtable_change`; projection; preview order; close guard; dashboard flag; 2 integrity checks); n8n 06 watches the fields, 03 writes them | Red before (13/13 + 5/5); 15 ablations each red; regressions 304/304; full suite 550 passed, 0 failed; lint, typecheck clean; fresh chain (AC-13A alone on AC-09: amounts unchanged); integrity 0 FAIL; grants checked | Done 2026-10-06 (§8): fields created and filled from the canonical checklist, migration alone, 06 + 03 published; dry-run 0 drift, integrity 0 FAIL, security pass; live through real Airtable on PRJ-2026-0031: a refused edit corrected and read back, an attributed Not applicable applied and reverted; billing, checklist, invoices, projects, INV-2026-0039 and fingerprint unchanged. [evidence/ac13a-live-verification.json](../evidence/ac13a-live-verification.json) | **FIXED** |
 | AC-13B | P1 | Pre-start checklist (SWMS, material review) is not enforced on Scheduled → In Progress | – | – | – | – | – | – | – | – | Not started |
+| LIFE-01 | P3 | The INVOICING checklist item "Final invoice approved" is created OPEN and never set, so the project page shows it "To do" after the final invoice is approved | Yes (found in AC-13A) | wf_quote_accepted inserts it; nothing updates it; no gate reads it | Display only | Checklist shows the invoice state RoofOps holds | – | – | – | – | Not started (tracked separately; cosmetic) |
 | FIN-GST-01 | P2 | A multi-line final invoice (one with variation lines) can differ from Xero by one cent of GST | Not yet (found while fixing AC-09; tracked separately, not part of AC-09) | – | RoofOps rounds the final's GST once on the total; Xero may round per line | The GST RoofOps records equals the GST on the Xero draft | – | – | – | – | Not started (today a mismatch is refused at read-back and left UNKNOWN with an exception, AC-04; single-line finals, like the only real one, are unaffected) |
 | ENV-01 | P2 | The local dev DB had an unversioned migration, `20260929001700_drift_performance.sql`, that is not in git | Yes | `schema_migrations` row (applied 2026-09-29 12:52 AEST) and schema diff (§10) | Applied locally, never committed | Every applied migration exists in `supabase/migrations` | – | Local DB reset to repo migrations (`npm run db:reset`); its 6 object definitions saved as evidence | Repo = local = 18; hosted = 17 + AC-01 = 18; hosted never had it | No | **Resolved** (whether to re-propose the performance change is the owner's call) |
 
@@ -2184,3 +2185,139 @@ Evidence: [evidence/ac09-live-verification.json](../evidence/ac09-live-verificat
 - After the rollback nothing is left: 0 variations, 0 test invoices, 0 events, approvals or outbox rows from the run.
 
 **Follow-up, tracked separately:** FIN-GST-01 (per-line GST rounding in Xero on multi-line finals). Not part of AC-09.
+
+## AC-13A evidence package
+
+### 1. The project lifecycle, before the fix
+
+| Step | How it happens | What checks it |
+|---|---|---|
+| Quote accepted → project | `wf_quote_accepted` (Airtable Status → 01): project PLANNING, checklist (2 PRE_START, 2 COMPLETION, 1 INVOICING item, all OPEN), material-review task, Drive + Airtable write-backs | idempotency key per quote version |
+| Planning → Scheduled → In Progress | Airtable Status → 06 → `wf_airtable_change` → `project_apply_change` | `state_transitions(project)`; Planned Start required; Actual Start set |
+| In Progress → Completed | same path | state machine; Actual Completion set; nothing else |
+| Final invoice eligibility | `invoice_final_preview`: Completed; **completion documents**; no final (AC-05); nothing unapproved; not over-billed (AC-08); remaining > 0 (AC-09) | Prepare, approval re-check, dashboard, Copilot |
+| Fully invoiced | the preview's ARITHMETIC_MISMATCH | dashboard FULLY_INVOICED |
+| Paid | invoice status PAID (import only; RoofOps finals stay APPROVED: AC-14) | money owed views |
+| Closed | Completed → Closed: not over-billed; every invoice PAID or VOIDED; a final invoice, or the preview says ARITHMETIC_MISMATCH | `project_transition_guard` |
+| Cancelled | any active status, or Completed while no final invoice exists | `project_transition_guard` |
+
+**The lifecycle defect.** The two required COMPLETION items (Completion Photos, Compliance Certificate) gate the final
+invoice, but nothing could set them: the field contract said "no staff UI; NOT SUPPORTED" and no function updates
+checklist status. Every project born from quote acceptance therefore stops at Completed: Prepare and the dashboard say
+"missing completion documents; invoice after they are uploaded" (no upload is read anywhere), and Closed is refused
+with "the final invoice has not been raised yet". Two related contradictions:
+- a fully billed project with paperwork open was shown as "invoice after the documents" instead of fully invoiced;
+- the close guard trusted the preview's error class, so its reason was wrong whenever the paperwork check fired
+  first, and a project whose final existed could close with entitlement left over (a variation approved later).
+
+**Affected real projects (hosted, read-only survey).**
+- **Stuck now:** PRJ-2026-0007. It was imported Completed with Completion Photos never marked and has 25,587.26 left
+  to bill. It was NOT_READY with no supported path.
+- **Latent:** PRJ-2026-0031, PRJ-2026-0032 and PRJ-2026-0033. They were born from quote acceptance, are still in
+  Planning, and have both items OPEN, so they would be stuck once completed.
+- **Would contradict once completed:** PRJ-2026-0012, 0015, 0022 and 0030. They are fully billed while not completed
+  and have photos OPEN.
+
+The fix changes none of their canonical data. PRJ-2026-0007 now names the action, and a person sets Completion Photos
+in Airtable.
+
+### 2. The invariant: when a project may…
+
+- **become COMPLETED**: only from In Progress (state machine). A completion item may be Done only once work started.
+- **prepare a final invoice**: Completed; every required COMPLETION item Done, Waived or Not applicable; no final yet
+  (AC-05); nothing unapproved; not over-billed (AC-08); `remaining_billable` > 0 (AC-09 `project_billing`).
+- **be fully invoiced**: `remaining_billable` = 0, whatever the paperwork says.
+- **be CLOSED**: Completed; `remaining_billable` = 0; every invoice PAID or VOIDED; completion gate satisfied; no
+  preview awaiting approval; no Xero write in flight or uncertain (AC-04 semantics).
+
+Completion items change only through Airtable. Postgres enforces:
+- the checklist state machine (Done → Waived needs To do first);
+- a reason in the item's Note for Waived or Not applicable;
+- an Airtable user mapped to a RoofOps employee (a reconciler replay has no user, so it is refused and a person sets it
+  again);
+- a lock once a final invoice exists or is being created, or the job is Closed or Cancelled.
+
+### 3. Fix
+
+- **Airtable (additive)**: Projects gains Completion Photos and Compliance Certificate (To do / Done / Waived / Not
+  applicable), plus a Note for each.
+- **Migration `20261001110000_completion_gate_has_a_supported_path.sql`**:
+  - field contract rows (status fields `AIRTABLE_EDIT` via the handler; Notes `INPUT`);
+  - `checklist_apply_change`, reached only from `project_apply_change` inside `wf_airtable_change`; neither app role
+    can call it;
+  - the projection in `v_airtable_expected` (06 corrections and reconciliation compare it);
+  - `invoice_final_preview` checks paperwork after billing, and its message names the Airtable action;
+  - `project_transition_guard` closes only a settled project (`project_billing`), with an exact reason;
+  - `v_dashboard_projects` flags entitlement left over after the final (needs attention, via a narrow
+    `project_left_to_bill_after_final` granted to the dashboard);
+  - integrity adds `closed_project_settled` (FAIL) and `completed_awaiting_completion_items` (WARNING).
+- **n8n**: 06 watches the two fields (their Notes travel in "current"); 03 writes both To do on a new project and
+  verifies them on read-back.
+- **Other**: the source schema map, the initial-load payload, the Copilot/dashboard explanation, and the security
+  allow-list.
+
+### 4. Tests and ablations
+
+`test/project-lifecycle.test.ts` covers the 13 cases on a project born from quote acceptance and on imported projects:
+1. creation and projection;
+2. no work started;
+3. in progress (attribution, reason, state machine, undo);
+4. completed but not fully invoiced (PRJ-2026-0007 too);
+5. and 6. the final raised, then fully invoiced but unpaid;
+7. fully paid, then Closed;
+8. cancelled;
+9. a variation after completion;
+10. an UNKNOWN Xero write and an in-flight approval;
+11. over-billed;
+12. entitlement growing after the final;
+13. duplicate, out-of-order and unattributed events.
+
+It also has an integrity test with a negative case. `test/n8n-completion-fields.test.ts` runs the real 06 and 03 code.
+
+| Check | Result |
+|---|---|
+| Red, before the fix | 13 of 13 lifecycle tests; 5 of 5 n8n tests |
+| Ablations | 15, each red on its own tests: no Airtable path, no attribution, no reason, Done before work started, no final-invoice lock, no in-flight lock, no Closed/Cancelled lock, no state-machine check, paperwork before billing, close ignores remaining / gate / Xero in flight, dashboard hides left-over, no closed-settled check, no projection |
+| Regressions (AC-09, AC-08, AC-05, AC-06, AC-04 + 07, invoice flow, approval binding, state integrity, quote workflow) | 304 passed, 0 failed |
+| Full suite, PGlite + Postgres 17 | **550 passed**, 35 skipped, 0 failed; lint and typecheck clean |
+| Fresh chain | through AC-09 (31), then AC-13A alone: every ready amount, status and OVER_BILLED unchanged; only PRJ-2026-0007's blocker and two close reasons became exact; integrity 0 FAIL; as the dashboard role too |
+| Grants | `checklist_apply_change` and `project_billing`: no app role; the dashboard gains only `project_left_to_bill_after_final`; workflow role 21; nothing executable by PUBLIC; RLS everywhere |
+
+### 5. Hosted deployment (2026-10-06)
+
+1. The four Airtable fields were created (additive).
+2. Their values were written once from the canonical checklist (33 records, one call), so no reconciliation ever saw a
+   blank field while RoofOps held a value.
+3. The migration was deployed alone (checksum `cb7c7e8e`).
+4. 06 was published (`4cc8d1d3` → `9a2eb69e`), then 03 (`f69177d9` → `737a7a66`).
+
+| Check | Result |
+|---|---|
+| Reconciliation dry-run (after deploy, after live checks) | observe, COMPLETED; Airtable 231, Drive 3, Xero 1; 0 drift (the new fields included) |
+| Integrity | before 25 PASS, 3 WARNING, 0 FAIL; after 26 PASS, 4 WARNING, 0 FAIL (new WARNING: PRJ-2026-0007 waiting on Completion Photos) |
+| Security | all privilege checks pass; `checklist_apply_change` and `project_billing` refused to the web login |
+| Billing view, checklist, invoices, projects, INV-2026-0039 | digests identical before, after deploy and at the end |
+| Ready / over-billed | PRJ-2026-0002 15,155.98, PRJ-2026-0005 17,831.91; PRJ-2026-0006 / 0008 OVER_BILLED, unchanged |
+| Fingerprint | 173 date values, same sha256 throughout |
+| Counts | +2 reconciliation runs with 2 audit events (dry-runs); +2 attributed checklist audits (the live set-and-revert) |
+
+**Live, through real Airtable, on PRJ-2026-0031 (Planning).**
+
+| Edit | Result |
+|---|---|
+| Completion Photos = Done | Postgres refused it ("work has not started"). 06 wrote To do and a RoofOps Sync note back and read them back (verified). The echo of 06's own write was NO_CHANGE. |
+| Compliance Certificate = Not applicable + Note | Applied, attributed to `usr7uCnNO15fCefbH` → EMP-900, and the Note was stored as the reason. |
+| Back to To do, Note cleared | Applied. Net canonical change: none. |
+
+Through the web login, read-only:
+- the dashboard and the Copilot give PRJ-2026-0007 the same reason and name the Airtable action;
+- the Copilot refuses to prepare it;
+- the new integrity checks are as above.
+
+**Not changed (tracked separately):**
+- AC-14: RoofOps final invoices never move past APPROVED, so a RoofOps-born project cannot reach Closed. Hosted
+  PRJ-2026-0004 is refused with "not every invoice is paid yet: INV-2026-0039 (approved)".
+- AC-15: imported, untyped final bills and cancellation.
+- AC-13B: PRE_START items and the Scheduled → In Progress gate.
+- LIFE-01: the "Final invoice approved" checklist row never updates (cosmetic).
+

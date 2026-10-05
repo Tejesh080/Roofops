@@ -33,7 +33,10 @@ export const AT = {
          materialTask: 'fld93YzhrpOVIviRY', driveFolder: 'fldgVDT29UOOOtlqO', roofopsId: 'fldc4T0AgU3zCmANC',
          // Phase 3: invoice approval UI (Invoice Action is the staff "button"; the rest is written by [RoofOps] 04)
          invoiceAction: 'fldYnINTdtOckOzK4', invoiceStatus: 'fldPuGgo27oWLKB5R', invoicePreview: 'fldt9KIOPXh3c3pGU',
-         invoiceAmount: 'fld5JDnWI3RFehQxA', xeroInvoiceNumber: 'fldgkN0Vm6k1MZLJp', xeroInvoiceId: 'fld3sDI9LIX8Voo4u' },
+         invoiceAmount: 'fld5JDnWI3RFehQxA', xeroInvoiceNumber: 'fldgkN0Vm6k1MZLJp', xeroInvoiceId: 'fld3sDI9LIX8Voo4u',
+         // AC-13A: the completion gate, edited by staff (To do / Done / Waived / Not applicable) with a reason in the Note
+         completionPhotos: 'fldbbksVL3dT6cqyS', completionPhotosNote: 'fldA77ad94yUmvnu3',
+         complianceCertificate: 'fldf7iJiyHFxOQgUy', complianceCertificateNote: 'fldLi9FkGDFAbf0QB' },
   },
   purchaseOrders: {
     table: 'tbluIbl4zpMiAlMVw',

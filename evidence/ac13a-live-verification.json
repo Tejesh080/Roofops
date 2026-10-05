@@ -1,0 +1,587 @@
+{
+ "defect": "AC-13A: a project born from quote acceptance could never be final-invoiced (the completion checklist had no editing surface)",
+ "reproduction_before_fix": {
+  "project": "PRJ-2026-0031",
+  "walked": "Planning -> Scheduled -> In Progress -> Completed (all applied)",
+  "completed_state": {
+   "status": "COMPLETED",
+   "invoice_status": "NOT_READY",
+   "invoice_blocker": "PRJ-2026-0031 is missing completion documents (Completion / compliance photos uploaded, Compliance certificate issued); invoice after they are uploaded",
+   "needs_attention": false
+  },
+  "preview": {
+   "ok": false,
+   "message": "PRJ-2026-0031 is missing completion documents (Completion / compliance photos uploaded, Compliance certificate issued); invoice after they are uploaded",
+   "error_class": "MISSING_DOCUMENT"
+  },
+  "prepare": {
+   "outcome": "INVALID_STATE",
+   "error_class": "MISSING_DOCUMENT"
+  },
+  "close_reason": "the final invoice has not been raised yet",
+  "functions_that_update_checklist_status": []
+ },
+ "invariant": {
+  "statement": "Project lifecycle state and financial lifecycle state never contradict each other",
+  "completed": "only from In Progress (state machine); a completion item may be Done only once work has started",
+  "prepare_final": "Completed; every required COMPLETION item Done / Waived / Not applicable; no final invoice yet (AC-05); nothing unapproved; not over-billed (AC-08); remaining_billable > 0 (AC-09 project_billing)",
+  "fully_invoiced": "remaining_billable = 0 (project_billing), whatever the paperwork says",
+  "closed": "Completed; remaining_billable = 0; every invoice PAID or VOIDED; completion gate satisfied; no preview awaiting approval; no Xero write in flight or uncertain (AC-04)",
+  "checklist_changes": "only through Airtable (Completion Photos / Compliance Certificate + Note); Postgres enforces the checklist state machine, a reason for Waived / Not applicable, a mapped RoofOps employee, and a lock once a final invoice exists or is being created, or the job is Closed / Cancelled"
+ },
+ "affected_real_projects": {
+  "stuck_now": "PRJ-2026-0007 (imported, Completed, 25,587.26 left to bill, Completion Photos never marked): NOT_READY with no supported path; close refused with the wrong reason",
+  "latent": "PRJ-2026-0031, PRJ-2026-0032, PRJ-2026-0033 (born from quote acceptance, Planning, both completion items OPEN): would be stuck once completed",
+  "would_contradict_once_completed": "PRJ-2026-0012, PRJ-2026-0015, PRJ-2026-0022, PRJ-2026-0030 (fully billed while not completed, photos OPEN): would have shown \"invoice after they are uploaded\" with nothing left to bill",
+  "changed_by_this_fix": "none of their canonical data; PRJ-2026-0007 now names the supported action and needs a person to set Completion Photos in Airtable"
+ },
+ "airtable_fields_created": {
+  "table": "Projects (tblvUPIoebC3zoacv)",
+  "additive_only": true,
+  "fields": {
+   "Completion Photos": "fldbbksVL3dT6cqyS (single select: To do / Done / Waived / Not applicable)",
+   "Completion Photos Note": "fldA77ad94yUmvnu3 (long text)",
+   "Compliance Certificate": "fldf7iJiyHFxOQgUy (single select)",
+   "Compliance Certificate Note": "fldLi9FkGDFAbf0QB (long text)"
+  },
+  "initial_values": "written once before the deploy from the canonical checklist (33 records, one call): Completion Photos 7 Done / 26 To do; Compliance Certificate To do on the 3 projects born from quotes, blank on the 30 imported ones (they have no such item)"
+ },
+ "offline": {
+  "red_before_fix": "13 of 13 lifecycle tests and 5 of 5 n8n tests failed (edits ignored as NO_CHANGE, MISSING_DOCUMENT forever, wrong close reason, 06 skipped the fields, 03 did not write them)",
+  "green": "test/project-lifecycle.test.ts 13 + test/n8n-completion-fields.test.ts 5, on PGlite and Postgres 17 (36/36)",
+  "ablations": {
+   "RED_no_migration": "Tests  15 failed | 3 passed (18); red: Done on, Waived:, 1., 2., 3., 4., 9., 5 + 6., 10., 12., 7., 8., 11., 13., integrity",
+   "A_no_airtable_path": "Tests  13 failed | 5 passed (18); red: Done on, Waived:, 2., 3., 4., 9., 5 + 6., 10., 12., 7., 8., 11., 13.",
+   "B_no_attribution": "Tests  3 failed | 15 passed (18); red: 3., 13., integrity",
+   "C_no_reason_required": "Tests  8 failed | 10 passed (18); red: 3., 4., 9., 5 + 6., 10., 12., 7., 13.",
+   "D_done_before_work_started": "Tests  2 failed | 16 passed (18); red: 2., 3.",
+   "E_no_final_invoice_lock": "Tests  1 failed | 17 passed (18); red: 5 + 6.",
+   "F_no_in_flight_lock": "Tests  1 failed | 17 passed (18); red: 10.",
+   "G_no_closed_cancelled_lock": "Tests  3 failed | 15 passed (18); red: 7., 8., integrity",
+   "H_no_state_machine_check": "Tests  1 failed | 17 passed (18); red: 3.",
+   "I_paperwork_before_billing": "Tests  7 failed | 11 passed (18); red: 4., 9., 5 + 6., 10., 12., 7., 13.",
+   "J_close_ignores_remaining": "Tests  7 failed | 11 passed (18); red: 4., 9., 5 + 6., 10., 12., 7., 13.",
+   "K_close_ignores_completion_gate": "Tests  1 failed | 17 passed (18); red: 7.",
+   "L_close_ignores_xero_in_flight": "Tests  1 failed | 17 passed (18); red: 7.",
+   "M_dashboard_hides_left_after_final": "Tests  1 failed | 17 passed (18); red: 12.",
+   "N_no_closed_settled_check": "Tests  1 failed | 17 passed (18); red: integrity",
+   "O_no_projection": "Tests  12 failed | 6 passed (18); red: 1., Done on, Waived:, 2., 3., 4., 9., 5 + 6., 10., 12., 7., 13."
+  },
+  "regressions": "AC-09, AC-08, AC-05, AC-06, AC-04 (+07), invoice flow, approval binding, state integrity, quote workflow: 304 passed, 0 failed",
+  "full_suite": "550 passed, 35 skipped, 0 failed (PGlite + Postgres 17); lint and typecheck clean",
+  "fresh_chain": {
+   "migrations": {
+    "through_ac09": 31,
+    "ac13a_alone": [
+     "20261001110000_completion_gate_has_a_supported_path.sql"
+    ],
+    "rerun": 0
+   },
+   "changed": [
+    {
+     "project": "PRJ-2026-0004",
+     "before": {
+      "close_guard": "the final invoice has not been raised yet"
+     },
+     "after": {
+      "close_guard": "14664.49 left to bill: the final invoice has not been raised yet"
+     }
+    },
+    {
+     "project": "PRJ-2026-0007",
+     "before": {
+      "blocker": "PRJ-2026-0007 is missing completion documents (Completion / compliance photos uploaded); invoice after they are uploaded",
+      "close_guard": "the final invoice has not been raised yet"
+     },
+     "after": {
+      "blocker": "PRJ-2026-0007 is missing completion documents (Completion / compliance photos uploaded); set them to Done in Airtable (Completion Photos / Compliance Certificate), or Waived / Not applicable with a reason in the Note, then invoice",
+      "close_guard": "25587.26 left to bill: the final invoice has not been raised yet"
+     }
+    }
+   ],
+   "ready_after": [
+    "PRJ-2026-0001 30886.06",
+    "PRJ-2026-0002 15155.98",
+    "PRJ-2026-0004 14664.49",
+    "PRJ-2026-0005 17831.91"
+   ],
+   "over_billed_after": [
+    "PRJ-2026-0006",
+    "PRJ-2026-0008"
+   ],
+   "integrity": [
+    {
+     "check_key": "closed_project_settled",
+     "status": "PASS",
+     "failing": 0,
+     "refs": null
+    },
+    {
+     "check_key": "final_invoice_settles_entitlement",
+     "status": "PASS",
+     "failing": 0,
+     "refs": null
+    },
+    {
+     "check_key": "accepted_has_project",
+     "status": "WARNING",
+     "failing": 1,
+     "refs": [
+      "Q-2026-0031"
+     ]
+    },
+    {
+     "check_key": "completed_awaiting_completion_items",
+     "status": "WARNING",
+     "failing": 1,
+     "refs": [
+      "PRJ-2026-0007 (Completion / compliance photos uploaded)"
+     ]
+    },
+    {
+     "check_key": "every_project_linked",
+     "status": "WARNING",
+     "failing": 30,
+     "refs": [
+      "PRJ-2026-0001",
+      "PRJ-2026-0002",
+      "PRJ-2026-0003",
+      "PRJ-2026-0004",
+      "PRJ-2026-0005",
+      "PRJ-2026-0006",
+      "PRJ-2026-0007",
+      "PRJ-2026-0008",
+      "PRJ-2026-0009",
+      "PRJ-2026-0010",
+      "PRJ-2026-0011",
+      "PRJ-2026-0012",
+      "PRJ-2026-0013",
+      "PRJ-2026-0014",
+      "PRJ-2026-0015",
+      "PRJ-2026-0016",
+      "PRJ-2026-0017",
+      "PRJ-2026-0018",
+      "PRJ-2026-0019",
+      "PRJ-2026-0020",
+      "PRJ-2026-0021",
+      "PRJ-2026-0022",
+      "PRJ-2026-0023",
+      "PRJ-2026-0024",
+      "PRJ-2026-0025",
+      "PRJ-2026-0026",
+      "PRJ-2026-0027",
+      "PRJ-2026-0028",
+      "PRJ-2026-0029",
+      "PRJ-2026-0030"
+     ]
+    },
+    {
+     "check_key": "open",
+     "status": "WARNING",
+     "failing": 1,
+     "refs": [
+      "EXC-0003 PRJ-2026-0008"
+     ]
+    },
+    {
+     "check_key": "recent",
+     "status": "WARNING",
+     "failing": 1,
+     "refs": null
+    }
+   ],
+   "expected_projection": [],
+   "grants": {
+    "checklist_apply_change": [],
+    "project_left_to_bill_after_final": [
+     "roofops_dashboard"
+    ],
+    "project_billing": [],
+    "dashboard_definer_functions": [
+     "app_today",
+     "at_link",
+     "integrity_check",
+     "invoice_final_preview",
+     "project_left_to_bill_after_final",
+     "project_over_billing",
+     "sm_label",
+     "wf_invoice_prepare"
+    ],
+    "workflow_functions": 21,
+    "public_executable": [],
+    "tables_without_rls": []
+   },
+   "as_dashboard": [
+    {
+     "project_number": "PRJ-2026-0002",
+     "invoice_status": "READY_TO_INVOICE",
+     "amount": "15155.98",
+     "drift_fields": 0
+    },
+    {
+     "project_number": "PRJ-2026-0004",
+     "invoice_status": "READY_TO_INVOICE",
+     "amount": "14664.49",
+     "drift_fields": 0
+    },
+    {
+     "project_number": "PRJ-2026-0005",
+     "invoice_status": "READY_TO_INVOICE",
+     "amount": "17831.91",
+     "drift_fields": 0
+    },
+    {
+     "project_number": "PRJ-2026-0007",
+     "invoice_status": "NOT_READY",
+     "amount": null,
+     "drift_fields": 0
+    },
+    {
+     "project_number": "PRJ-2026-0012",
+     "invoice_status": "PROGRESS_INVOICED",
+     "amount": null,
+     "drift_fields": 0
+    }
+   ],
+   "as_dashboard_integrity": {
+    "fails": 0
+   }
+  }
+ },
+ "hosted": {
+  "migration": {
+   "file": "supabase/migrations/20261001110000_completion_gate_has_a_supported_path.sql",
+   "checksum_prefix": "cb7c7e8e",
+   "applied_alone": [
+    "migrations applied: 20261001110000_completion_gate_has_a_supported_path.sql (skipped 31)",
+    "dataset 0dd5b61419f7… already imported (batch 243ef8f4-08fb-41d5-98c3-ab62f13560c6); nothing to do"
+   ]
+  },
+  "n8n": {
+   "06 Airtable Changes (lD6BOf2dhZZpSoEH)": "active 4cc8d1d3 -> 9a2eb69e (Extract Record Changes watches the two fields)",
+   "03 Airtable Project Write-back (gtUffpzbdGa0vbYj)": "active f69177d9 -> 737a7a66 (new records written with both To do; read-back verifies them)"
+  },
+  "checks": {
+   "before": {
+    "integrity": [
+     "25 PASS, 3 WARNING, 0 FAIL  (hosted database)"
+    ],
+    "security": [
+     "all privilege checks pass"
+    ]
+   },
+   "after_deploy": {
+    "dry_run": [
+     "RECON-20261006-041617-ed45  mode=observe  status=COMPLETED",
+     "│ 0       │ 'AIRTABLE'     │ 231     │ 0           │ 0        │ 0            │ 0         │ 231    │",
+     "│ 1       │ 'GOOGLE_DRIVE' │ 3       │ 0           │ 0        │ 0            │ null      │ 3      │",
+     "│ 2       │ 'XERO'         │ 1       │ 0           │ 0        │ 0            │ null      │ 1      │",
+     "No drift found."
+    ],
+    "integrity": [
+     "  PASS    closed_project_settled             Closed projects have nothing left to bill, nothing over-billed, every invoice paid or voided, and their completion items done or waived",
+     "  WARNING completed_awaiting_completion_items Completed jobs whose completion items are still To do in Airtable (Completion Photos / Compliance Certificate); no final invoice until they are Done, Waived or Not applicable  → PRJ-2026-0007 (Completion / compliance photos uploaded)",
+     "26 PASS, 4 WARNING, 0 FAIL  (hosted database)"
+    ],
+    "security": [
+     "PASS  dashboard role: readable tables                []",
+     "PASS  dashboard role: SECURITY DEFINER functions     [\"app_today\",\"at_link\",\"integrity_check\",\"invoice_final_preview\",\"project_left_to_bill_after_final\",\"project_over_billing\",\"sm_label\",\"wf_invoice_prepare\"]",
+     "PASS  dashboard role: can it write via wf_* (other than prepare)? []",
+     "PASS  workflow role: executable functions            21 items",
+     "PASS  anon/authenticated: readable or writable objects []",
+     "PASS  functions executable by PUBLIC                 []",
+     "PASS  tables without row level security              []",
+     "PASS  Xero writes pinned to the proven Demo tenant   [\"96643bb0-3a0a-406e-96fb-ab8a933ee6b8\"]",
+     "PASS  reconcile trigger token stored only as a hash  [\"64\"]",
+     "all privilege checks pass"
+    ]
+   },
+   "after_live": {
+    "dry_run": [
+     "RECON-20261006-041856-b5b4  mode=observe  status=COMPLETED",
+     "│ 0       │ 'AIRTABLE'     │ 231     │ 0           │ 0        │ 0            │ 0         │ 231    │",
+     "│ 1       │ 'GOOGLE_DRIVE' │ 3       │ 0           │ 0        │ 0            │ null      │ 3      │",
+     "│ 2       │ 'XERO'         │ 1       │ 0           │ 0        │ 0            │ null      │ 1      │",
+     "No drift found."
+    ],
+    "integrity": [
+     "26 PASS, 4 WARNING, 0 FAIL  (hosted database)"
+    ],
+    "security": [
+     "all privilege checks pass"
+    ]
+   },
+   "repair_run": "none"
+  },
+  "live_end_to_end_prj_2026_0031": {
+   "note": "real Airtable edits on PRJ-2026-0031 (Planning) -> Airtable webhook -> n8n 06 -> wf_airtable_change -> checklist rules; net canonical change: none",
+   "events": [
+    {
+     "txn": "txn115",
+     "outcome": "REJECTED",
+     "applied": [],
+     "rejected": [
+      {
+       "kept": "To do",
+       "field": "Completion Photos",
+       "reason": "work has not started on PRJ-2026-0031; a completion item can be Done only once the job is In Progress",
+       "attempted": "Done"
+      }
+     ],
+     "corrections": {
+      "fldVrJOuyhbNtxnVh": "2026-10-06 04:17\n✗ Completion Photos: \"Done\" not applied: work has not started on PRJ-2026-0031; a completion item can be Done only once the job is In Progress. Kept \"To do\".",
+      "fldbbksVL3dT6cqyS": "To do"
+     },
+     "writeback_verified": true,
+     "deliveries": 3
+    },
+    {
+     "txn": "txn116",
+     "outcome": "NO_CHANGE",
+     "applied": [],
+     "rejected": [],
+     "corrections": {},
+     "writeback_verified": null,
+     "deliveries": 2
+    },
+    {
+     "txn": "txn118",
+     "outcome": "APPLIED",
+     "applied": [
+      {
+       "to": "Not applicable",
+       "from": "To do",
+       "field": "Compliance Certificate"
+      }
+     ],
+     "rejected": [],
+     "corrections": {},
+     "writeback_verified": null,
+     "deliveries": 1
+    },
+    {
+     "txn": "txn119",
+     "outcome": "APPLIED",
+     "applied": [
+      {
+       "to": "To do",
+       "from": "Not applicable",
+       "field": "Compliance Certificate"
+      }
+     ],
+     "rejected": [],
+     "corrections": {},
+     "writeback_verified": null,
+     "deliveries": 1
+    }
+   ],
+   "checklist_after": [
+    {
+     "item_code": "COMPLETION_PHOTOS",
+     "status": "OPEN",
+     "waived_reason": null,
+     "completed_on": null
+    },
+    {
+     "item_code": "COMPLIANCE_CERTIFICATE",
+     "status": "OPEN",
+     "waived_reason": null,
+     "completed_on": null
+    }
+   ],
+   "audits": [
+    {
+     "seq": "133",
+     "actor_id": "usr7uCnNO15fCefbH",
+     "before_state": {
+      "item": "COMPLIANCE_CERTIFICATE",
+      "status": "OPEN"
+     },
+     "after_state": {
+      "item": "COMPLIANCE_CERTIFICATE",
+      "reason": "AC-13A live verification: set and immediately reverted (no change intended)",
+      "status": "NOT_APPLICABLE",
+      "employee": "EMP-900"
+     },
+     "reason": "AC-13A live verification: set and immediately reverted (no change intended) [airtable:achrbwFiSoL4y5RXM:txn118:recDT4dQPmrjy5Mmu]"
+    },
+    {
+     "seq": "134",
+     "actor_id": "usr7uCnNO15fCefbH",
+     "before_state": {
+      "item": "COMPLIANCE_CERTIFICATE",
+      "status": "NOT_APPLICABLE"
+     },
+     "after_state": {
+      "item": "COMPLIANCE_CERTIFICATE",
+      "reason": null,
+      "status": "OPEN",
+      "employee": "EMP-900"
+     },
+     "reason": "Compliance Certificate set to To do in Airtable [airtable:achrbwFiSoL4y5RXM:txn119:recDT4dQPmrjy5Mmu]"
+    }
+   ]
+  },
+  "web_login_read_only": {
+   "role": "roofops_web",
+   "dashboard": [
+    {
+     "project_number": "PRJ-2026-0002",
+     "status": "COMPLETED",
+     "invoice_status": "READY_TO_INVOICE",
+     "amount": "15155.98",
+     "needs_attention": true,
+     "invoice_blocker": null
+    },
+    {
+     "project_number": "PRJ-2026-0004",
+     "status": "COMPLETED",
+     "invoice_status": "XERO_DRAFT_CREATED",
+     "amount": "14664.49",
+     "needs_attention": false,
+     "invoice_blocker": null
+    },
+    {
+     "project_number": "PRJ-2026-0005",
+     "status": "COMPLETED",
+     "invoice_status": "READY_TO_INVOICE",
+     "amount": "17831.91",
+     "needs_attention": false,
+     "invoice_blocker": null
+    },
+    {
+     "project_number": "PRJ-2026-0006",
+     "status": "COMPLETED",
+     "invoice_status": "OVER_BILLED",
+     "amount": null,
+     "needs_attention": true,
+     "invoice_blocker": "PRJ-2026-0006 is over-billed: billed 30888.72 (INV-2026-0006, INV-2026-0036) against quote 25740.60 + approved variations 0.00 = 25740.60; over by 5148.12. Correct the billing before it can be closed (for example void the unpaid duplicate invoice)"
+    },
+    {
+     "project_number": "PRJ-2026-0007",
+     "status": "COMPLETED",
+     "invoice_status": "NOT_READY",
+     "amount": null,
+     "needs_attention": true,
+     "invoice_blocker": "PRJ-2026-0007 is missing completion documents (Completion / compliance photos uploaded); set them to Done in Airtable (Completion Photos / Compliance Certificate), or Waived / Not applicable with a reason in the Note, then invoice"
+    },
+    {
+     "project_number": "PRJ-2026-0008",
+     "status": "COMPLETED",
+     "invoice_status": "OVER_BILLED",
+     "amount": null,
+     "needs_attention": true,
+     "invoice_blocker": "PRJ-2026-0008 is over-billed: billed 59687.64 (INV-2026-0008, INV-2026-0038) against quote 49739.70 + approved variations 0.00 = 49739.70; over by 9947.94. Correct the billing before it can be closed (for example void the unpaid duplicate invoice)"
+    },
+    {
+     "project_number": "PRJ-2026-0031",
+     "status": "PLANNING",
+     "invoice_status": "NOT_YET_DUE",
+     "amount": null,
+     "needs_attention": true,
+     "invoice_blocker": null
+    }
+   ],
+   "copilot_get_project_0007": {
+    "status": "Not ready to invoice",
+    "why_not_ready": "PRJ-2026-0007 is missing completion documents (Completion / compliance photos uploaded); set them to Done in Airtable (Completion Photos / Compliance Certificate), or Waived / Not applicable with a reason in the Note, then invoice"
+   },
+   "copilot_prepare_0007": {
+    "project": "PRJ-2026-0007",
+    "prepared": false,
+    "invoice_status": "Not ready to invoice",
+    "reason": "PRJ-2026-0007 is missing completion documents (Completion / compliance photos uploaded); set them to Done in Airtable (Completion Photos / Compliance Certificate), or Waived / Not applicable with a reason in the Note, then invoice"
+   },
+   "integrity": [
+    {
+     "check_key": "final_invoice_settles_entitlement",
+     "status": "PASS",
+     "refs": null
+    },
+    {
+     "check_key": "closed_project_settled",
+     "status": "PASS",
+     "refs": null
+    },
+    {
+     "check_key": "completed_awaiting_completion_items",
+     "status": "WARNING",
+     "refs": [
+      "PRJ-2026-0007 (Completion / compliance photos uploaded)"
+     ]
+    }
+   ],
+   "checklist_apply_change": "refused: permission denied for function checklist_apply_change",
+   "project_billing": "refused: permission denied for function project_billing"
+  },
+  "unchanged": {
+   "digests_before": {
+    "billing": "2731725f8d4c25c9a223ed5f33fc7bc5a7f1e88c1f89d0505788195e3fb264df",
+    "checklist": "9a02bde4879fd01a00f619004e7162e566c84002e17a1b058b21eaa5a914ecd5",
+    "invoices": "340d0d2130cc39d841e71a594a1051860c1b6b5914e0b2f947ed2274bb0a4928",
+    "projects": "13e91921dd86364a048a40b30a8b8121b1e2dbb460099fd43b2cce78d789d077",
+    "inv_0039": "4e1fe73d14fcb9e109d2760f6b1664dbbe13c13a77d8e89153db4f76c1630f4c"
+   },
+   "digests_after_deploy": {
+    "billing": "2731725f8d4c25c9a223ed5f33fc7bc5a7f1e88c1f89d0505788195e3fb264df",
+    "checklist": "9a02bde4879fd01a00f619004e7162e566c84002e17a1b058b21eaa5a914ecd5",
+    "invoices": "340d0d2130cc39d841e71a594a1051860c1b6b5914e0b2f947ed2274bb0a4928",
+    "projects": "13e91921dd86364a048a40b30a8b8121b1e2dbb460099fd43b2cce78d789d077",
+    "inv_0039": "4e1fe73d14fcb9e109d2760f6b1664dbbe13c13a77d8e89153db4f76c1630f4c"
+   },
+   "digests_final": {
+    "billing": "2731725f8d4c25c9a223ed5f33fc7bc5a7f1e88c1f89d0505788195e3fb264df",
+    "checklist": "9a02bde4879fd01a00f619004e7162e566c84002e17a1b058b21eaa5a914ecd5",
+    "invoices": "340d0d2130cc39d841e71a594a1051860c1b6b5914e0b2f947ed2274bb0a4928",
+    "projects": "13e91921dd86364a048a40b30a8b8121b1e2dbb460099fd43b2cce78d789d077",
+    "inv_0039": "4e1fe73d14fcb9e109d2760f6b1664dbbe13c13a77d8e89153db4f76c1630f4c"
+   },
+   "identical": true,
+   "ready_to_invoice": [
+    "PRJ-2026-0002 15155.98",
+    "PRJ-2026-0005 17831.91"
+   ],
+   "over_billed": [
+    "PRJ-2026-0006",
+    "PRJ-2026-0008"
+   ],
+   "date_fingerprint_173": {
+    "before": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6",
+    "after_deploy": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6",
+    "final": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6"
+   }
+  },
+  "counts": {
+   "before": {
+    "invoices": "39",
+    "outbox": "7",
+    "approvals": "11",
+    "exceptions": "19",
+    "exceptions_open": "4",
+    "audit_events": "98",
+    "audit_max_seq": "131",
+    "checklist_audits": "0",
+    "reconciliation_runs": "40"
+   },
+   "final": {
+    "invoices": "39",
+    "outbox": "7",
+    "approvals": "11",
+    "exceptions": "19",
+    "exceptions_open": "4",
+    "audit_events": "102",
+    "audit_max_seq": "135",
+    "checklist_audits": "2",
+    "reconciliation_runs": "42"
+   },
+   "explained": "+2 reconciliation runs and their 2 audit events (observe dry-runs); +2 attributed checklist audits (the live set-and-revert); PRJ-2026-0007 blocker text now names the supported action"
+  },
+  "xero_invoices_created": 0
+ },
+ "follow_ups_not_in_ac13a": [
+  "AC-14 (catalogued): a RoofOps FINAL invoice never moves beyond APPROVED (no Xero payment/status sync), so a RoofOps-born project cannot satisfy \"every invoice PAID\" and cannot reach CLOSED; hosted PRJ-2026-0004 close guard: \"not every invoice is paid yet: INV-2026-0039 (approved)\"",
+  "AC-15 (catalogued): Completed -> Cancelled ignores imported (untyped) final bills",
+  "AC-13B: PRE_START items (SWMS signed, materials reviewed) and Scheduled -> In Progress enforcement, unchanged",
+  "LIFE-01 (new, cosmetic): the INVOICING checklist item \"Final invoice approved\" is created OPEN and never set; the project page shows it \"To do\" after approval; no gate reads it"
+ ]
+}

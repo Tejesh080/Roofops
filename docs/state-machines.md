@@ -164,12 +164,14 @@ stateDiagram-v2
   DISPATCHING --> FAILED
   DISPATCHING --> PENDING
   FAILED --> DISPATCHING
+  FAILED --> DONE
   FAILED --> PENDING
   PENDING --> DISPATCHING
+  PENDING --> DONE
   DONE --> [*]
 ```
 
-Terminal: DONE. Every pair not listed below is refused (6 of 12 possible changes).
+Terminal: DONE. Every pair not listed below is refused (4 of 12 possible changes).
 
 | From | To | Guard | Note |
 |---|---|---|---|
@@ -177,8 +179,10 @@ Terminal: DONE. Every pair not listed below is refused (6 of 12 possible changes
 | DISPATCHING | FAILED | — | — |
 | DISPATCHING | PENDING | — | — |
 | FAILED | DISPATCHING | — | retry after backoff |
+| FAILED | DONE | — | reconciliation proved the Xero draft exists (AC-04) |
 | FAILED | PENDING | — | operator re-queue |
 | PENDING | DISPATCHING | — | — |
+| PENDING | DONE | — | reconciliation proved the Xero draft exists (AC-04) |
 
 ## project
 

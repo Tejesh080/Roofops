@@ -71,7 +71,26 @@ describe.each(TARGETS)('AC-13A: project and financial lifecycles never contradic
     occurred_at: new Date().toISOString(), payload: { project_number: project, airtable_record_id: recFor(project) } }, 'n8n:test');
   const approve = (project: string) => rows.send(db, { event_id: `EVT-LIFE-${String(++seq)}`, event_type: 'invoice.approved', source: 'airtable', actor_id: APPROVER,
     occurred_at: new Date(Date.now() + 1000).toISOString(), payload: { project_number: project, airtable_record_id: recFor(project) } }, 'n8n:test');
-  const rejectedReason = (r: R) => ((r.rejected as { reason?: string }[] | undefined) ?? [])[0]?.reason ?? '';
+  /** AC-14: settle the project's final invoice the only way RoofOps trusts: its write completed and linked, then a
+   *  verified Xero read (PAID) recorded by a repair reconciliation (wf_reconcile_external, as 07 calls it). */
+  const settleInXero = async (project: string) => {
+    const [f] = await q(`select i.id, i.invoice_number, i.total_inc_gst::text total, o.payload ->> 'xero_invoice_number' xno, o.payload ->> 'xero_tenant_id' tenant
+        from invoices i join projects p on p.id = i.project_id join outbox o on o.aggregate_id = i.id and o.topic = 'xero.create_draft_invoice'
+       where p.project_number = $1 and i.invoice_type = 'FINAL'`, [project]);
+    const xid = createHash('md5').update(String(f!.id)).digest('hex').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
+    await force(`update invoices set sync_status = 'SYNCED' where id = $1`, [f!.id]);
+    await force(`update approvals set status = 'EXECUTED', executed_at = now(), execution_result = '{"verified": true}' where business_reference = $1 and status = 'EXECUTING'`, [project]);
+    await q(`insert into external_links (provider, entity_type, entity_id, external_type, external_id, last_synced_at, verified_at) values ('XERO', 'invoice', $1, 'Invoice', $2, now(), now())`, [f!.id, xid]);
+    expect(await close(project)).toMatch(/not verified in Xero/);                      // a local PAID flag is never enough
+    const run = `RECON-LIFE-${String(++seq)}`;
+    await q(`insert into reconciliation_runs (run_key, trigger, mode) values ($1, 'test', 'repair')`, [run]);
+    const total = Number(f!.total);
+    await q(`select wf_reconcile_external($1, 'XERO', $2::jsonb)`, [run, JSON.stringify([{ invoice_number: f!.invoice_number, project_number: project, invoice_id: xid,
+      xero_invoice_number: f!.xno, tenant_id: f!.tenant, http: 200, status: 'PAID', total, expected_total: total, reference: project, expected_reference: project,
+      xero: { InvoiceID: xid, Type: 'ACCREC', InvoiceNumber: f!.xno, Reference: project, Status: 'PAID', Total: total, AmountDue: 0, AmountPaid: total, AmountCredited: 0 } }])]);
+    await q(`update reconciliation_runs set status = 'COMPLETED', finished_at = now() where run_key = $1`, [run]);
+  };
+  const rejectedReason =(r: R) => ((r.rejected as { reason?: string }[] | undefined) ?? [])[0]?.reason ?? '';
 
   beforeAll(async () => {
     db = await migratedDb(target);
@@ -235,19 +254,18 @@ describe.each(TARGETS)('AC-13A: project and financial lifecycles never contradic
       expect(d.needs_attention).toBe(true);
       expect(String(d.invoice_blocker)).toMatch(/550\.00 left to bill after the final invoice/);
       expect(await integrity('final_invoice_settles_entitlement')).toMatchObject({ status: 'WARNING' });
-      await force(`update invoices set status = 'PAID' where project_id = (select id from projects where project_number = $1)`, [P]);
+      await settleInXero(P);                                                           // the final paid, verified in Xero (AC-14)
       expect(await close(P)).toMatch(/550\.00 left to bill/);
     });
   });
 
   it('7. fully paid: closes only when billed = entitlement, everything is paid and the completion gate is satisfied', async () => {
-    // P: while its Xero write is in flight it cannot close, even if paid; once Xero confirmed it and it is paid (no Xero
-    // payment sync exists yet: AC-14) the guard lets it close.
+    // P: while its Xero write is in flight it cannot close, even if marked paid; a local PAID flag is never enough (AC-14);
+    // once Xero verified it paid (reconciliation), the guard lets it close.
     await rolledBack(async () => {
       await force(`update invoices set status = 'PAID' where project_id = (select id from projects where project_number = $1)`, [P]);
       expect(await close(P)).toMatch(/Xero write is still in flight/);
-      await force(`update invoices set sync_status = 'SYNCED' where project_id = (select id from projects where project_number = $1)`, [P]);
-      await force(`update approvals set status = 'EXECUTED', executed_at = now(), execution_result = '{"verified": true}' where business_reference = $1 and status = 'EXECUTING'`, [P]);
+      await settleInXero(P);
       expect(await close(P)).toBeNull();
     });
     // PRJ-2026-0012: fully billed and paid by progress invoices while still In Progress, photos never marked.

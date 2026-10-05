@@ -93,15 +93,17 @@ stateDiagram-v2
   ISSUED --> PAID
   ISSUED --> PARTIALLY_PAID
   ISSUED --> VOIDED
+  PAID --> ISSUED
+  PAID --> PARTIALLY_PAID
+  PARTIALLY_PAID --> ISSUED
   PARTIALLY_PAID --> PAID
   PENDING_APPROVAL --> APPROVED
   PENDING_APPROVAL --> DRAFT
   PENDING_APPROVAL --> VOIDED
-  PAID --> [*]
   VOIDED --> [*]
 ```
 
-Terminal: PAID, VOIDED. Every pair not listed below is refused (30 of 42 possible changes).
+Terminal: VOIDED. Every pair not listed below is refused (27 of 42 possible changes).
 
 | From | To | Guard | Note |
 |---|---|---|---|
@@ -113,6 +115,9 @@ Terminal: PAID, VOIDED. Every pair not listed below is refused (30 of 42 possibl
 | ISSUED | PAID | — | — |
 | ISSUED | PARTIALLY_PAID | — | — |
 | ISSUED | VOIDED | — | — |
+| PAID | ISSUED | — | Xero verified a payment was reversed (AC-14) |
+| PAID | PARTIALLY_PAID | — | Xero verified a payment was reversed (AC-14) |
+| PARTIALLY_PAID | ISSUED | — | Xero verified a payment was reversed (AC-14) |
 | PARTIALLY_PAID | PAID | — | — |
 | PENDING_APPROVAL | APPROVED | — | — |
 | PENDING_APPROVAL | DRAFT | — | — |

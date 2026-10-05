@@ -4,8 +4,8 @@ We work on one defect at a time, in the order the owner sets. Source hypotheses:
 A defect is **Fixed** only after its live verification. Until then, a defect that passes every offline check is
 **Fixed offline**.
 
-Order: AC-01 → AC-02 → AC-10 → AC-03 → AC-05 → AC-06 → AC-04 → AC-08 → AC-09 → AC-13A → AC-13B (each started only on
-instruction).
+Order: AC-01 → AC-02 → AC-10 → AC-03 → AC-05 → AC-06 → AC-04 → AC-08 → AC-09 → AC-13A → AC-14 → AC-13B (each started
+only on instruction).
 
 | ID | Severity | Hypothesis | Reproduced? | Reproduction evidence | Root cause | Violated invariant | Regression test | Fix | Integration verification | Live verification needed? | Status |
 |---|---|---|---|---|---|---|---|---|---|---|---|
@@ -20,6 +20,7 @@ instruction).
 | AC-09 | P0 | The final invoice under-bills once a variation is marked INVOICED | **Yes**, offline (PGlite and Postgres 17): PRJ-2026-0004 with a 1,100.00 variation billed then marked INVOICED | Final 14,664.49 -> 13,564.49, exactly the variation short; AC-08 used a different entitlement (APPROVED + INVOICED). No real project affected (no variations local or hosted) | The preview added only APPROVED variations but subtracted every billed invoice incl. the variation's own VARIATION invoice | remaining_billable = (quote + APPROVED/INVOICED variations) - valid billed (APPROVED, ISSUED, PARTIALLY_PAID, PAID), GST-inclusive; final + prior valid invoices = entitlement exactly | `test/billing-entitlement.test.ts` (independent cents oracle; cases 1-13) | Migration `20261001100000_one_canonical_billing_entitlement.sql`: one `project_billing` used by the preview (so dashboard, close guard, Copilot, Prepare/decide), AC-08 over-billing, and a new integrity check | Chain from zero (31); red before (10/24); 9 ablations each red; AC-08/05/04 126/126; full suite 514 passed, 0 failed; lint, typecheck clean; local integrity 0 FAIL; grants checked | Done 2026-10-06 (§7): deployed alone; dry-run 0 drift, integrity 25 PASS / 0 FAIL (new check PASS), security pass. Ready amounts (PRJ-2026-0002 15,155.98, PRJ-2026-0005 17,831.91), OVER_BILLED excesses (5,148.12 / 9,947.94) and the billing view of all 33 projects unchanged; preview, dashboard and Copilot agree via the web login. Rolled-back catalogue case on both ready projects: the final stays whole when the variation moves APPROVED → INVOICED (the old formula: 1,100.00 short); nothing persisted, no Xero invoice; INV-2026-0039 untouched. [evidence/ac09-live-verification.json](../evidence/ac09-live-verification.json) | **FIXED** |
 | AC-13A | P1 | Completion checklist has no editing surface, so new jobs can never be final-invoiced | **Yes**, offline (PGlite and Postgres 17): accept Q-2026-0041, walk PRJ-2026-0031 to Completed | Preview and Prepare MISSING_DOCUMENT forever; dashboard NOT_READY; close refused with "the final invoice has not been raised yet"; no function anywhere updates checklist status. Hosted: PRJ-2026-0007 stuck now (Completed, 25,587.26 left to bill); PRJ-2026-0031..0033 latent | The required COMPLETION items had no write path (field contract: "no staff UI; NOT SUPPORTED"); the preview checked paperwork before billing; the close guard judged by the preview's error class | Project and financial lifecycles never contradict: completion items change only through a supported, validated, attributed path; fully billed is billed whatever the paperwork; Closed = settled (project_billing remaining 0), paid, gate satisfied, no Xero write in flight | `test/project-lifecycle.test.ts` (cases 1-13), `test/n8n-completion-fields.test.ts` (06 and 03, real node code) | Airtable Projects: Completion Photos / Compliance Certificate + a Note each (additive); migration `20261001110000_completion_gate_has_a_supported_path.sql` (`checklist_apply_change` behind `wf_airtable_change`; projection; preview order; close guard; dashboard flag; 2 integrity checks); n8n 06 watches the fields, 03 writes them | Red before (13/13 + 5/5); 15 ablations each red; regressions 304/304; full suite 550 passed, 0 failed; lint, typecheck clean; fresh chain (AC-13A alone on AC-09: amounts unchanged); integrity 0 FAIL; grants checked | Done 2026-10-06 (§8): fields created and filled from the canonical checklist, migration alone, 06 + 03 published; dry-run 0 drift, integrity 0 FAIL, security pass; live through real Airtable on PRJ-2026-0031: a refused edit corrected and read back, an attributed Not applicable applied and reverted; billing, checklist, invoices, projects, INV-2026-0039 and fingerprint unchanged. [evidence/ac13a-live-verification.json](../evidence/ac13a-live-verification.json) | **FIXED** |
 | AC-13B | P1 | Pre-start checklist (SWMS, material review) is not enforced on Scheduled → In Progress | – | – | – | – | – | – | – | – | Not started |
+| AC-14 | P1 | A RoofOps final invoice paid (or voided) in Xero is never read back, so the project can never close | **Yes**, offline (PGlite and Postgres 17), with 07's real nodes and a fake Xero; on hosted read-only: PRJ-2026-0004 | A Xero-PAID final stays APPROVED; money owed never counts it; close refused "not every invoice is paid yet: INV-2026-0039 (approved)"; a Xero void cannot be followed (AC-05 guard says "void it in Xero first", nothing reads it back) | 07 re-read every linked invoice but compared only existence, total and reference; nothing maps Xero status or amounts to RoofOps; the close guard trusted the local status | RoofOps determines from verified Xero state (right tenant, linked invoice, amounts that add up) whether an invoice is not issued, unpaid, partially paid, paid, voided or ambiguous; closing uses only that, never a local flag | `test/xero-settlement.test.ts` (cases 1-14 + identity, arithmetic, DELETED, integrity); AC-13A lifecycle cases 7 and 12 corrected (they trusted a local PAID) | Migration `20261001120000_xero_verified_invoice_settlement.sql` (`xero_invoice_observations`, canonical mapping, `xero_record_settlement` behind `wf_reconcile_external`, verified void past the AC-05 guard, close guard and integrity on `invoice_financial_state`, balances from Xero); 07 reads with error handling and passes the verified fields | Red before (16/16); 16 ablations each red; regressions 315/315; full suite 582 passed, 0 failed; lint, typecheck clean; fresh chain (AC-14 alone: every project and balance unchanged); integrity 0 FAIL; grants checked | **Yes** (AC-14 package §6): deploy migration + 07; dry-run records INV-2026-0039 as NOT_ISSUED (no change); no Xero write | **Fixed offline**; hosted deploy awaiting owner approval |
 | LIFE-01 | P3 | The INVOICING checklist item "Final invoice approved" is created OPEN and never set, so the project page shows it "To do" after the final invoice is approved | Yes (found in AC-13A) | wf_quote_accepted inserts it; nothing updates it; no gate reads it | Display only | Checklist shows the invoice state RoofOps holds | – | – | – | – | Not started (tracked separately; cosmetic) |
 | FIN-GST-01 | P2 | A multi-line final invoice (one with variation lines) can differ from Xero by one cent of GST | Not yet (found while fixing AC-09; tracked separately, not part of AC-09) | – | RoofOps rounds the final's GST once on the total; Xero may round per line | The GST RoofOps records equals the GST on the Xero draft | – | – | – | – | Not started (today a mismatch is refused at read-back and left UNKNOWN with an exception, AC-04; single-line finals, like the only real one, are unaffected) |
 | ENV-01 | P2 | The local dev DB had an unversioned migration, `20260929001700_drift_performance.sql`, that is not in git | Yes | `schema_migrations` row (applied 2026-09-29 12:52 AEST) and schema diff (§10) | Applied locally, never committed | Every applied migration exists in `supabase/migrations` | – | Local DB reset to repo migrations (`npm run db:reset`); its 6 object definitions saved as evidence | Repo = local = 18; hosted = 17 + AC-01 = 18; hosted never had it | No | **Resolved** (whether to re-propose the performance change is the owner's call) |
@@ -2320,4 +2321,108 @@ Through the web login, read-only:
 - AC-15: imported, untyped final bills and cancellation.
 - AC-13B: PRE_START items and the Scheduled → In Progress gate.
 - LIFE-01: the "Final invoice approved" checklist row never updates (cosmetic).
+
+## AC-14 evidence package
+
+### 1. Map, before the fix
+
+| Piece | What it does |
+|---|---|
+| RoofOps invoice states | DRAFT → PENDING_APPROVAL → APPROVED → ISSUED → PARTIALLY_PAID → PAID; VOIDED. A RoofOps FINAL is created APPROVED with sync PENDING (`wf_invoice_decide`); nothing ever moved it further (only the import sets ISSUED/PAID). PAID was terminal. |
+| Xero invoice states | DRAFT, SUBMITTED, AUTHORISED, PAID, VOIDED, DELETED (Xero OpenAPI); Total, AmountDue, AmountPaid, AmountCredited, FullyPaidOnDate, UpdatedDateUTC, Payments[]. A payment can be removed, so PAID can go back to AUTHORISED. |
+| Amounts | `v_invoice_balances`: paid = sum(payments) (import only), outstanding = total − paid; money owed counts ISSUED / PARTIALLY_PAID only. |
+| 05 (write) | Creates the ACCREC DRAFT in the pinned Demo tenant, reads it back (DRAFT, AmountPaid 0, total, tax, contact, number, reference), and Postgres links it (`external_links` XERO Invoice) and marks it SYNCED. AmountDue is never read. |
+| 07 (reconcile) | Reads every linked invoice (`GET /Invoices/{InvoiceID}`, current pin); `wf_reconcile_external` compared existence, total and reference only, not status, amounts or tenant. The read had no error handling. No Xero webhook exists. |
+| Close guard | Completed → Closed: every invoice status PAID or VOIDED (a local flag), plus AC-08 / AC-09 / AC-13A rules. |
+| AC-05 void guard | Refuses a local void of an invoice with a Xero draft: "Void or delete it in Xero first", but nothing read a Xero void back. |
+
+**The lifecycle dead end.** Once a RoofOps final is in Xero, its RoofOps status is APPROVED for ever, whatever happens in
+Xero (authorised, part paid, paid, voided), so a project with a RoofOps final can never satisfy "every invoice PAID" and
+never closes; money owed never counts it. **Affected real project:** PRJ-2026-0004 (INV-2026-0039 is the only Xero-linked
+invoice on hosted; it was created as a DRAFT and is still APPROVED). Hosted's 27 PAID invoices are all imported, and
+their imported payments cover them, so the stricter rule below changes no other outcome.
+
+### 2. Canonical mapping (Xero → RoofOps)
+
+Only from a VERIFIED read: the linked InvoiceID, read in the write's bound tenant (which is also the pinned one), ACCREC,
+the expected invoice number and total, and AmountPaid + AmountCredited + AmountDue = Total.
+
+| Xero | Financial state | RoofOps status |
+|---|---|---|
+| DRAFT / SUBMITTED, nothing paid | NOT_ISSUED | APPROVED |
+| AUTHORISED, nothing paid or credited | UNPAID | ISSUED |
+| AUTHORISED, 0 < AmountDue < Total | PARTIALLY_PAID | PARTIALLY_PAID |
+| PAID, AmountDue 0 | PAID | PAID |
+| VOIDED | VOIDED | VOIDED (the only void allowed past AC-05's guard) |
+| DELETED | DELETED | unchanged; a person decides (EXTERNAL_MISSING exception, as before) |
+| lookup failed / wrong tenant / identity mismatch / amounts that do not add up | ambiguous | unchanged; recorded, never inferred |
+
+- **Record and apply.** 07 records every read in `xero_invoice_observations` (append-only, one per invoice per run). A
+  repair run (the daily one) applies the verified state through the invoice state machine; a dry run only records it.
+- **Reversal.** A reversed payment regresses the invoice (PAID → ISSUED / PARTIALLY_PAID; new transitions; PAID is no
+  longer terminal) and opens an exception. On a Closed project it is also an integrity FAIL.
+- **AC-04.** Only a SYNCED write is ever applied; UNKNOWN or PENDING never is.
+- **Money owed.** For a Xero-linked invoice it is what Xero says is due.
+
+### 3. The invariant: when an invoice counts as settled (closing)
+
+- **Xero-linked**: the latest read is VERIFIED, says PAID or VOIDED, RoofOps shows the same, and the read is younger
+  than `xero.settlement_max_age_hours` (36).
+- **Not settled (Xero-linked)**: a failed, wrong-tenant or mismatched read; no read at all; an UNKNOWN or PENDING write.
+- **Imported**: PAID with the import's payments covering the total.
+- **Other**: VOIDED (a local void, AC-05-guarded).
+- **Never enough**: a local PAID flag alone.
+
+Closed requires every invoice settled, plus AC-08, AC-09 and AC-13A.
+
+### 4. Tests and ablations
+
+`test/xero-settlement.test.ts` runs 07's real nodes (Read Request through Record Xero Findings) against a fake Xero:
+1. draft;
+2. authorised and unpaid (a dry run records but changes nothing);
+3. partially paid;
+4. and 11. fully paid, and the project closes;
+5. and 13. voided in Xero, and a local void still refused;
+6. a payment reversed;
+6b. a reversal on a Closed project (integrity FAIL);
+7. HTTP 500 and a network error;
+8. and 14. a read in another tenant, and the pin moved after the write;
+9. repeated runs (one transition, one audit);
+10. paid after RoofOps last looked;
+11. a local PAID flag, and a stale verification;
+12. an UNKNOWN write.
+
+Plus identity mismatch, amounts that do not add up, DELETED, and the integrity check.
+
+**AC-13A lifecycle cases 7 and 12 corrected.** They forced an invoice PAID locally and expected that to settle it, which
+is the trust AC-14 removes. They now settle through a verified Xero read (`settleInXero`), and case 7 also proves a
+local PAID alone is refused. Their intent is unchanged.
+
+| Check | Result |
+|---|---|
+| Red, before the fix | 16 of 16 (a Xero-PAID final stayed APPROVED; close: "not every invoice is paid yet: … (approved)"; no observations) |
+| Ablations | 16, each red on its own tests: nothing recorded, no tenant check, lookup failure unchecked, no identity check, no arithmetic check, dry run applies, applies to an unsettled write, close trusts local PAID, no freshness, void guard accepts any verified read, no exception on reversal, no reversal transitions, balances ignore Xero, no state-verified check, 07 read aborts on error, 07 drops the Xero fields |
+| Regressions (AC-14, AC-13A, AC-09, AC-08, AC-05, AC-06, AC-04 + 07, invoice flow, approval binding, state integrity) | 315 passed, 0 failed (3 consecutive runs; one earlier run had 2 failures that did not reproduce and whose detail was not captured) |
+| Full suite, PGlite + Postgres 17 | **582 passed**, 35 skipped, 0 failed; lint and typecheck clean |
+| Fresh chain | through AC-13A (32), then AC-14 alone: every project's dashboard status, amount, money owed and close reason, and every invoice balance, unchanged; integrity 0 FAIL (both new checks PASS); as the dashboard role too |
+| Grants | `xero_record_settlement`, `invoice_financial_state` and `xero_invoice_observations`: no app role (reached through `wf_reconcile_external` and the views); dashboard functions unchanged; workflow role 21; nothing executable by PUBLIC; RLS everywhere |
+| Local dev DB | applied alone; integrity 26 PASS, 5 WARNING, 0 FAIL |
+
+### 5. Not changed (noted)
+
+- **No Xero webhook.** Payments are seen at the next 07 run, daily, or on demand with `npm run reconcile`. Until
+  then closing waits, by design.
+- **Payments are not mirrored row by row.** The verified amounts and the payment list are kept on each observation.
+- **AC-15** (Completed → Cancelled and untyped imported finals) and **AC-13B** are separate.
+
+### 6. Proposed hosted verification (awaiting owner approval)
+
+1. **Deploy** the migration alone and publish 07 (the read gets error handling; Record Xero Findings passes the read
+   tenant and the verified fields). Run the dry-run, integrity and security checks. No repair run.
+2. **The dry-run** reads INV-2026-0039 in the pinned Demo tenant (read-only GET). Expected: VERIFIED NOT_ISSUED (it is a
+   DRAFT), RoofOps stays APPROVED, 0 drift; `xero_invoice_state_verified` PASS. PRJ-2026-0004's close reason becomes
+   "not issued in Xero yet".
+3. **Read-only through the web login**: money owed and dashboard unchanged.
+4. **Rolled-back proof on hosted**: a synthetic verified PAID observation in a transaction that is always rolled back
+   shows the close guard would accept PRJ-2026-0004. INV-2026-0039 in Xero is not touched (no authorise, no payment).
 

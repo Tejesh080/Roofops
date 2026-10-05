@@ -176,7 +176,8 @@ return x.map(function (i) { return { json: i }; });` } },
 const hasXero = ifElse({ version: 2.3, config: { name: 'Any Xero Invoices?', parameters: { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'loose' },
   conditions: [{ leftValue: expr("{{ $json.invoice_id !== '__none__' && !!$json.tenant_id }}"), rightValue: true, operator: { type: 'boolean', operation: 'true', singleValue: true } }], combinator: 'and' } } } });
 
-const readInvoice = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Read Xero Invoice',
+// AC-14: a failed read (HTTP error or no answer) becomes an item too: Postgres records it as a failed check, never a state.
+const readInvoice = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Read Xero Invoice', onError: 'continueRegularOutput',
   parameters: { method: 'GET', url: expr('https://api.xero.com/api.xro/2.0/Invoices/{{ $json.invoice_id }}'), authentication: 'predefinedCredentialType',
     nodeCredentialType: 'xeroOAuth2Api', sendHeaders: true,
     headerParameters: { parameters: [{ name: 'xero-tenant-id', value: expr('{{ $json.tenant_id }}') }, { name: 'Accept', value: 'application/json' }] }, options: RAW },
@@ -187,7 +188,13 @@ const recordXero = node({ type: 'n8n-nodes-base.postgres', version: 2.7, config:
     options: { queryReplacement: expr("{{ [ $('Start Reconciliation Run').first().json.r.run_key, JSON.stringify(!$('Read Xero Invoice').isExecuted ? [] : $('Xero Invoices To Read').all().map((it, i) => { " +
       "const res = $('Read Xero Invoice').all()[i].json; const inv = ((res.body || {}).Invoices || [])[0] || {}; " +
       "return { invoice_number: it.json.invoice_number, project_number: it.json.project_number, invoice_id: it.json.invoice_id, xero_invoice_number: it.json.xero_invoice_number, " +
-      "http: res.statusCode, status: inv.Status || null, total: inv.Total, expected_total: it.json.total, reference: inv.Reference || null, expected_reference: it.json.reference }; })) ] }}") } },
+      "http: res.statusCode, status: inv.Status || null, total: inv.Total, expected_total: it.json.total, reference: inv.Reference || null, expected_reference: it.json.reference, " +
+      // AC-14: the tenant the read was made in (Postgres compares it with the write's bound tenant) and the verified financial fields.
+      "tenant_id: it.json.tenant_id, error: (res.error || {}).message || null, " +
+      "xero: res.statusCode === 200 ? { InvoiceID: inv.InvoiceID, Type: inv.Type, InvoiceNumber: inv.InvoiceNumber, Reference: inv.Reference, Status: inv.Status, " +
+      "Date: inv.DateString || inv.Date, DueDate: inv.DueDateString || inv.DueDate, Total: inv.Total, AmountDue: inv.AmountDue, AmountPaid: inv.AmountPaid, " +
+      "AmountCredited: inv.AmountCredited, FullyPaidOnDate: inv.FullyPaidOnDate || null, UpdatedDateUTC: inv.UpdatedDateUTC || null, " +
+      "Payments: (inv.Payments || []).map(p => ({ PaymentID: p.PaymentID, Amount: p.Amount, Date: p.Date, Status: p.Status })) } : null }; })) ] }}") } },
   credentials: PG }, output: [{ r: { ok: true, verified: 0, drift: 0 } }] });
 
 // AC-04: uncertain Xero writes (a create whose answer was lost: the draft may exist). Two independent read-only lookups

@@ -546,3 +546,21 @@ hosted Supabase, Xero, Airtable, n8n or Drive call was made, no credential was u
 applied anywhere hosted, and the only network traffic was npm/vitest localhost sockets. Nothing in this phase depends on
 being online: the CLI, the builder, the tests, the security assertions and the evidence are reproducible with the repo,
 Node and a local PostgreSQL.
+
+## 22. The phase record on origin (added by the follow-up commit)
+
+`git push origin factory/ac14-integrity-followup` published the phase:
+
+```
+To https://github.com/Tejesh080/Roofops.git
+   2900f44..22805d0  factory/ac14-integrity-followup -> factory/ac14-integrity-followup
+```
+
+- `origin/factory/ac14-integrity-followup` = `22805d0212081874a099657f44208e63cd62299e` ("AC-14C-B2: the operator CLI,
+  the scenario builder and the phase close") = the local HEAD when the push ran. Its parent
+  `a19b3dcd00479763340c8bb42cd6a790c00792e6` (the facility commit) was published by the same push.
+- The parked alias `factory/ac14c-integrity-followup` is still `2900f44a68d15eb79126ddfb6d70c8f80ae2230f`: it was never
+  pushed (`git ls-remote origin 'refs/heads/factory/*'` shows both refs).
+- `git status` is clean (`## factory/ac14-integrity-followup...origin/factory/ac14-integrity-followup`, no local
+  changes), no scratch file is in the tree, nothing under `backups/` or `.env*` is tracked, and the frozen bytes are
+  unchanged: migration `7f151f9a…`, facility test `1ff9b7d8…`.

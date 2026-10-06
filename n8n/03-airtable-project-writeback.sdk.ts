@@ -30,7 +30,7 @@ function refuse(step, cls, message) {
 }
 const F = { number: 'fldhhnQXlbuFaveK3', quote: 'fld08eKCeuDCsJLjz', customer: 'fldG4mPoV6sUkA9rM', status: 'fldi2Qwz1dAh2tcTE', pm: 'fldnZcRBxG7hTebD5',
   materialTask: 'fld93YzhrpOVIviRY', driveFolder: 'fldgVDT29UOOOtlqO', roofopsId: 'fldc4T0AgU3zCmANC',
-  completionPhotos: 'fldbbksVL3dT6cqyS', complianceCertificate: 'fldf7iJiyHFxOQgUy' };
+  completionPhotos: 'fldbbksVL3dT6cqyS', complianceCertificate: 'fldf7iJiyHFxOQgUy', swmsSigned: 'fldM6kgPz6QZagPAC', materialsReviewed: 'fldozWSCU877wEZHq' };
 const QF = { projects: 'flduJm0iR7pBb157b', number: 'fldyP20HNafS614d5' };
 const input = $('When Called By Main Workflow').first().json;
 const job = $('Claim Airtable Write-back').last().json.c.payload || {};
@@ -83,6 +83,9 @@ fields[F.roofopsId] = job.project_id;
 // AC-13A: a new project's completion gate starts To do (wf_quote_accepted creates both items OPEN); staff set them here later.
 fields[F.completionPhotos] = 'To do';
 fields[F.complianceCertificate] = 'To do';
+// AC-13B: and its pre-start gate (both items OPEN at creation; the job cannot start until staff set them).
+fields[F.swmsSigned] = 'To do';
+fields[F.materialsReviewed] = 'To do';
 return [{ json: { ok: true, request: { performUpsert: { fieldsToMergeOn: [F.roofopsId] }, returnFieldsByFieldId: true, typecast: false, records: [{ fields: fields }] } } }];` } },
   output: [{ ok: true, request: {} }] });
 const buildOk = ifElse({ version: 2.3, config: { name: 'Record Built?', parameters: OK_IF } });
@@ -137,6 +140,8 @@ if (f[F.status] !== job.status) problems.push('Status is ' + f[F.status]);
 if (f[F.driveFolder] !== job.drive_folder.web_view_link) problems.push('Drive Folder is ' + f[F.driveFolder]);
 if (f[F.completionPhotos] !== 'To do') problems.push('Completion Photos is ' + f[F.completionPhotos]);
 if (f[F.complianceCertificate] !== 'To do') problems.push('Compliance Certificate is ' + f[F.complianceCertificate]);
+if (f[F.swmsSigned] !== 'To do') problems.push('SWMS Signed is ' + f[F.swmsSigned]);
+if (f[F.materialsReviewed] !== 'To do') problems.push('Materials Reviewed is ' + f[F.materialsReviewed]);
 const quoteLinks = f[F.quote] || [];
 if (!quoteLinks.includes(job.quote_airtable_record_id)) problems.push('Project is not linked to quote ' + job.quote_airtable_record_id);
 const backLinks = (q.body.fields || {})[QF.projects] || [];

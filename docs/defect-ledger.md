@@ -19,7 +19,7 @@ only on instruction).
 | AC-08 | P0 | Over-billed projects are labelled "Fully invoiced", with no flag, and can be closed | **Yes**, offline (PGlite and Postgres 17) and read-only on hosted: PRJ-2026-0006 and PRJ-2026-0008 billed above quote | FULLY_INVOICED, no blocker, needs_attention false (0006); Prepare says "nothing left to invoice"; once paid, CLOSED accepted | The preview lumped amount <= 0 together; the dashboard and the close guard treated that as fully invoiced | Billed <= quote + approved/invoiced variations at every stage; otherwise OVER_BILLED, needs attention, named excess, CLOSED refused until corrected | `test/over-billing.test.ts`; `test/dashboard.test.ts:34` corrected (it enshrined the defect) | Migration `20261001090000_over_billed_project_is_never_fully_invoiced.sql` (one rule `project_over_billing`; preview, close guard, dashboard view) + web label and Copilot refusal | Chain from zero (30); red before (12/16); 6 ablations each red; full suite 490 passed, 0 failed; lint, typecheck clean; local integrity 0 FAIL; grants checked | Done 2026-10-04 (§9–§10): tax basis proven (all GST-inclusive; new test, red on an ex-GST comparison); deployed alone; dry-run 0 drift, integrity 0 FAIL, security pass. Live via the web login and Copilot: PRJ-2026-0006 and PRJ-2026-0008 OVER_BILLED (over by 5,148.12 / 9,947.94), need attention, Prepare and Copilot refuse with the reason, rolled-back CLOSED refused; nothing persisted; duplicates left for a person; INV-2026-0039 untouched. [evidence/ac08-live-verification.json](../evidence/ac08-live-verification.json) | **FIXED** |
 | AC-09 | P0 | The final invoice under-bills once a variation is marked INVOICED | **Yes**, offline (PGlite and Postgres 17): PRJ-2026-0004 with a 1,100.00 variation billed then marked INVOICED | Final 14,664.49 -> 13,564.49, exactly the variation short; AC-08 used a different entitlement (APPROVED + INVOICED). No real project affected (no variations local or hosted) | The preview added only APPROVED variations but subtracted every billed invoice incl. the variation's own VARIATION invoice | remaining_billable = (quote + APPROVED/INVOICED variations) - valid billed (APPROVED, ISSUED, PARTIALLY_PAID, PAID), GST-inclusive; final + prior valid invoices = entitlement exactly | `test/billing-entitlement.test.ts` (independent cents oracle; cases 1-13) | Migration `20261001100000_one_canonical_billing_entitlement.sql`: one `project_billing` used by the preview (so dashboard, close guard, Copilot, Prepare/decide), AC-08 over-billing, and a new integrity check | Chain from zero (31); red before (10/24); 9 ablations each red; AC-08/05/04 126/126; full suite 514 passed, 0 failed; lint, typecheck clean; local integrity 0 FAIL; grants checked | Done 2026-10-06 (§7): deployed alone; dry-run 0 drift, integrity 25 PASS / 0 FAIL (new check PASS), security pass. Ready amounts (PRJ-2026-0002 15,155.98, PRJ-2026-0005 17,831.91), OVER_BILLED excesses (5,148.12 / 9,947.94) and the billing view of all 33 projects unchanged; preview, dashboard and Copilot agree via the web login. Rolled-back catalogue case on both ready projects: the final stays whole when the variation moves APPROVED → INVOICED (the old formula: 1,100.00 short); nothing persisted, no Xero invoice; INV-2026-0039 untouched. [evidence/ac09-live-verification.json](../evidence/ac09-live-verification.json) | **FIXED** |
 | AC-13A | P1 | Completion checklist has no editing surface, so new jobs can never be final-invoiced | **Yes**, offline (PGlite and Postgres 17): accept Q-2026-0041, walk PRJ-2026-0031 to Completed | Preview and Prepare MISSING_DOCUMENT forever; dashboard NOT_READY; close refused with "the final invoice has not been raised yet"; no function anywhere updates checklist status. Hosted: PRJ-2026-0007 stuck now (Completed, 25,587.26 left to bill); PRJ-2026-0031..0033 latent | The required COMPLETION items had no write path (field contract: "no staff UI; NOT SUPPORTED"); the preview checked paperwork before billing; the close guard judged by the preview's error class | Project and financial lifecycles never contradict: completion items change only through a supported, validated, attributed path; fully billed is billed whatever the paperwork; Closed = settled (project_billing remaining 0), paid, gate satisfied, no Xero write in flight | `test/project-lifecycle.test.ts` (cases 1-13), `test/n8n-completion-fields.test.ts` (06 and 03, real node code) | Airtable Projects: Completion Photos / Compliance Certificate + a Note each (additive); migration `20261001110000_completion_gate_has_a_supported_path.sql` (`checklist_apply_change` behind `wf_airtable_change`; projection; preview order; close guard; dashboard flag; 2 integrity checks); n8n 06 watches the fields, 03 writes them | Red before (13/13 + 5/5); 15 ablations each red; regressions 304/304; full suite 550 passed, 0 failed; lint, typecheck clean; fresh chain (AC-13A alone on AC-09: amounts unchanged); integrity 0 FAIL; grants checked | Done 2026-10-06 (§8): fields created and filled from the canonical checklist, migration alone, 06 + 03 published; dry-run 0 drift, integrity 0 FAIL, security pass; live through real Airtable on PRJ-2026-0031: a refused edit corrected and read back, an attributed Not applicable applied and reverted; billing, checklist, invoices, projects, INV-2026-0039 and fingerprint unchanged. [evidence/ac13a-live-verification.json](../evidence/ac13a-live-verification.json) | **FIXED** |
-| AC-13B | P1 | Pre-start checklist (SWMS, material review) is not enforced on Scheduled → In Progress | – | – | – | – | – | – | – | – | Not started |
+| AC-13B | P1 | Pre-start checklist (SWMS, material review) is not enforced on Scheduled → In Progress | **Yes**, offline (PGlite and Postgres 17): a project born from quote acceptance went Scheduled → In Progress with SWMS signed and materials reviewed both OPEN | The transition checked only Planned Start; no function or staff surface could set PRE_START items (field contract: "no staff UI"). Hosted: PRJ-2026-0031..0033 (Planning, both items OPEN) could start with no SWMS; no started project has an open item | The gate into In Progress ignored the checklist, and the checklist had no supported write path | A project enters In Progress only if every required PRE_START item is Done, or Waived / Not applicable with a reason where allowed (SWMS: Done only); items change only through a validated, attributed Airtable path and lock once work starts | `test/pre-start-gate.test.ts` (15 cases + guard, imported limitation, integrity), `test/n8n-pre-start-fields.test.ts` (06 and 03, real node code); AC-13A lifecycle case 3 now satisfies the pre-start items before starting | Airtable Projects: SWMS Signed (To do / Done) / Materials Reviewed + a Note each (additive, created 2026-10-06, inert until deploy); migration `20261001130000_pre_start_gate_before_work_starts.sql` (pre-start rules in `checklist_apply_change`, setting `checklist.not_waivable`, projection, the In Progress gate in `project_transition_guard`, integrity `started_with_pre_start_open`); 06 watches the fields, 03 writes them | Red before (14/16 + 4/4); 12 ablations each red; full suite 622 passed, 0 failed; lint, typecheck clean; fresh chain (AC-13B alone: no project changes); integrity 0 FAIL; grants checked | **Yes** (AC-13B package §5): fill the fields for PRJ-2026-0031..0033, deploy, publish 06 + 03; live refused start + attributed set/revert | **Fixed offline**; hosted deploy awaiting owner approval |
 | AC-14 | P1 | A RoofOps final invoice paid (or voided) in Xero is never read back, so the project can never close | **Yes**, offline (PGlite and Postgres 17), with 07's real nodes and a fake Xero; on hosted read-only: PRJ-2026-0004 | A Xero-PAID final stays APPROVED; money owed never counts it; close refused "not every invoice is paid yet: INV-2026-0039 (approved)"; a Xero void cannot be followed (AC-05 guard says "void it in Xero first", nothing reads it back) | 07 re-read every linked invoice but compared only existence, total and reference; nothing maps Xero status or amounts to RoofOps; the close guard trusted the local status | RoofOps determines from verified Xero state (right tenant, linked invoice, amounts that add up) whether an invoice is not issued, unpaid, partially paid, paid, voided or ambiguous; closing uses only that, never a local flag | `test/xero-settlement.test.ts` (cases 1-14 + identity, arithmetic, DELETED, integrity); AC-13A lifecycle cases 7 and 12 corrected (they trusted a local PAID) | Migration `20261001120000_xero_verified_invoice_settlement.sql` (`xero_invoice_observations`, canonical mapping, `xero_record_settlement` behind `wf_reconcile_external`, verified void past the AC-05 guard, close guard and integrity on `invoice_financial_state`, balances from Xero); 07 reads with error handling and passes the verified fields | Red before (16/16); 16 ablations each red; regressions 315/315; full suite 582 passed, 0 failed; lint, typecheck clean; fresh chain (AC-14 alone: every project and balance unchanged); integrity 0 FAIL; grants checked | Done 2026-10-06 (§7): 07 published, then the migration alone; dry-run read INV-2026-0039 from Xero (DRAFT → NOT_ISSUED, RoofOps APPROVED, 0 drift) in its bound, pinned tenant; integrity 0 FAIL, security pass; PRJ-2026-0004 now blocked by "not issued in Xero yet"; rolled back: verified PAID lets it close, AC-04 UNKNOWN never applied, AC-05 local void refused, AC-06 wrong tenant refused; nothing written to Xero. [evidence/ac14-live-verification.json](../evidence/ac14-live-verification.json) | **FIXED** |
 | LIFE-01 | P3 | The INVOICING checklist item "Final invoice approved" is created OPEN and never set, so the project page shows it "To do" after the final invoice is approved | Yes (found in AC-13A) | wf_quote_accepted inserts it; nothing updates it; no gate reads it | Display only | Checklist shows the invoice state RoofOps holds | – | – | – | – | Not started (tracked separately; cosmetic) |
 | FIN-GST-01 | P2 | A multi-line final invoice (one with variation lines) can differ from Xero by one cent of GST | Not yet (found while fixing AC-09; tracked separately, not part of AC-09) | – | RoofOps rounds the final's GST once on the total; Xero may round per line | The GST RoofOps records equals the GST on the Xero draft | – | – | – | – | Not started (today a mismatch is refused at read-back and left UNKNOWN with an exception, AC-04; single-line finals, like the only real one, are unaffected) |
@@ -2457,4 +2457,95 @@ Xero.
 | AC-05: a local void of INV-2026-0039 | refused: "Void or delete it in Xero first" |
 | AC-06: a read in another tenant / after the pin moved | WRONG_TENANT, nothing applied, PERMISSION_DENIED exception; close refused |
 | Afterwards | nothing left: 0 runs, 0 observations from the proofs; INV-2026-0039 still VERIFIED NOT_ISSUED |
+
+## AC-13B evidence package
+
+### 1. Map: Planning → Scheduled → In Progress, before the fix
+
+| Piece | Before |
+|---|---|
+| Pre-start items | `wf_quote_accepted` creates MATERIALS_REVIEWED and SWMS_SIGNED (stage PRE_START, required, OPEN). Imported projects have none (only COMPLETION_PHOTOS). A MATERIAL_REVIEW task is created too; nothing completes it (not a gate; out of scope). |
+| Who can change them | Nobody: no function sets checklist status and the field contract said "no staff UI" (AC-13A added only the COMPLETION items). |
+| Planning → Scheduled | Airtable Status → 06 → `wf_airtable_change` → `project_apply_change`; state machine only. |
+| Scheduled → In Progress | `project_transition_guard`: a Planned Start is required; nothing else. Sets Actual Start. |
+| On Hold → In Progress | only for a job that already started. |
+| Bypass | Yes: PRJ-2026-0031 (born from a quote) went In Progress with both items OPEN (AC-13A probe, and `test/pre-start-gate.test.ts` case 2 red before the fix). |
+
+### 2. Invariant and business rules
+
+A project enters In Progress only if every required PRE_START item is Done, or Waived / Not applicable with a reason
+where the rules allow it.
+- **SWMS signed: Done only.** Owner decision 2026-10-06: roof work is high-risk construction work. It is a setting,
+  `checklist.not_waivable = SWMS_SIGNED`.
+- **Materials reviewed**: Done, Waived or Not applicable, with a reason in Materials Reviewed Note.
+- **How items change**: only through Airtable (SWMS Signed / Materials Reviewed). Postgres enforces the checklist
+  state machine, the reason, and attribution to a mapped RoofOps employee (a reconciler replay has no Airtable user, so
+  a person sets it again). The checklist is locked once work has started, since it was the gate, and when the job is
+  Closed or Cancelled.
+- **Where the gate lives**: in `project_transition_guard`, so it holds for every path (Airtable and direct SQL alike).
+- **Imported projects**: owner decision, they keep their historical shape. They have no PRE_START items, so the gate is
+  vacuous for them (17 not-started imported projects on hosted).
+- **AC-13A**: completion items behave exactly as before. "Done only once work started" stays a COMPLETION rule.
+
+### 3. Fix
+
+- **Airtable fields** (Projects, created 2026-10-06, additive, inert until 06 is republished): SWMS Signed
+  `fldM6kgPz6QZagPAC` (To do / Done), SWMS Signed Note `fldNcsIgH6TfQFfaU`, Materials Reviewed `fldozWSCU877wEZHq`
+  (To do / Done / Waived / Not applicable), Materials Reviewed Note `fldEtAmAokIvtzJdn`.
+- **Migration `20261001130000_pre_start_gate_before_work_starts.sql`**:
+  - field contract rows;
+  - `checklist.not_waivable`;
+  - `checklist_apply_change` (PRE_START lock and the non-waivable rule; COMPLETION unchanged);
+  - `project_apply_change` (the two fields);
+  - `v_airtable_expected` (projection);
+  - `project_transition_guard` (the gate);
+  - integrity `started_with_pre_start_open` (FAIL).
+- **n8n**: 06 watches the two fields (Notes travel in "current"); 03 writes both To do on a new record and verifies them.
+- **Other**: the schema map and the initial-load payload.
+
+### 4. Tests and verification (offline)
+
+`test/pre-start-gate.test.ts` (each test in its own rolled-back transaction) covers:
+- the normal satisfied checklist;
+- SWMS missing, and materials review missing;
+- waived with and without a reason;
+- not applicable (allowed for materials, refused for SWMS, and SWMS waiver refused);
+- an unmapped Airtable user;
+- a duplicate edit, and a stale edit;
+- a reconciler replay;
+- a start attempted too early, and a start once satisfied;
+- a cancelled project;
+- an In Progress project (locked, including On Hold; resume allowed);
+- invalid orderings (Planning → In Progress; a never-started On Hold → In Progress);
+- the guard on a direct update;
+- the imported limitation;
+- the integrity FAIL.
+
+`test/n8n-pre-start-fields.test.ts` covers 06 forwarding SWMS / Materials Reviewed (with the Note) to Postgres, and 03
+writing and verifying both. **AC-13A lifecycle case 3** now sets SWMS and materials before starting; it relied on the
+AC-13B bypass. AC-13A's 03 read-back test includes the two new fields.
+
+| Check | Result |
+|---|---|
+| Red, before the fix | 14 of 16 gate tests (2 already held: refused orderings, imported shape); 4 of 4 n8n tests |
+| Ablations | 12, each red on its own tests: no Airtable path, guard ignores pre-start, not locked after start, SWMS waivable, no reason, no attribution, no projection, no integrity check, "Done needs work started" for all stages, 06 does not watch, 03 does not write, 03 does not verify |
+| Full suite, PGlite + Postgres 17 | **622 passed**, 35 skipped, 0 failed; lint and typecheck clean |
+| Fresh chain | through AC-14 (33), then AC-13B alone: no project's status, invoice state, start guard or close guard changes; integrity 0 FAIL (new check PASS); as the dashboard role too |
+| Grants | `checklist_apply_change`: no app role; dashboard functions unchanged; workflow role 21; nothing executable by PUBLIC; RLS everywhere |
+| Local dev DB | applied alone; integrity 27 PASS, 5 WARNING, 0 FAIL |
+| Hosted (read-only survey) | PRJ-2026-0031..0033: Planning, both items OPEN (latent); no started project with an open item; 17 not-started imported projects without items |
+
+### 5. Proposed hosted verification (awaiting owner approval)
+
+1. Fill SWMS Signed / Materials Reviewed = To do on PRJ-2026-0031..0033 (one Airtable call; imported projects stay
+   blank).
+2. Deploy the migration alone, publish 06 then 03, and run the dry-run (expect 0 drift), integrity and security checks.
+   No repair run.
+3. **Live through Airtable on PRJ-2026-0031** (Planning):
+   - set a Planned Start and Scheduled;
+   - try In Progress, which is refused, and 06 corrects Status back to Scheduled;
+   - set SWMS Signed = Done and Materials Reviewed = Not applicable (with a reason), each attributed;
+   - set both back to To do and the status back to Planning, for a net canonical change of none.
+
+   Whether to really start a job is the owner's call, so the live check does not start one.
 

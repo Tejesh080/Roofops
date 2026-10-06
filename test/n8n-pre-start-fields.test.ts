@@ -1,7 +1,7 @@
 /**
- * AC-13A, the n8n side: the REAL node code of [RoofOps] 06 (Airtable changes) and 03 (project write-back), loaded through
- * the recorder. 06 must hand a Completion Photos / Compliance Certificate edit (with its Note) to Postgres, which applies
- * it through the checklist rules; 03 must create a new project's record with both items "To do" and prove it on read-back.
+ * AC-13B, the n8n side: the REAL node code of [RoofOps] 06 (Airtable changes) and 03 (project write-back), loaded through
+ * the recorder. 06 must hand a SWMS Signed / Materials Reviewed edit (with its Note) to Postgres, which applies it through
+ * the checklist rules; 03 must create a new project's record with both pre-start items "To do" and prove it on read-back.
  */
 import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -13,13 +13,13 @@ import { N8nRun, type Item } from './helpers/n8n-runner.js';
 
 type R = Record<string, unknown>;
 const T_PROJECTS = 'tblvUPIoebC3zoacv';
-const F = { photos: 'fldbbksVL3dT6cqyS', photosNote: 'fldA77ad94yUmvnu3', cert: 'fldf7iJiyHFxOQgUy', certNote: 'fldLi9FkGDFAbf0QB',
+const F = { swms: 'fldM6kgPz6QZagPAC', swmsNote: 'fldNcsIgH6TfQFfaU', materials: 'fldozWSCU877wEZHq', materialsNote: 'fldEtAmAokIvtzJdn',
+  photos: 'fldbbksVL3dT6cqyS', cert: 'fldf7iJiyHFxOQgUy',
   number: 'fldhhnQXlbuFaveK3', status: 'fldi2Qwz1dAh2tcTE', roofopsId: 'fldc4T0AgU3zCmANC', driveFolder: 'fldgVDT29UOOOtlqO', quote: 'fld08eKCeuDCsJLjz' };
 const APPROVER = 'usr7uCnNO15fCefbH';
 const recFor = (project: string) => `rec${createHash('md5').update(project).digest('hex').slice(0, 14)}`;
 const select = (name: string) => ({ id: `sel${name.replace(/\W/g, '').padEnd(14, 'x').slice(0, 14)}`, name, color: 'grayLight2' });
 const loaded = new Map<string, Promise<{ nodes: typeof recorded.nodes; edges: typeof recorded.edges }>>();
-/** A workflow's recorded nodes and connections; each SDK file is imported once per test file (the import is cached). */
 const load = (file: string) => {
   if (!loaded.has(file)) loaded.set(file, (async () => {
     recorded.nodes.clear(); recorded.edges.length = 0;
@@ -29,62 +29,54 @@ const load = (file: string) => {
   return loaded.get(file)!;
 };
 
-describe.each(TARGETS)('AC-13A: n8n 06 and 03 carry the completion fields [%s]', (target) => {
+describe.each(TARGETS)('AC-13B: n8n 06 and 03 carry the pre-start fields [%s]', (target) => {
   let db: Db;
+  let P = '';
   beforeAll(async () => {
     db = await migratedDb(target);
     await importBundle(db);
+    const [r] = await db.query<{ r: R }>(`select wf_quote_accepted($1::jsonb) r`, [JSON.stringify({ event_id: 'EVT-N8N-PRE', correlation_id: 'CORR-N8N-PRE', event_type: 'quote.accepted',
+      source: 'airtable', actor_id: 'airtable-automation', occurred_at: '2026-09-29T09:00:00+10:00',
+      payload: { quote_id: 'Q-2026-0041', accepted_version: 1, accepted_on: '2026-09-29', airtable_record_id: 'recTESTTESTTEST01' } })]);
+    P = String(r!.r.project_number);
     await db.exec(`insert into external_links (provider, entity_type, entity_id, external_type, external_id, last_synced_at, verified_at)
                    select 'AIRTABLE', 'project', id, 'Record', 'rec' || substr(md5(project_number), 1, 14), now(), now() from projects`);
   }, 120_000);
   afterAll(async () => { await db.close(); });
+  const item = async (code: string) => (await db.query<R>(`select ci.status, ci.waived_reason from project_checklist_items ci join projects p on p.id = ci.project_id
+      where p.project_number = $1 and ci.item_code = $2`, [P, code]))[0];
 
-  describe('06: a Completion Photos edit (with its Note) reaches Postgres and is applied there', () => {
+  describe('06: a SWMS Signed / Materials Reviewed edit reaches Postgres and is applied there', () => {
     let wf: Awaited<ReturnType<typeof load>>;
     beforeAll(async () => { wf = await load('../n8n/06-airtable-changes.sdk.ts'); });
-
-    const page = (rec: string, cur: R, prev: R, unchanged: R, txn: number) => ({ json: { cursor: 9, mightHaveMore: false, payloads: [{
+    const page = (cur: R, prev: R, unchanged: R, txn: number) => ({ json: { cursor: 9, mightHaveMore: false, payloads: [{
       timestamp: new Date(Date.UTC(2026, 9, 3, 0, 0, txn)).toISOString(), baseTransactionNumber: txn,
       actionMetadata: { source: 'client', sourceMetadata: { user: { id: APPROVER } } },
-      changedTablesById: { [T_PROJECTS]: { changedRecordsById: { [rec]: {
+      changedTablesById: { [T_PROJECTS]: { changedRecordsById: { [recFor(P)]: {
         current: { cellValuesByFieldId: cur }, previous: { cellValuesByFieldId: prev }, unchanged: { cellValuesByFieldId: unchanged } } } } } }] } });
-
     const run = async (pages: Item[]) => {
       const r = new N8nRun(wf.nodes, wf.edges, { db, http: () => { throw new Error('no HTTP expected'); } });
-      r.seed('Validate Ping', [{ json: { webhook_id: 'achTESTCOMPLET001' } }]);
+      r.seed('Validate Ping', [{ json: { webhook_id: 'achTESTPRESTAR001' } }]);
       r.seed('Load Payload Cursor', [{ json: { cursor: 1 } }]);
       await r.run('Extract Record Changes', pages, ['Plan Airtable Corrections']);
       return r;
     };
 
-    it('Done on an in-progress project: one event, applied, attributed', async () => {
-      const P = 'PRJ-2026-0016';
-      const r = await run([page(recFor(P), { [F.photos]: select('Done') }, { [F.photos]: select('To do') }, { [F.status]: select('In Progress') }, 101)]);
-      const events = r.out.get('Extract Record Changes')!;
-      expect(events).toHaveLength(1);
-      expect(events[0]!.json).toMatchObject({ event: { record_id: recFor(P), actor_id: APPROVER, changes: { [F.photos]: { current: select('Done') } } } });
+    it('SWMS Signed = Done: one event, applied, attributed', async () => {
+      const r = await run([page({ [F.swms]: select('Done') }, { [F.swms]: select('To do') }, { [F.status]: select('Planning') }, 201)]);
+      expect(r.out.get('Extract Record Changes')![0]!.json).toMatchObject({ event: { record_id: recFor(P), actor_id: APPROVER, changes: { [F.swms]: { current: select('Done') } } } });
       expect((r.out.get('Apply Change In Postgres')![0]!.json.r as R).outcome).toBe('APPLIED');
-      expect(await db.query(`select ci.status from project_checklist_items ci join projects p on p.id = ci.project_id
-                              where p.project_number = $1 and ci.item_code = 'COMPLETION_PHOTOS'`, [P])).toEqual([{ status: 'DONE' }]);
+      expect(await item('SWMS_SIGNED')).toMatchObject({ status: 'DONE' });
     });
 
-    it('Waived: the Note is carried in "current" and becomes the recorded reason', async () => {
-      const P = 'PRJ-2026-0020';
-      const r = await run([page(recFor(P), { [F.photos]: select('Waived') }, { [F.photos]: select('To do') },
-                                { [F.photosNote]: 'Customer refused access for photos', [F.status]: select('In Progress') }, 102)]);
+    it('Materials Reviewed = Waived: the Note travels in "current" and becomes the recorded reason', async () => {
+      const r = await run([page({ [F.materials]: select('Waived') }, { [F.materials]: select('To do') }, { [F.materialsNote]: 'Customer supplies all materials' }, 202)]);
       expect((r.out.get('Apply Change In Postgres')![0]!.json.r as R).outcome).toBe('APPLIED');
-      expect(await db.query(`select ci.status, ci.waived_reason from project_checklist_items ci join projects p on p.id = ci.project_id
-                              where p.project_number = $1 and ci.item_code = 'COMPLETION_PHOTOS'`, [P]))
-        .toEqual([{ status: 'WAIVED', waived_reason: 'Customer refused access for photos' }]);
-    });
-
-    it('a Note-only edit is not a checklist change (nothing is sent)', async () => {
-      const r = await run([page(recFor('PRJ-2026-0024'), { [F.photosNote]: 'typing…' }, {}, {}, 103)]);
-      expect(r.out.get('Extract Record Changes')![0]!.json).toMatchObject({ no_events: true });
+      expect(await item('MATERIALS_REVIEWED')).toMatchObject({ status: 'WAIVED', waived_reason: 'Customer supplies all materials' });
     });
   });
 
-  describe('03: a new project record is created with both completion items "To do" and read back', () => {
+  describe('03: a new project record is created with both pre-start items "To do" and read back', () => {
     let wf: Awaited<ReturnType<typeof load>>;
     beforeAll(async () => { wf = await load('../n8n/03-airtable-project-writeback.sdk.ts'); });
     const job = { project_id: '00000000-0000-0000-0000-000000000031', project_number: 'PRJ-2026-0031', quote_number: 'Q-2026-0041', status: 'Planning',
@@ -96,14 +88,14 @@ describe.each(TARGETS)('AC-13A: n8n 06 and 03 carry the completion fields [%s]',
       return r;
     };
 
-    it('Build Project Record writes Completion Photos and Compliance Certificate = "To do"', async () => {
+    it('Build Project Record writes SWMS Signed and Materials Reviewed = "To do"', async () => {
       const r = seeded();
       await r.run('Build Project Record', [{ json: {} }], ['Record Built?']);
       const fields = ((r.out.get('Build Project Record')![0]!.json.request as R).records as R[])[0]!.fields as R;
-      expect(fields).toMatchObject({ [F.photos]: 'To do', [F.cert]: 'To do' });
+      expect(fields).toMatchObject({ [F.swms]: 'To do', [F.materials]: 'To do' });
     });
 
-    it('Verify Airtable Read-Back refuses a record whose completion fields did not stick', async () => {
+    it('Verify Airtable Read-Back refuses a record whose pre-start fields did not stick', async () => {
       const verify = async (readBack: R) => {
         const r = seeded();
         r.seed('Check Upsert', [{ json: { record_id: 'recPROJPROJ00031', created: true } }]);
@@ -113,11 +105,12 @@ describe.each(TARGETS)('AC-13A: n8n 06 and 03 carry the completion fields [%s]',
         return r.out.get('Verify Airtable Read-Back')![0]!.json;
       };
       const good = { [F.number]: job.project_number, [F.roofopsId]: job.project_id, [F.status]: 'Planning', [F.driveFolder]: job.drive_folder.web_view_link,
-                     [F.quote]: [job.quote_airtable_record_id], [F.photos]: 'To do', [F.cert]: 'To do',
-                     fldM6kgPz6QZagPAC: 'To do', fldozWSCU877wEZHq: 'To do' };                  // AC-13B: 03 also writes the pre-start gate
+                     [F.quote]: [job.quote_airtable_record_id], [F.photos]: 'To do', [F.cert]: 'To do', [F.swms]: 'To do', [F.materials]: 'To do' };
       expect(await verify(good)).toMatchObject({ ok: true });
-      const missing = Object.fromEntries(Object.entries(good).filter(([k]) => k !== F.cert));
-      expect(await verify(missing)).toMatchObject({ ok: false, failure: { error_class: 'RECONCILIATION_MISMATCH', message: expect.stringMatching(/Compliance Certificate/) as unknown } });
+      for (const [field, name] of [[F.swms, 'SWMS Signed'], [F.materials, 'Materials Reviewed']] as const) {
+        const missing = Object.fromEntries(Object.entries(good).filter(([k]) => k !== field));
+        expect(await verify(missing)).toMatchObject({ ok: false, failure: { error_class: 'RECONCILIATION_MISMATCH', message: expect.stringMatching(new RegExp(name)) as unknown } });
+      }
     });
   });
 });

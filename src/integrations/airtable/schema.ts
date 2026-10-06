@@ -36,7 +36,10 @@ export const AT = {
          invoiceAmount: 'fld5JDnWI3RFehQxA', xeroInvoiceNumber: 'fldgkN0Vm6k1MZLJp', xeroInvoiceId: 'fld3sDI9LIX8Voo4u',
          // AC-13A: the completion gate, edited by staff (To do / Done / Waived / Not applicable) with a reason in the Note
          completionPhotos: 'fldbbksVL3dT6cqyS', completionPhotosNote: 'fldA77ad94yUmvnu3',
-         complianceCertificate: 'fldf7iJiyHFxOQgUy', complianceCertificateNote: 'fldLi9FkGDFAbf0QB' },
+         complianceCertificate: 'fldf7iJiyHFxOQgUy', complianceCertificateNote: 'fldLi9FkGDFAbf0QB',
+         // AC-13B: the pre-start gate (SWMS: To do / Done only; materials review may be Waived / Not applicable with a reason)
+         swmsSigned: 'fldM6kgPz6QZagPAC', swmsSignedNote: 'fldNcsIgH6TfQFfaU',
+         materialsReviewed: 'fldozWSCU877wEZHq', materialsReviewedNote: 'fldEtAmAokIvtzJdn' },
   },
   purchaseOrders: {
     table: 'tbluIbl4zpMiAlMVw',

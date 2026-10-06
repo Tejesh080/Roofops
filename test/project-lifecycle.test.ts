@@ -27,6 +27,7 @@ const T_PROJECTS = 'tblvUPIoebC3zoacv';
 const F = {
   status: 'fldi2Qwz1dAh2tcTE', reason: 'fld5MhzMBtA4CBUHo', start: 'fld8rf6RZLgfs6Ron', end: 'fldvZtiassZEgLMAN', sync: 'fldVrJOuyhbNtxnVh',
   photos: 'fldbbksVL3dT6cqyS', photosNote: 'fldA77ad94yUmvnu3', cert: 'fldf7iJiyHFxOQgUy', certNote: 'fldLi9FkGDFAbf0QB',
+  swms: 'fldM6kgPz6QZagPAC', materials: 'fldozWSCU877wEZHq',
 };
 const APPROVER = 'usr7uCnNO15fCefbH';            // mapped to EMP-900 (employee_external_identities)
 const UNMAPPED = 'usrSTAFFMEMBER01';             // an Airtable user RoofOps cannot attribute
@@ -139,6 +140,9 @@ describe.each(TARGETS)('AC-13A: project and financial lifecycles never contradic
   it('3. in progress: Done / Waived / Not applicable through Airtable, attributed, reason required, state machine enforced', async () => {
     expect(await change(P, { [F.start]: '2026-10-01', [F.end]: '2026-10-20' })).toMatchObject({ outcome: 'APPLIED' });
     expect(await change(P, { [F.status]: 'Scheduled' })).toMatchObject({ outcome: 'APPLIED' });
+    // AC-13B: the job starts only once its pre-start items are satisfied.
+    expect(await change(P, { [F.swms]: 'Done' })).toMatchObject({ outcome: 'APPLIED' });
+    expect(await change(P, { [F.materials]: 'Done' })).toMatchObject({ outcome: 'APPLIED' });
     expect(await change(P, { [F.status]: 'In Progress' })).toMatchObject({ outcome: 'APPLIED' });
 
     const unmapped = await change(P, { [F.photos]: 'Done' }, { actor: UNMAPPED });

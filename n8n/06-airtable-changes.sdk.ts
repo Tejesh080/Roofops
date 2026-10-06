@@ -53,7 +53,9 @@ const WATCHED = new Set(['fldhhnQXlbuFaveK3','fld08eKCeuDCsJLjz','fldG4mPoV6sUkA
   'fldP4PWGxdLZrA5ge','fldVpX0MOcA8TnGvo','fldm6rtleyV6yp8ZS',
   'fldNy5hhua9oCbrge','fldmyVulHN1hsCE8f','fldPtnT9heTBGTFEM','fldtNq7DluPgIM1rn','fldfXKzmQJYzbzgZY','fldLNYP5FsVaR6TFk',
   // AC-13A: the completion gate (Completion Photos, Compliance Certificate); their Note fields travel in "current".
-  'fldbbksVL3dT6cqyS','fldf7iJiyHFxOQgUy']);
+  'fldbbksVL3dT6cqyS','fldf7iJiyHFxOQgUy',
+  // AC-13B: the pre-start gate (SWMS Signed, Materials Reviewed); their Note fields travel in "current".
+  'fldM6kgPz6QZagPAC','fldozWSCU877wEZHq']);
 const TABLES = new Set(['tblHKX79FJFHn5FDc','tbloPJwCIcdIZQFVK','tblSYcCqId9wTMg3c','tblzenPRNVV5O7lZP','tblvUPIoebC3zoacv','tbluIbl4zpMiAlMVw']);
 const hook = $('Validate Ping').first().json.webhook_id;
 let next = Number($('Load Payload Cursor').first().json.cursor);

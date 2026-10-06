@@ -527,14 +527,29 @@ describe.each(TARGETS)('AC-14C B1: Xero draft generations [%s]', (target) => {
       expect(await k.claim(gen2Job.key, 'w2')).toMatchObject({ claimed: true });
       expect(await k.ledger(a.id)).toMatchObject([{ generation: 1, status: 'SUPERSEDED' }, { generation: 2, status: 'DISPATCHING' }]);
 
-      // The AC-14C-A void exemption survives with a superseded generation present: when the linked document was verified
-      // deleted in Xero (the reason for the reissue), the local void follows Xero - and no history row is touched.
+      // The AC-14C-A void exemption with a superseded generation present. While the replacement's write is queued (the
+      // reissue window) a local void is refused as any queued write (VAL-RIS-018) - a voided invoice must never have a
+      // live replacement writing a draft.
       const b = await k.approve('PRJ-2026-0001');
       expect(await k.claim(b.key, 'w1')).toMatchObject({ claimed: true });
       expect(await k.complete(b)).toMatchObject({ status: 'RECORDED' });
-      const { oldLink } = await k.supersede(b);
+      const { oldLink, newXid } = await k.supersede(b);
+      expect(await k.state(b)).toMatchObject({ status: 'APPROVED', sync_status: 'PENDING' });
+      const blocked = await db.query(`update invoices set status = 'VOIDED', voided_reason = 'deleted in Xero, verified by reconciliation' where id = $1`, [b.id])
+        .then(() => 'voided' as const, (e: unknown) => (e as Error).message);
+      expect(blocked).toMatch(/cannot be voided: its Xero draft is queued/);
+      expect(await k.state(b)).toMatchObject({ status: 'APPROVED', sync_status: 'PENDING' });
+      expect(await k.ledger(b.id)).toHaveLength(2);
+
+      // The replacement completes (its write terminal, the link moved by Part B2) and its document is verified deleted:
+      // the exemption applies as before, and no history row is touched.
+      const bGen2: Job = { ...b, key: `xero:invoice:${b.id}:g2` };
+      expect(await k.claim(bGen2.key, 'w2')).toMatchObject({ claimed: true });
+      expect(await k.complete(bGen2, { invoice_id: newXid })).toMatchObject({ status: 'RECORDED' });
+      expect(await k.state(bGen2)).toMatchObject({ status: 'APPROVED', sync_status: 'SYNCED', xero_link: newXid });
+      await k.insertObs(bGen2, { verdict: 'VERIFIED', settlement: 'DELETED', tenantId: TENANT, xeroInvoiceId: newXid });
       await db.query(`update invoices set status = 'VOIDED', voided_reason = 'deleted in Xero, verified by reconciliation' where id = $1`, [b.id]);
-      expect(await k.state(b)).toMatchObject({ status: 'VOIDED', voided_reason: 'deleted in Xero, verified by reconciliation' });
+      expect(await k.state(bGen2)).toMatchObject({ status: 'VOIDED', voided_reason: 'deleted in Xero, verified by reconciliation' });
       expect(await k.ledger(b.id)).toHaveLength(2);
       expect(await col(db, `select xero_invoice_id v from invoice_xero_draft_generations where invoice_id = $1 and generation = 1`, [b.id])).toEqual([oldLink]);
     }, 120_000);
@@ -581,8 +596,11 @@ describe.each(TARGETS)('AC-14C B1: Xero draft generations [%s]', (target) => {
       expect(await col(db, `select check_key v from integrity_check() where status = 'FAIL'`)).toEqual([]);
       const gen2: Job = { ...a, key: `xero:invoice:${a.id}:g2` };
       expect(await k.claim(gen2.key, 'w2')).toMatchObject({ claimed: true });
-      await expect(k.complete(gen2, { invoice_id: uuidFor(`replacement:${a.id}`) }))
-        .rejects.toThrow(/already linked to Xero invoice/);                   // B1 cannot move the link yet (Part B2 does)
+      // Part B2: a proof-carrying completion of a superseded generation's replacement MOVES the one current link.
+      const newXid = uuidFor(`replacement:${a.id}`);
+      expect(await k.complete(gen2, { invoice_id: newXid })).toMatchObject({ status: 'RECORDED' });
+      expect(await k.state(gen2)).toMatchObject({ status: 'APPROVED', sync_status: 'SYNCED', xero_link: newXid });
+      expect(await k.ledger(a.id)).toMatchObject([{ generation: 1, status: 'SUPERSEDED' }, { generation: 2, status: 'CREATED', xero_invoice_id: newXid }]);
       expect(await col(db, `select check_key v from integrity_check() where status = 'FAIL'`)).toEqual([]);
     }, 120_000);
   });

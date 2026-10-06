@@ -121,6 +121,17 @@ describe.each(TARGETS)('AC-14: verified Xero settlement drives invoice state and
   const latest = () => one(`select verdict, settlement, xero_status, amount_due::text due, tenant_id from xero_invoice_observations where invoice_id = $1 order by observed_at desc, id desc limit 1`, [fin.id]);
   const audits = async () => Number((await one(`select count(*)::int n from audit_events where action = 'invoice.xero_settlement_applied' and entity_id = $1`, [fin.id])).n);
   const openExc = () => col(db, `select error_class v from workflow_exceptions where business_reference in ($1, $2) and resolution_status = 'OPEN' order by created_at`, [fin.number, P]);
+  // AC-14B (integrity): the states the real nodes cannot produce - a void verified in the wrong tenant, a void of a
+  // different Xero invoice, or a later verified read that contradicts the void - are inserted directly.
+  const insertObs = async (o: { verdict: string; settlement: string | null; tenantId: string | null; xeroInvoiceId: string | null }) => {
+    const run = (await db.query<{ id: string }>(
+      `insert into reconciliation_runs (run_key, trigger, mode, status) values ('INTEG-14B-' || gen_random_uuid(), 'test', 'observe', 'COMPLETED') returning id::text id`))[0]!;
+    await db.query(`insert into xero_invoice_observations (invoice_id, run_id, tenant_id, bound_tenant_id, xero_invoice_id, verdict, settlement, xero_status, detail)
+                    values ($1, $2, $3, $4, $5, $6, $7, $7, 'synthetic observation for the AC-14B integrity tests')`,
+      [fin.id, run.id, o.tenantId, A, o.xeroInvoiceId, o.verdict, o.settlement]);
+  };
+  const voidedCheck = () => one(`select status, refs from integrity_check() where check_key = 'voided_invoice_has_no_xero_write'`);
+  const bypassVoid = () => force(`update invoices set status = 'VOIDED', voided_reason = 'bypass' where id = $1`, [fin.id]);
 
   it('1. a Xero DRAFT is NOT_ISSUED: RoofOps stays APPROVED, nothing owed, the project cannot close', async () => {
     await run07('repair');
@@ -282,5 +293,58 @@ describe.each(TARGETS)('AC-14: verified Xero settlement drives invoice state and
     expect(await one(`select status, refs from integrity_check() where check_key = 'xero_invoice_state_verified'`)).toMatchObject({ status: 'WARNING', refs: [expect.stringMatching(new RegExp(fin.number)) as unknown] });
     await run07('repair');
     expect((await one(`select status from integrity_check() where check_key = 'xero_invoice_state_verified'`)).status).toBe('PASS');
+  });
+
+  // AC-14B: AC-14 legitimately follows a verified Xero void (APPROVED -> VOIDED), but AC-05's integrity check still
+  // called every voided, linked RoofOps invoice a failure, so the correctness gate (scripts/integrity-check.ts) went
+  // red in a state the fix deliberately creates. The rule: a void is valid when the exact linked Xero invoice was
+  // verified VOIDED in the invoice's bound tenant, and no later verified read of that linked invoice says otherwise.
+  it('15. AC-14B: a void verified in Xero is not an integrity failure, and a later failed read does not make it one', async () => {
+    setX(xinv({ Status: 'VOIDED', AmountDue: 0 }));
+    await run07('repair');
+    expect(await inv()).toMatchObject({ status: 'VOIDED', sync_status: 'SYNCED' });
+    for (const key of ['voided_invoice_has_no_xero_write', 'xero_invoice_state_verified', 'closed_project_settled'])
+      expect((await one(`select status from integrity_check() where check_key = $1`, [key])).status).toBe('PASS');
+    xero.fail = () => ({ statusCode: 500 });                                           // a transient read of the now-voided invoice
+    await run07('repair');
+    expect(await latest()).toMatchObject({ verdict: 'LOOKUP_FAILED' });
+    expect(await voidedCheck()).toMatchObject({ status: 'PASS' });                     // a Xero void is irreversible: still valid
+  });
+
+  it('16. AC-14B: the local void the guard allows (a verified Xero void, observed first) is not an integrity failure', async () => {
+    setX(xinv({ Status: 'VOIDED', AmountDue: 0 }));
+    await run07('observe');                                                            // recorded, never applied by a dry run
+    expect(await latest()).toMatchObject({ verdict: 'VERIFIED', settlement: 'VOIDED' });
+    expect((await inv()).status).toBe('APPROVED');
+    await db.query(`update invoices set status = 'VOIDED', voided_reason = 'Voided in Xero by the accountant' where id = $1`, [fin.id]);
+    expect(await inv()).toMatchObject({ status: 'VOIDED', voided_reason: 'Voided in Xero by the accountant' });
+    expect(await voidedCheck()).toMatchObject({ status: 'PASS' });
+  });
+
+  it('17. AC-14B: a bypass void whose last verified read is not a void is still an integrity failure', async () => {
+    await run07('repair');                                                             // Xero is a DRAFT: VERIFIED NOT_ISSUED
+    expect(await latest()).toMatchObject({ verdict: 'VERIFIED', settlement: 'NOT_ISSUED' });
+    await bypassVoid();
+    expect(await voidedCheck()).toMatchObject({ status: 'FAIL', refs: [fin.number] });
+  });
+
+  it('18. AC-14B: a verified void recorded in another tenant does not excuse a bypass void', async () => {
+    await insertObs({ verdict: 'VERIFIED', settlement: 'VOIDED', tenantId: B, xeroInvoiceId: XID });
+    await bypassVoid();
+    expect(await voidedCheck()).toMatchObject({ status: 'FAIL', refs: [fin.number] });
+  });
+
+  it('19. AC-14B: a verified void of a different Xero invoice does not excuse a bypass void', async () => {
+    await insertObs({ verdict: 'VERIFIED', settlement: 'VOIDED', tenantId: A, xeroInvoiceId: 'aaaaaaaa-bbbb-cccc-dddd-0000000000ff' });
+    await bypassVoid();
+    expect(await voidedCheck()).toMatchObject({ status: 'FAIL', refs: [fin.number] });
+  });
+
+  it('20. AC-14B: a later verified read that contradicts the void puts the invoice back in the FAIL list', async () => {
+    setX(xinv({ Status: 'VOIDED', AmountDue: 0 }));
+    await run07('repair');
+    expect(await voidedCheck()).toMatchObject({ status: 'PASS' });
+    await insertObs({ verdict: 'VERIFIED', settlement: 'PAID', tenantId: A, xeroInvoiceId: XID });   // same linked invoice, later, PAID
+    expect(await voidedCheck()).toMatchObject({ status: 'FAIL', refs: [fin.number] });
   });
 });

@@ -430,9 +430,37 @@ Everything in §1–§13 was produced on branch `factory/ac14c-integrity-followu
   `test/balance-read-model.test.ts` and this evidence file (plus, for B1a, the already-committed
   `20261001150000_one_live_xero_draft_generation.sql`, `test/xero-generations.test.ts` and this file's part-1 content).
   No backups, no scratch files, no `.env*`, no modified applied migration.
-- Commit: `AC-14C-B1: a voided invoice is not collectible` (the exact SHA and the `git ls-remote` output proving the
-  commit is present on `origin/factory/ac14c-integrity-followup` are recorded in the evidence addendum committed
-  immediately after the push, per the mission's phase-gate rule).
+- Commit: `AC-14C-B1: a voided invoice is not collectible`, SHA `dd9c4c8bb8159048a5b1e2c3c2b23b6f2c699623` (`git rev-parse HEAD`),
+  on top of `2f3a13b` (B1a) and the mission's starting SHA `153d87b`. The exact push output and the `git ls-remote`
+  verification are recorded in §14.2 (committed immediately after the push, per the mission's phase-gate rule).
+
+### 14.2 The push (recorded after it happened)
+
+- Committed content verified byte-identical to the content every run in §8 tested: `git cat-file blob HEAD:<file>`
+  hashed to SHA-256 `59e21084…` for the B1b migration and `a4f4cd87…` for `test/balance-read-model.test.ts`, equal to
+  the working files' hashes.
+- `git status --short`: empty before and after the push (only the three intended files were committed; no backups, no
+  scratch files, no `.env*`, no modified applied migration).
+- `git push origin "HEAD:refs/heads/factory/ac14-integrity-followup"` (exit 0):
+
+  ```
+   153d87b..dd9c4c8  HEAD -> factory/ac14-integrity-followup
+  ```
+
+- `git ls-remote origin` (exit 0, byte-exact, after the push):
+
+  ```
+  dd9c4c8  refs/heads/factory/ac14-integrity-followup     (len 42)
+  dd9c4c8  refs/heads/factory/ac14c-integrity-followup    (len 43)
+  ```
+
+  The mission's branch — as named in `mission.md`, `architecture.md`, this branch's own tracking config and its
+  reflog — is `factory/ac14-integrity-followup`; the feature description and `validation-contract.md` (VAL-DOC-001)
+  also spell it `factory/ac14c-integrity-followup`. Both refs now carry the phase commit, so the phase gate holds
+  under either spelling. The 43-character ref is a duplicate created by the first push attempt (a typo'd destination);
+  it points at the same commit and is reported to the orchestrator rather than deleted here.
+- `git status -sb`: `## factory/ac14-integrity-followup...origin/factory/ac14-integrity-followup` — in sync, no
+  divergence, nothing ahead or behind.
 
 **FIXED OFFLINE, NOT HOSTED/DEPLOYED.** Nothing in Part B1 has been deployed, pushed to any hosted system, or applied
 to any hosted database; the only "push" is the git branch push of this offline work to the mission's own remote, per

@@ -1,0 +1,232 @@
+{
+ "defect": "AC-14: a RoofOps final invoice paid or voided in Xero was never read back, so the project could never close",
+ "offline_commit": "6b90dbe",
+ "deploy": {
+  "order": "07 published first (the new 07 is harmless against the old Postgres; the reverse would make a scheduled 07 run file a false wrong-tenant read), then the migration alone",
+  "n8n_07": "EiBs0AB2NfOua7AM active 1737a07a -> a0ca9e60 (Read Xero Invoice continues on error; Record Xero Findings passes the read tenant and the verified fields); live nodes equal the repo",
+  "migration": {
+   "file": "supabase/migrations/20261001120000_xero_verified_invoice_settlement.sql",
+   "checksum_prefix": "ef03aed9",
+   "output": [
+    "migrations applied: 20261001120000_xero_verified_invoice_settlement.sql (skipped 32)",
+    "dataset 0dd5b61419f7… already imported (batch 243ef8f4-08fb-41d5-98c3-ab62f13560c6); nothing to do"
+   ]
+  },
+  "parity": "{\"repo\":33,\"hosted\":33,\"mismatched\":[],\"extra_on_hosted\":[],\"ac14_checksum\":\"ef03aed9\"}"
+ },
+ "checks": {
+  "before": {
+   "integrity": [
+    "26 PASS, 4 WARNING, 0 FAIL  (hosted database)"
+   ],
+   "security": [
+    "all privilege checks pass"
+   ]
+  },
+  "dry_run": [
+   "RECON-20261006-100243-8ef6  mode=observe  status=COMPLETED",
+   "│ 0       │ 'AIRTABLE'     │ 231     │ 0           │ 0        │ 0            │ 0         │ 231    │",
+   "│ 1       │ 'GOOGLE_DRIVE' │ 3       │ 0           │ 0        │ 0            │ null      │ 3      │",
+   "│ 2       │ 'XERO'         │ 1       │ 0           │ 0        │ 0            │ null      │ 1      │",
+   "No drift found."
+  ],
+  "after": {
+   "integrity": [
+    "  PASS    closed_project_settled             Closed projects have nothing left to bill, nothing over-billed, every invoice paid or voided, and their completion items done or waived",
+    "  PASS    xero_invoice_state_verified        Every Xero-linked invoice was last read from its own Xero tenant and RoofOps shows the state Xero verified (a repair run applies it)",
+    "27 PASS, 4 WARNING, 0 FAIL  (hosted database)"
+   ],
+   "security": [
+    "PASS  dashboard role: readable tables                []",
+    "PASS  dashboard role: SECURITY DEFINER functions     [\"app_today\",\"at_link\",\"integrity_check\",\"invoice_final_preview\",\"project_left_to_bill_after_final\",\"project_over_billing\",\"sm_label\",\"wf_invoice_prepare\"]",
+    "PASS  dashboard role: can it write via wf_* (other than prepare)? []",
+    "PASS  workflow role: executable functions            21 items",
+    "PASS  anon/authenticated: readable or writable objects []",
+    "PASS  functions executable by PUBLIC                 []",
+    "PASS  tables without row level security              []",
+    "PASS  Xero writes pinned to the proven Demo tenant   [\"96643bb0-3a0a-406e-96fb-ab8a933ee6b8\"]",
+    "PASS  reconcile trigger token stored only as a hash  [\"64\"]",
+    "all privilege checks pass"
+   ]
+  },
+  "final": {
+   "integrity": [
+    "27 PASS, 4 WARNING, 0 FAIL  (hosted database)"
+   ],
+   "security": [
+    "all privilege checks pass"
+   ]
+  },
+  "repair_run": "none"
+ },
+ "live_read_inv_2026_0039": {
+  "how": "the dry-run (observe) read INV-2026-0039 with GET /Invoices/{InvoiceID} in the pinned tenant; nothing was written to Xero",
+  "observation": {
+   "run_key": "RECON-20261006-100243-8ef6",
+   "mode": "observe",
+   "observed_at": "2026-10-06T00:02:52.709Z",
+   "verdict": "VERIFIED",
+   "settlement": "NOT_ISSUED",
+   "xero_status": "DRAFT",
+   "total": "14664.49",
+   "amount_due": "14664.49",
+   "amount_paid": "0.00",
+   "amount_credited": "0.00",
+   "read_in_bound_tenant": true,
+   "bound_is_pinned": true,
+   "linked_invoice": true,
+   "payments": null,
+   "detail": null
+  },
+  "roofops_invoice": {
+   "status": "APPROVED",
+   "sync_status": "SYNCED"
+  },
+  "financial_state": {
+   "state": "NOT_ISSUED",
+   "reason": "not issued in Xero yet (verified 2026-10-06 00:02)",
+   "settled": false
+  },
+  "close_prj_2026_0004": "not every invoice is paid yet: INV-2026-0039 (not issued in Xero yet (verified 2026-10-06 00:02))",
+  "mapping": "Xero DRAFT, total 14,664.49, due 14,664.49, paid 0, credited 0 -> NOT_ISSUED -> RoofOps APPROVED (unchanged; matches)",
+  "bound_tenant": "read in the bound tenant, which is the pinned tenant, on the linked InvoiceID"
+ },
+ "rolled_back_proofs": {
+  "note": "owner connection; each in its own transaction, always rolled back; synthetic Xero answers passed to wf_reconcile_external exactly as 07 does; no Xero call",
+  "verified_paid_allows_close": {
+   "reconcile": {
+    "ok": true,
+    "drift": 0,
+    "verified": 1,
+    "settlement": {
+     "ok": true,
+     "applied": 1,
+     "verdicts": {
+      "verified": 1
+     },
+     "regressed": 0
+    }
+   },
+   "after": {
+    "status": "PAID",
+    "sync_status": "SYNCED",
+    "close_0004": null,
+    "latest": "VERIFIED PAID"
+   },
+   "audits": 2
+  },
+  "ac04_unknown_never_applied": {
+   "after": {
+    "status": "APPROVED",
+    "sync_status": "UNKNOWN",
+    "close_0004": "not every invoice is paid yet: INV-2026-0039 (its Xero write is still in flight or uncertain)",
+    "latest": "VERIFIED PAID"
+   }
+  },
+  "ac05_local_void_refused": {
+   "refused": true,
+   "message": "INV-2026-0039 cannot be voided: its Xero draft exists (RO-INV-2026-0039). Void or delete it in Xero first"
+  },
+  "ac06_read_in_another_tenant_refused": {
+   "after": {
+    "status": "APPROVED",
+    "sync_status": "SYNCED",
+    "close_0004": "not every invoice is paid yet: INV-2026-0039 (the last Xero check failed (wrong tenant, 2026-10-06 00:04); RoofOps does not assume it is paid)",
+    "latest": "WRONG_TENANT -"
+   },
+   "exception": [
+    "PERMISSION_DENIED"
+   ]
+  },
+  "ac06_pin_moved_after_the_write_read_not_trusted": {
+   "after": {
+    "status": "APPROVED",
+    "sync_status": "SYNCED",
+    "close_0004": "not every invoice is paid yet: INV-2026-0039 (the last Xero check failed (wrong tenant, 2026-10-06 00:04); RoofOps does not assume it is paid)",
+    "latest": "WRONG_TENANT -"
+   }
+  },
+  "state_after_all": {
+   "status": "APPROVED",
+   "sync_status": "SYNCED",
+   "close_0004": "not every invoice is paid yet: INV-2026-0039 (not issued in Xero yet (verified 2026-10-06 00:02))",
+   "latest": "VERIFIED NOT_ISSUED"
+  },
+  "nothing_persisted": {
+   "runs": 0,
+   "observations": 0
+  }
+ },
+ "web_login_read_only": {
+  "role": "roofops_web",
+  "dashboard_0004": {
+   "invoice_status": "XERO_DRAFT_CREATED",
+   "amount": "14664.49",
+   "owed": "0",
+   "needs_attention": false
+  },
+  "balance_0039": {
+   "status": "APPROVED",
+   "paid": "0.00",
+   "owed": "14664.49"
+  },
+  "integrity": [
+   {
+    "check_key": "closed_project_settled",
+    "status": "PASS"
+   },
+   {
+    "check_key": "xero_invoice_state_verified",
+    "status": "PASS"
+   }
+  ],
+  "xero_record_settlement": "refused: permission denied for function xero_record_settlement",
+  "invoice_financial_state": "refused: permission denied for function invoice_financial_state",
+  "observations_table": "refused: permission denied for table xero_invoice_observations"
+ },
+ "unchanged": {
+  "digests_before": {
+   "invoices": "cb321532d4c19adda785e347de9a9bb6519eb56d2143f913a9d1865a5ce32d39",
+   "projects": "ce3d124e6099534ee3bccef624c0494c36f1494dafa5c9d0a75850f0002ed99e",
+   "dashboard": "4d3db1d64812210591fab2ac879ce8dd02dd7941e84d87a3538cc37ee549c7da",
+   "balances": "a01f73e4c6a861ad45590469b9fd77ad77f06572387073dc9d4414e69625fe27",
+   "inv_0039": "b05fbe21a06f93c1e1bef851c41a99f0f8a193acddbf2ce4b10dfcbf1073a844"
+  },
+  "digests_after_deploy": {
+   "invoices": "cb321532d4c19adda785e347de9a9bb6519eb56d2143f913a9d1865a5ce32d39",
+   "projects": "ce3d124e6099534ee3bccef624c0494c36f1494dafa5c9d0a75850f0002ed99e",
+   "dashboard": "4d3db1d64812210591fab2ac879ce8dd02dd7941e84d87a3538cc37ee549c7da",
+   "balances": "f41258a279be027083da7efc77854fac0df5e7348f9069ef3de1cead301d7ba6",
+   "inv_0039": "b05fbe21a06f93c1e1bef851c41a99f0f8a193acddbf2ce4b10dfcbf1073a844"
+  },
+  "digests_final": {
+   "invoices": "cb321532d4c19adda785e347de9a9bb6519eb56d2143f913a9d1865a5ce32d39",
+   "projects": "ce3d124e6099534ee3bccef624c0494c36f1494dafa5c9d0a75850f0002ed99e",
+   "dashboard": "4d3db1d64812210591fab2ac879ce8dd02dd7941e84d87a3538cc37ee549c7da",
+   "balances": "f41258a279be027083da7efc77854fac0df5e7348f9069ef3de1cead301d7ba6",
+   "inv_0039": "b05fbe21a06f93c1e1bef851c41a99f0f8a193acddbf2ce4b10dfcbf1073a844"
+  },
+  "identical_except_balances_format": true,
+  "balances_difference": "INV-2026-0039 amount_paid shown as 0.00 instead of 0 (now from Xero amounts); value identical",
+  "date_fingerprint_173": {
+   "before": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6",
+   "final": "89d72adfc5a6ba3cc075425c9ed21d8b91cf723c0134831b2ee825c9543595b6"
+  },
+  "counts_before": {
+   "audit": "102",
+   "recon_runs": "42",
+   "exceptions": "19",
+   "invoices": "39",
+   "payments": "27"
+  },
+  "counts_final": {
+   "audit": "103",
+   "recon_runs": "43",
+   "exceptions": "19",
+   "invoices": "39",
+   "payments": "27"
+  },
+  "explained": "one dry-run: +1 reconciliation run, +1 audit event; PRJ-2026-0004 close reason now names the verified Xero state"
+ },
+ "xero_writes": 0
+}

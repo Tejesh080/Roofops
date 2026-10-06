@@ -8,8 +8,9 @@
  *   AUTHORISED, nothing paid or credited  -> UNPAID          RoofOps ISSUED
  *   AUTHORISED, 0 < AmountDue < Total     -> PARTIALLY_PAID  RoofOps PARTIALLY_PAID
  *   PAID (AmountDue 0)                    -> PAID            RoofOps PAID
- *   VOIDED                                -> VOIDED          RoofOps VOIDED (the only void allowed past AC-05's guard)
- *   DELETED                               -> a person decides; nothing changes
+ *   VOIDED, or DELETED with no money moved anywhere (AC-14C)
+ *                                         -> VOIDED          RoofOps VOIDED (the two voids AC-05's guard allows)
+ *   DELETED with money on it (Xero Paid/Credited, or a local payment row) -> a person decides; nothing changes
  *   lookup failed / wrong tenant / mismatch / inconsistent amounts -> ambiguous: recorded, never inferred, nothing changes
  * 07 (reconciliation) reads every linked invoice; a repair run applies the verified state, a dry run only records it.
  * Closing trusts only verified state: a Xero-linked invoice must be verified PAID or VOIDED recently; a local PAID flag
@@ -131,6 +132,7 @@ describe.each(TARGETS)('AC-14: verified Xero settlement drives invoice state and
       [fin.id, run.id, o.tenantId, A, o.xeroInvoiceId, o.verdict, o.settlement]);
   };
   const voidedCheck = () => one(`select status, refs from integrity_check() where check_key = 'voided_invoice_has_no_xero_write'`);
+  const finState = async () => (await one(`select invoice_financial_state($1, false) f`, [fin.id])).f as R;
   const bypassVoid = () => force(`update invoices set status = 'VOIDED', voided_reason = 'bypass' where id = $1`, [fin.id]);
 
   it('1. a Xero DRAFT is NOT_ISSUED: RoofOps stays APPROVED, nothing owed, the project cannot close', async () => {
@@ -271,12 +273,83 @@ describe.each(TARGETS)('AC-14: verified Xero settlement drives invoice state and
     expect((await inv()).status).toBe('APPROVED');
   });
 
-  it('DELETED in Xero: a person decides; nothing changes', async () => {
-    setX(xinv({ Status: 'DELETED' }));
+  // AC-14C Part A: a draft created in Xero and then DELETED in Xero with no money movement anywhere is the same
+  // business state as a void, so the verified read must follow the void path (was: nothing changed and the invoice was
+  // stuck APPROVED for ever). A deletion that moved money is not that state and is left to a person.
+  it('21. AC-14C: a Xero-verified DELETED final invoice follows the void path: VOIDED, with the deletion reason', async () => {
+    setX(xinv({ Status: 'DELETED', AmountDue: 0 }));
+    await run07('observe');
+    expect(await latest()).toMatchObject({ verdict: 'VERIFIED', settlement: 'DELETED', xero_status: 'DELETED', tenant_id: A });
+    expect((await inv()).status).toBe('APPROVED');                                     // a dry run records the deletion, applies nothing
+    await run07('repair');
+    expect(await latest()).toMatchObject({ verdict: 'VERIFIED', settlement: 'DELETED', xero_status: 'DELETED', tenant_id: A });
+    expect(await inv()).toMatchObject({ status: 'VOIDED', sync_status: 'SYNCED',
+      voided_reason: expect.stringMatching(/^Deleted in Xero \(verified by reconciliation /) as unknown });
+    expect(await audits()).toBe(1);                                                    // APPROVED -> VOIDED, once
+    expect((await one(`select reason from audit_events where action = 'invoice.xero_settlement_applied' and entity_id = $1`, [fin.id])).reason)
+      .toMatch(/Xero verified deleted/);
+    expect(await finState()).toMatchObject({ settled: true, state: 'DELETED', reason: expect.stringMatching(/deleted in Xero/) as unknown });
+    for (const key of ['voided_invoice_has_no_xero_write', 'xero_invoice_state_verified', 'closed_project_settled'])
+      expect((await one(`select status from integrity_check() where check_key = $1`, [key])).status).toBe('PASS');
+    expect(await close()).toMatch(/left to bill/);                                     // the deleted final no longer bills the customer
+  });
+
+  it('22. AC-14C: a DELETED invoice that moved money is never written off: nothing changes, a person decides', async () => {
+    setX(xinv({ Status: 'DELETED', AmountDue: 0, AmountPaid: 5000,                                                  // Xero says something was paid
+      Payments: [{ PaymentID: 'bbbbbbbb-0000-0000-0000-000000000002', Amount: 5000, Date: '2026-10-10' }] }));
     await run07('repair');
     expect(await latest()).toMatchObject({ verdict: 'VERIFIED', settlement: 'DELETED' });
     expect((await inv()).status).toBe('APPROVED');
-    expect(await openExc()).toContain('EXTERNAL_MISSING');
+    expect(await openExc()).toContain('RECONCILIATION_MISMATCH');
+    expect(await finState()).toMatchObject({ settled: false, state: 'DELETED', reason: expect.stringMatching(/a person decides/) as unknown });
+    expect(await close()).toMatch(new RegExp(`${fin.number}.*deleted in Xero`));
+    setX(xinv({ Status: 'DELETED', AmountDue: 0, AmountCredited: 100 }));                // a credit is money too
+    await run07('repair');
+    expect((await inv()).status).toBe('APPROVED');
+    setX(xinv({ Status: 'DELETED', AmountDue: 0 }));
+    await db.query(`insert into payments (invoice_id, amount, received_on, method, source) values ($1, 100, app_today(), 'BANK_TRANSFER', 'MANUAL')`, [fin.id]);
+    await run07('repair');
+    expect((await inv()).status).toBe('APPROVED');                                      // a local payment row blocks the write-off
+    expect(await voidedCheck()).toMatchObject({ status: 'PASS' });                      // nothing was voided
+  });
+
+  it('23. AC-14C: a DELETED read in another tenant is refused and changes nothing (AC-06)', async () => {
+    xero.invoices.set(`${B}:${XID}`, xinv({ Status: 'DELETED', AmountDue: 0 }));
+    await run07('repair', (t) => { for (const x of t.xero as R[]) x.tenant_id = B; });
+    expect(await latest()).toMatchObject({ verdict: 'WRONG_TENANT', settlement: null });
+    expect((await inv()).status).toBe('APPROVED');
+    expect(await openExc()).toContain('PERMISSION_DENIED');
+    expect(await voidedCheck()).toMatchObject({ status: 'PASS' });
+  });
+
+  it('24. AC-14C: a DELETED read of a different Xero invoice does not void the linked one', async () => {
+    setX(xinv({ Status: 'DELETED', AmountDue: 0, InvoiceID: 'aaaaaaaa-bbbb-cccc-dddd-0000000000ff' }));
+    await run07('repair');
+    expect(await latest()).toMatchObject({ verdict: 'MISMATCH', settlement: null });
+    expect((await inv()).status).toBe('APPROVED');
+    expect(await voidedCheck()).toMatchObject({ status: 'PASS' });
+  });
+
+  it('25. AC-14C: a later failed read neither applies nor undoes an applied deletion (stability)', async () => {
+    setX(xinv({ Status: 'DELETED', AmountDue: 0 }));
+    await run07('repair');
+    expect((await inv()).status).toBe('VOIDED');
+    expect(await voidedCheck()).toMatchObject({ status: 'PASS' });
+    xero.fail = () => ({ statusCode: 500 });                                            // a transient read of the now-deleted invoice
+    await run07('repair');
+    expect(await latest()).toMatchObject({ verdict: 'LOOKUP_FAILED', settlement: null });
+    expect((await inv()).status).toBe('VOIDED');
+    expect(await voidedCheck()).toMatchObject({ status: 'PASS' });                      // a Xero deletion is irreversible: still valid
+    await insertObs({ verdict: 'LOOKUP_FAILED', settlement: null, tenantId: A, xeroInvoiceId: XID });
+    expect(await voidedCheck()).toMatchObject({ status: 'PASS' });
+  });
+
+  it('26. AC-14C: a later verified PAID re-fails integrity after DELETED -> VOIDED (ordering)', async () => {
+    setX(xinv({ Status: 'DELETED', AmountDue: 0 }));
+    await run07('repair');
+    expect(await voidedCheck()).toMatchObject({ status: 'PASS' });
+    await insertObs({ verdict: 'VERIFIED', settlement: 'PAID', tenantId: A, xeroInvoiceId: XID });   // same linked invoice, later, PAID
+    expect(await voidedCheck()).toMatchObject({ status: 'FAIL', refs: [fin.number] });
   });
 
   it('12. AC-04: an UNKNOWN write is never read as settled, and the project cannot close', async () => {

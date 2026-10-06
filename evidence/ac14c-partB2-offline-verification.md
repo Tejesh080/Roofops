@@ -486,6 +486,13 @@ all B2 privilege checks pass
 ### 18.2 Full dual-engine battery
 
 ```
+# PGlite only (TEST_DATABASE_URL unset)
+npx vitest run
+ → Test Files 31 passed | 3 skipped (34)
+ → Tests 364 passed | 36 skipped (400), 0 failed, exit 0, 126.11 s
+ → test/xero-reissue.test.ts (19 tests)   ·   test/reissue-cli.test.ts (6 tests | 1 skipped: the real process case)
+
+# PGlite + PostgreSQL 17
 TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres npm test
  → Test Files 31 passed | 3 skipped (34)
  → Tests 695 passed | 36 skipped (731), 0 failed, exit 0, 290.22 s
@@ -493,8 +500,10 @@ TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres npm te
  → test/xero-reissue.test.ts (38 passed)             # 19 cases × both engines
 ```
 
-Baseline: the facility recorded `30 passed | 3 skipped (33)`, `684 passed | 35 skipped (719)`; this feature adds one
-file and 12 results (6 cases × 2 engines, one of which is a PGlite skip by design), nothing removed or skipped.
+Baseline: the facility recorded `30 passed | 3 skipped (33)`, `684 passed | 35 skipped (719)`; the B1 close recorded
+PGlite `340 passed | 35 skipped` and dual `646 passed | 35 skipped`. This feature adds one file and 12 results (6 cases
+× 2 engines, one of which is a PGlite skip by design) — `364` on PGlite and `695` dual — with nothing removed or
+skipped.
 
 ### 18.3 Concurrency (re-confirmed in the closing run)
 

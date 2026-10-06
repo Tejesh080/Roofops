@@ -1,4 +1,4 @@
-# AC-14C Part B2 offline verification: the supervised final-invoice reissue (facility)
+# AC-14C Part B2 offline verification: the supervised final-invoice reissue (facility + operator tooling)
 
 **FIXED OFFLINE, NOT HOSTED/DEPLOYED.**
 
@@ -25,9 +25,13 @@ Xero, Airtable, n8n or Supabase call. Everything below is local: PGlite and a lo
 - One existing file is touched, exactly as the milestone note requires: `test/xero-generations.test.ts` — the two B1
   assertions that pinned the intermediate B1 behaviour are updated to the decided B2 semantics (§7.3). No other change
   to that file (24 insertions / 6 deletions, all inside those two cases).
-- Starting SHA (this feature): `2900f44a68d15eb79126ddfb6d70c8f80ae2230f` ("AC-14C-B1: the phase commit is recorded on
-  origin"), branch `factory/ac14c-integrity-followup`, clean tree. Phase close (push) belongs to the next feature
-  (`b2-operator-cli`); this file is started here and completed there.
+- Starting SHA (facility feature): `2900f44a68d15eb79126ddfb6d70c8f80ae2230f` ("AC-14C-B1: the phase commit is recorded
+  on origin"), branch `factory/ac14c-integrity-followup`, clean tree. The facility was committed by `b2-reissue-facility`
+  as `a19b3dcd00479763340c8bb42cd6a790c00792e6` ("AC-14C-B2: a voided final invoice is reissued only through a
+  supervised, evidence-bound decision") and independently re-verified by the runner's adoption session (same hashes,
+  red-before, three ablations, concurrency, full dual-engine 684/35/0) before the phase was handed to the closing
+  feature `b2-operator-cli`, which adds the operator CLI, the committed scenario builder, the security-check extension
+  and the closing sections below and publishes the phase (§20).
 
 ## 1. What Part B2 is
 
@@ -313,6 +317,8 @@ SELECT it.
 
 ## 12. Git status
 
+The facility feature's tree at its commit `a19b3dc` (recorded here as the facility left it):
+
 ```
 git status --porcelain
  M test/xero-generations.test.ts
@@ -322,16 +328,221 @@ git status --porcelain
 ```
 
 No applied migration was modified, nothing under `backups/`, `.env*` or `.vscode/` is staged, no scratch file is in
-the tree, and the two engine runs left no artifact. The commit for this feature is `AC-14C-B2: …`; the phase commit's
-push is the closing feature's step (`b2-operator-cli`), per the mission brief ("push only when a phase's closing
-feature instructs it").
+the tree, and the two engine runs left no artifact. The closing feature's tree and commit are §20.
 
-## 13. SKIPPED (and why)
+## 13. What this phase does not include (and where it lands)
 
-- The operator CLI (`scripts/reissue.ts`), the committed scenario builder and the security-check extension: the next
-  feature (`b2-operator-cli`), which also closes the phase (push) and completes this file's closing sections.
 - The end-to-end 24-step lifecycle proof, the 35-case adversarial matrix and the remaining ablation set (one-live
   protection, generation-aware idempotency, historical Xero ID preservation, collectible balance, concurrent reissue):
   Part C (`c-end-to-end-recovery`), whose `c-final-evidence` closes the mission and updates the defect ledger and the
   generated docs.
-- Hosted verification of any kind: out of scope for this mission by design (`FIXED OFFLINE, NOT HOSTED/DEPLOYED`).
+- A hosted run of any kind, including the extended `npm run security:check`: out of scope for this mission by design
+  (`FIXED OFFLINE, NOT HOSTED/DEPLOYED`). §17 records the offline replica of the six new assertions against a freshly
+  migrated local database.
+
+## 14. The operator CLI (`scripts/reissue.ts`, npm `reissue`)
+
+The database owns the rule; the CLI is a thin, local, two-step surface over it. It contains no rule logic of its own
+(no status, tenant, money, reason or approval semantics), writes nothing itself, and never calls Xero or any network
+endpoint: its only statements are the two `select ops_reissue_*(...)` calls plus one read-only invoice lookup that turns
+an invoice number into its id.
+
+- Usage (also in `README.md` §"🧾 The supervised reissue CLI" and in the script's `--help`/usage text):
+  `npm run reissue -- request --invoice <INV-…|uuid> --by <EMP-…> --reason "<why>"` and
+  `npm run reissue -- decide --approval <APR-…> --by <EMP-…> [--note "<what you checked>"]`.
+- Connection: `openPostgres(process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/roofops')`
+  (`src/db/db.ts`); a non-local host is refused before connecting, so the CLI cannot be pointed at a hosted database by
+  accident.
+- Output: exactly the JSON the database function returns, one line, on stdout. Exit codes: `0` success
+  (`REISSUE_REQUESTED` / `REISSUE_QUEUED`), `2` a database refusal (the canonical code is printed), `1` a usage or
+  connection error.
+
+### 14.1 Manual runs against a throwaway local database (`ac14c_b2c_cli`, created and dropped for this)
+
+```
+docker exec roofops-postgres createdb -U postgres ac14c_b2c_cli
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/ac14c_b2c_cli npx tsx scripts/db-load.ts
+ → migrations applied: … 20261001170000_supervised_final_invoice_reissue.sql (skipped 0)
+ → imported batch acab0e3c-b642-4787-92a0-1b298e76bc4d (dataset 0dd5b61419f7…)
+# seeded through the committed scenario builder (deletedReissueScenario, §15): INV-2026-0039 VOIDED / SYNCED,
+# outstanding 0.00, linked Xero invoice …a4, verified DELETED read applied
+
+DATABASE_URL=…/ac14c_b2c_cli npm run reissue -- request --invoice INV-2026-0039 --by EMP-900 \
+  --reason "Xero deleted the draft; the customer still owes the job"
+ → {"ok":true,"code":"REISSUE_REQUESTED","detail":"APR-2026-0002: reissue of INV-2026-0039 requested, target generation
+   2 (voided DELETED, verified by observation 9c23022c-… )","expires_at":"2026-10-14T08:27:16.170533+10:00",
+   "invoice_id":"9f1df791-…","payload_hash":"f127e18a…","invoice_number":"INV-2026-0039","approval_number":
+   "APR-2026-0002","target_generation":2}                                                              exit 0
+
+DATABASE_URL=…/ac14c_b2c_cli npm run reissue -- decide --approval APR-2026-0010 --by EMP-900 --note "checked the customer account"
+ → {"ok":false,"code":"NOT_FOUND","detail":"APR-2026-0010 is not a reissue request"}                  exit 2
+
+DATABASE_URL=…/ac14c_b2c_cli npm run reissue -- decide --approval APR-2026-0002 --by EMP-900 --note "checked the customer account"
+ → {"ok":true,"code":"REISSUE_QUEUED","detail":"APR-2026-0002: xero:invoice:9f1df791-…:g2 queued generation 2 for
+   INV-2026-0039 (superseded generation 1, Xero invoice aaaaaaaa-bbbb-cccc-dddd-0000000000a4)","generation":2,
+   "invoice_number":"INV-2026-0039","approval_number":"APR-2026-0002","xero_idempotency_key":
+   "roofops-9f1df791-…-g2","superseded_generation":1,"outbox_idempotency_key":"xero:invoice:9f1df791-…:g2"} exit 0
+
+DATABASE_URL=…/ac14c_b2c_cli npm run reissue -- decide --approval APR-2026-0002 --by EMP-900        # replay
+ → {"ok":false,"code":"ALREADY_PROCESSED","detail":"APR-2026-0002 was already decided; nothing was created",
+   "duplicate":true,"generation":2,"delivery_count":2}                                               exit 2
+
+DATABASE_URL=…/ac14c_b2c_cli npm run reissue -- request --invoice INV-2026-0039 --by EMP-001 --reason "the customer still owes the job"
+ → {"ok":false,"code":"ACTOR_UNAUTHORIZED","detail":"EMP-001 is not an active RoofOps employee in a role that may
+   reissue a final invoice (FINANCE,ADMIN)"}                                                          exit 2
+
+DATABASE_URL=…/ac14c_b2c_cli npm run reissue -- request --invoice INV-2026-0039 --by EMP-900        # no reason
+ → {"ok":false,"code":"REASON_REQUIRED","detail":"a reissue needs a reason saying why (at least 10 characters)"} exit 2
+
+DATABASE_URL=…/ac14c_b2c_cli npm run reissue -- decide --by EMP-900                                # missing flag
+ → reissue: decide needs --approval  + the usage text                                                exit 1
+```
+
+The state the two successful calls left, read back with `psql` (the same rows the facility's SQL tests assert):
+
+```
+invoice_xero_draft_generations  1 | SUPERSEDED | xero:invoice:…:…fa9c     | aaaaaaaa-…-0000000000a4 | opened_by workflow        | reason t
+                                2 | PENDING    | xero:invoice:…:…fa9c:g2  | (none)                  | opened_by operator:EMP-900 | reason f
+outbox (xero.create_draft_invoice)  1 | DONE    | tenant 11111111-… | reissued_from_generation — | reissued_by —
+                                    2 | PENDING | tenant 11111111-… | reissued_from_generation 1 | reissued_by EMP-900
+invoices        INV-2026-0039 | APPROVED | PENDING | approval bound: t
+approvals       APR-2026-0002 | EXECUTED | REISSUE_INVOICE | payload_hash: t | decision_reason "checked the customer account"
+audit_events    invoice.reissue_requested (EMP-900); invoice.reissued (EMP-900)
+```
+
+`ac14c_b2c_cli` was dropped after the runs; the persistent `roofops` database was never used for this feature.
+
+## 15. The committed scenario builder (`test/helpers/reissue-scenario.ts`)
+
+A deterministic, network-free builder that turns *any* freshly migrated local database (PGlite or PostgreSQL, or a `Db`
+the caller already owns) into the state the facility's workflows expect — "an approved final invoice whose linked Xero
+invoice was verified DELETED or VOIDED in the bound tenant, with the money still owed" — using the real workflow
+functions only (`InvoiceRows.send` → `wf_invoice_prepare` → `wf_invoice_approve` → `wf_claim_side_effect` →
+`wf_complete_side_effect` with read-back proofs → `xero_record_settlement` with observation payloads). It reimplements
+no rule and fakes no table write that the workflows would make themselves.
+
+- `buildReissueScenario(target, family, opts?)` where `target` is `'pglite' | 'postgres'` (it opens, migrates, imports
+  and later `close()`s a database of its own) or an existing `Db`; `family` is `'DELETED' | 'VOIDED' | 'APPROVED'`.
+- Named entry points `deletedReissueScenario`, `voidedReissueScenario`, `approvedReissueScenario`.
+- The returned object exposes `project`, `invoice` (id, number, xid, key, payload, total), `state()`, `ledger()`,
+  `outbox()`, `link()`, `latestObservation()`, `balance()`, `integrityFails()`, `request(by, reason?)`,
+  `decide(approval, by, note?)` and `close()`.
+- Fixtures are pinned and idempotent (the finance approver `EMP-900`, an ADMIN `EMP-901`, a PROJECT_MANAGER `EMP-001`,
+  an inactive employee, the pinned tenant, the Airtable project links), so two runs build byte-identical state and the
+  builder is safe to use from the CLI tests, the lifecycle tests and ad-hoc operator work.
+
+## 16. The new tests (`test/reissue-cli.test.ts`, dual engine)
+
+| Case | Pins |
+|---|---|
+| VAL-CLI-001 | `request` + `decide` through `runReissue` leave exactly the state a direct SQL call leaves: same approval, same ledger (`1 SUPERSEDED`, `2 PENDING`), same outbox row, same invoice/approval/audit state, same billing and collectible balance |
+| VAL-CLI-002 | refusals (`ACTOR_UNAUTHORIZED`, `REASON_REQUIRED`, `NOT_FOUND`, `INVOICE_NOT_VOIDED`, `ALREADY_PROCESSED`) surface the canonical code with exit 2 **and no writes at all** (row counts identical before/after), and the CLI is a pass-through: every flag it accepts is what it sends, every refusal is the database's |
+| builder (DELETED/VOIDED) | `deletedReissueScenario` / `voidedReissueScenario` build the states the facility needs (VOIDED + SYNCED, outstanding 0.00, a verified void-family observation, a DONE generation 1, integrity green) on both engines, and `approvedReissueScenario` leaves a pre-decision state |
+| builder (ownership) | the builder opens, migrates, imports and drops a database of its own when handed a target name |
+| real process (postgres) | `npm run reissue`'s real path — `node node_modules/tsx/dist/cli.mjs scripts/reissue.ts …` as a child process against a throwaway database — drives request, decide, replay and a refusal with the documented exit codes |
+| documented/packaged/rule-free | the script contains only the two `ops_reissue_*` calls and three read-only `select`s, no insert/update/delete/fetch/URL, `package.json` has `"reissue": "tsx scripts/reissue.ts"`, and the README plus the usage text document both subcommands and the exit codes |
+
+## 17. `scripts/security-check.ts` (extended) and the offline privilege replica
+
+`npm run security:check` is hosted-only (it reads `hostedDbConfig()`), so the extension is verified offline by running
+its six new assertions against a freshly migrated local database — the repo's convention for privilege checks.
+
+The six new read-only assertions (existing style, names and counts only):
+
+1. `reissue functions: executable by an app role` → none of the nine B2 names (`ops_reissue_request`,
+   `ops_reissue_decide`, `invoice_reissue_generation`, `invoice_reissue_preview`, `invoice_reissue_preview_hash`,
+   `invoice_reissue_check`, `invoice_reissue_guard`, `invoice_void_guard`, `wf_complete_side_effect_core`) is executable
+   by `roofops_workflow` or `roofops_dashboard`.
+2. `reissue functions: executable by PUBLIC` → no `EXECUTE` grant to PUBLIC on any of them.
+3. `reissue functions: pinned search_path` → every one has `search_path=public, pg_temp`.
+4. `reissue functions: SECURITY DEFINER (except the void trigger)` → all are `SECURITY DEFINER` except
+   `invoice_void_guard`, the AC-05 trigger that B2 replaced and that keeps the repo's invoker-rights trigger style.
+5. `draft-generation ledger: row level security` → `invoice_xero_draft_generations` has RLS enabled.
+6. `draft-generation ledger: readable by an app role` → neither application role can SELECT or INSERT it.
+
+Offline replica output (throwaway script, same SQL, run against the fresh chain of §18.4 and then deleted):
+
+```
+PASS  reissue functions: executable by an app role         []
+PASS  reissue functions: executable by PUBLIC              []
+PASS  reissue functions: pinned search_path                []
+PASS  reissue functions: SECURITY DEFINER (except the void trigger) ["invoice_void_guard"]
+PASS  draft-generation ledger: row level security          ["invoice_xero_draft_generations:on"]
+PASS  draft-generation ledger: readable by an app role     []
+
+all B2 privilege checks pass
+```
+
+## 18. The closing battery (final frozen tree)
+
+### 18.1 Static
+
+| Check | Command | Result |
+|---|---|---|
+| Lint | `npm run lint` | exit 0, no problems |
+| Typecheck | `npm run typecheck` | exit 0, no errors |
+| Generated docs | `npm run contract:export` | `contract: 98 fields; 10 machines, 105 legal transitions`; `docs/state-machines.md` regenerated to the B2 reality (`VOIDED → APPROVED` and `SYNCED → PENDING` with the AC-14C B2 notes; "Terminal: none") and committed |
+
+### 18.2 Full dual-engine battery
+
+```
+TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres npm test
+ → Test Files 31 passed | 3 skipped (34)
+ → Tests 695 passed | 36 skipped (731), 0 failed, exit 0, 290.22 s
+ → test/reissue-cli.test.ts (12 tests | 1 skipped)   # the skip is the real-child-process case on PGlite
+ → test/xero-reissue.test.ts (38 passed)             # 19 cases × both engines
+```
+
+Baseline: the facility recorded `30 passed | 3 skipped (33)`, `684 passed | 35 skipped (719)`; this feature adds one
+file and 12 results (6 cases × 2 engines, one of which is a PGlite skip by design), nothing removed or skipped.
+
+### 18.3 Concurrency (re-confirmed in the closing run)
+
+`VAL-RIS-010` on PostgreSQL: two decides on two connections produce exactly one `REISSUE_QUEUED` and one refusal
+(`ALREADY_PROCESSED` / `APPROVAL_NOT_PENDING`), one new generation, one superseded predecessor, one new outbox row, one
+audit event, one `processed_events` consumer, no partial state. The same case passed in the closing full run on both
+engines, and §19 A4 is its ablation.
+
+### 18.4 Fresh chain from zero and integrity
+
+```
+docker exec roofops-postgres dropdb -U postgres --if-exists ac14c_b2c_fresh; docker exec roofops-postgres createdb -U postgres ac14c_b2c_fresh
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/ac14c_b2c_fresh npx tsx scripts/db-load.ts
+ → migrations applied: 20260929000000_core_schema.sql … 20261001170000_supervised_final_invoice_reissue.sql (skipped 0)
+ → imported batch 289f146b-ceb1-4464-941e-13f977776f87 (dataset 0dd5b61419f7…), 38 tables loaded, executive KPIs as of demo date
+DATABASE_URL=…/ac14c_b2c_fresh npx tsx scripts/integrity-check.ts --local
+ → 26 PASS, 5 WARNING, 0 FAIL  (local database)
+```
+
+The five warnings are the dataset's known ones (an accepted quote without a project, unlinked Airtable projects, no
+reconciliation yet, one open workflow exception, one completed job whose completion items are still open) — unchanged
+from the B1 close and the facility run.
+
+## 19. The four B2 ablation proofs
+
+A1–A3 are the facility's (§9): money read, fresh-approval binding, tenant binding — each red, each reverted
+byte-identical to `7f151f9a…`. The fourth is the concurrency protection of the decide transaction:
+
+| Ablation | Change made | Test red (observed) | Revert |
+|---|---|---|---|
+| A4 concurrent reissue | `ops_reissue_decide`: the approval row lock dropped (`select … for update` → `select …`) **and** the idempotency claim made unconditional (`on conflict do nothing returning true` → `returning true`) | `VAL-RIS-010` on PostgreSQL: the loser did not refuse but died with `duplicate key value violates unique constraint "processed_events_pkey"` — exactly the partial state the lock + `on conflict` prevent; the PGlite variant (single connection) stayed green, as designed | SHA-256 `7f151f9a…` identical, `VAL-RIS-010` green again on both engines |
+
+## 20. Phase commit and publication
+
+- The phase commit is `AC-14C-B2: the operator CLI, the scenario builder and the phase close` on
+  `factory/ac14-integrity-followup`, on top of the facility commit `a19b3dc`. It contains: `scripts/reissue.ts`,
+  `test/helpers/reissue-scenario.ts`, `test/reissue-cli.test.ts`, the extended `scripts/security-check.ts`, the
+  `reissue` npm script, the README section, the regenerated `docs/state-machines.md` and this file.
+- Publication is the single push `git push origin factory/ac14-integrity-followup`, which publishes `a19b3dc` plus the
+  phase commit. The parked alias branch `factory/ac14c-integrity-followup` is never pushed.
+- The push result (origin ref, equality with the local HEAD, clean tree, and the commit hashes) is recorded in the
+  follow-up commit that closes the phase record, exactly as at the B1 close (`2900f44a`).
+
+## 21. Offline statement
+
+**FIXED OFFLINE, NOT HOSTED/DEPLOYED.** Every command in this file ran against local PGlite or the local PostgreSQL 17
+container at `127.0.0.1:54322` (databases `ac14c_b2c_fresh`, `ac14c_b2c_cli`, and the harness's per-test databases). No
+hosted Supabase, Xero, Airtable, n8n or Drive call was made, no credential was used, no deploy and no migration was
+applied anywhere hosted, and the only network traffic was npm/vitest localhost sockets. Nothing in this phase depends on
+being online: the CLI, the builder, the tests, the security assertions and the evidence are reproducible with the repo,
+Node and a local PostgreSQL.

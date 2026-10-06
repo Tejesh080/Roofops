@@ -100,10 +100,10 @@ stateDiagram-v2
   PENDING_APPROVAL --> APPROVED
   PENDING_APPROVAL --> DRAFT
   PENDING_APPROVAL --> VOIDED
-  VOIDED --> [*]
+  VOIDED --> APPROVED
 ```
 
-Terminal: VOIDED. Every pair not listed below is refused (27 of 42 possible changes).
+Terminal: none. Every pair not listed below is refused (26 of 42 possible changes).
 
 | From | To | Guard | Note |
 |---|---|---|---|
@@ -122,6 +122,7 @@ Terminal: VOIDED. Every pair not listed below is refused (27 of 42 possible chan
 | PENDING_APPROVAL | APPROVED | — | — |
 | PENDING_APPROVAL | DRAFT | — | — |
 | PENDING_APPROVAL | VOIDED | — | — |
+| VOIDED | APPROVED | — | AC-14C B2: supervised reissue only - invoice_reissue_guard() refuses it without a matching REISSUE_INVOICE approval, the void proof and no money movement |
 
 ## invoice_sync
 
@@ -137,13 +138,14 @@ stateDiagram-v2
   PENDING --> FAILED
   PENDING --> SYNCED
   PENDING --> UNKNOWN
+  SYNCED --> PENDING
   SYNCED --> UNKNOWN
   UNKNOWN --> FAILED
   UNKNOWN --> PENDING
   UNKNOWN --> SYNCED
 ```
 
-Terminal: none. Every pair not listed below is refused (11 of 20 possible changes).
+Terminal: none. Every pair not listed below is refused (10 of 20 possible changes).
 
 | From | To | Guard | Note |
 |---|---|---|---|
@@ -152,6 +154,7 @@ Terminal: none. Every pair not listed below is refused (11 of 20 possible change
 | PENDING | FAILED | — | — |
 | PENDING | SYNCED | — | only with read-back proof |
 | PENDING | UNKNOWN | — | — |
+| SYNCED | PENDING | — | AC-14C B2: the reissue queues a new generation for the same invoice row, so its sync state is pending again |
 | SYNCED | UNKNOWN | — | reconciliation found the Xero object changed or missing |
 | UNKNOWN | FAILED | — | — |
 | UNKNOWN | PENDING | — | — |

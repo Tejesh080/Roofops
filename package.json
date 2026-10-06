@@ -23,6 +23,7 @@
     "demo:status": "tsx scripts/demo.ts status",
     "demo:reset": "tsx scripts/demo.ts reset",
     "exception:resolve": "tsx scripts/exception.ts resolve",
+    "reissue": "tsx scripts/reissue.ts",
     "integrity:check": "tsx scripts/integrity-check.ts",
     "reconcile": "tsx scripts/reconcile.ts",
     "contract:export": "tsx scripts/export-contract.ts",

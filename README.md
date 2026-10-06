@@ -295,6 +295,26 @@ TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres npm te
 | `npm run ai:eval` | Copilot regression with Promptfoo (web app running) |
 | `npm run contract:export` | Regenerate the source-of-truth and state-machine docs |
 
+### 🧾 The supervised reissue CLI
+
+A final invoice whose Xero document was legitimately **voided or deleted** in Xero is not collectible, but the customer
+still owes the job. A FINANCE or ADMIN employee brings the *same* invoice back with two explicit, audited steps against
+the local database (`DATABASE_URL`, default `postgresql://postgres:postgres@127.0.0.1:54322/roofops`; a non-local host
+is refused):
+
+```bash
+# 1. ask for a reissue of a voided final invoice (the reason is mandatory)
+npm run reissue -- request --invoice INV-2026-0004 --by EMP-900 --reason "Xero deleted the draft; the customer still owes the job"
+
+# 2. a finance approver decides: exactly one new Xero draft generation is queued for the same invoice
+npm run reissue -- decide --approval APR-2026-0009 --by EMP-900 --note "checked the customer account"
+```
+
+Both steps print the JSON the database returns (`{ ok, code, detail, ... }`) and nothing else: the CLI holds no rules
+of its own, writes nothing itself and never calls Xero. Exit codes: `0` success, `2` refused (the canonical code is in
+the JSON - `REASON_REQUIRED`, `ACTOR_UNAUTHORIZED`, `INVOICE_NOT_VOIDED`, `TENANT_MISMATCH`, `PAYMENT_EXISTS`,
+`WRITE_IN_FLIGHT`, `ALREADY_PROCESSED`, ...) and `1` for a usage or connection error. A refusal changes nothing.
+
 ## 🧪 Testing
 
 | Suite | Where | Notes |

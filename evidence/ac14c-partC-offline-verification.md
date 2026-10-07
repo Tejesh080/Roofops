@@ -618,3 +618,7 @@ git ls-files | rg "backups/|\.env|credential|secret|\.dump|\.patch|\.bak"
 The parked alias is gone from origin; the canonical branch is the only `factory/*` ref and carries the whole mission
 (`97394da..76951d4` published the C lifecycle commit and this close). No hosted system was touched at any point
 (`FIXED OFFLINE, NOT HOSTED/DEPLOYED`); the only network traffic was this push to the repository's own remote.
+
+The follow-up commit that carries this section (`AC-14C: the phase commit is recorded on origin`) advances the branch
+tip to `5392f8625b2c782cc7a1df588c9965499ca21352`, and the remote ref equals it after the follow-up push
+(`76951d4..5392f86`). The transcripts above are as-captured at the phase push, before this addendum.

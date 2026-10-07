@@ -216,6 +216,11 @@ Full picture: [system ownership map](docs/system-ownership-map.md) · [architect
   failing test → fix → verify on both database engines → deploy → live check.
 - **AC-01** (a reconciliation read older than a staff edit could revert it) is fixed. It has regression tests,
   **two-connection race tests** on real Postgres, and is deployed to hosted. Live verification is pending.
+- **AC-14C** (a final invoice voided or deleted in Xero was a dead end) is **fixed offline**: a voided invoice is no
+  longer collectible while the customer still owes the job, and the *same* invoice can be brought back only through a
+  FINANCE/ADMIN supervised reissue (`npm run reissue`) — a fresh, evidence-bound approval, the void proof in its bound
+  tenant, no money moved, one new Xero draft generation, the old one kept in the ledger for ever. Proven end to end
+  (both engines) with a 24-step recovery lifecycle; not deployed.
 
 </details>
 
@@ -242,7 +247,7 @@ Full picture: [system ownership map](docs/system-ownership-map.md) · [architect
 | 4 | **Operations Dashboard + DeepSeek Operations Copilot** | ✅ ([status](docs/phase4-status.md)) |
 | 4b | UI polish, interview readiness, auth, demo reset, Vercel-ready | ✅ ([status](docs/phase5-status.md)) |
 | 6 | **State integrity, reconciliation, System Health, AI regression** | ✅ live ([status](docs/phase6-status.md)) |
-| 🔬 | **Adversarial hardening**: [catalogue](docs/adversarial-test-catalogue.md) → [defect ledger](docs/defect-ledger.md) | 🟡 in progress (AC-01 deployed) |
+| 🔬 | **Adversarial hardening**: [catalogue](docs/adversarial-test-catalogue.md) → [defect ledger](docs/defect-ledger.md) | 🟡 in progress (AC-01 deployed; **AC-14C** fixed offline — supervised reissue via `npm run reissue`) |
 | 5 | Supplier quote → purchase order | ⏳ planned |
 | 7 | OpenTakeoff experiment (optional) | ⏳ planned |
 

@@ -573,3 +573,13 @@ To https://github.com/Tejesh080/Roofops.git
 - `git status` is clean (`## factory/ac14-integrity-followup...origin/factory/ac14-integrity-followup`, no local
   changes), no scratch file is in the tree, nothing under `backups/` or `.env*` is tracked, and the frozen bytes are
   unchanged: migration `7f151f9a…`, facility test `1ff9b7d8…`.
+
+## 23. Later-phase note (added at the AC-14C mission close)
+
+The closing battery figures in §18.2 (PGlite 364/36, dual 695/36) were correct when this file was written; Part C's
+lifecycle feature added one file and 12 results, and the mission's final battery (frozen tree `3a12de4`) reports
+**370 passed / 36 skipped on PGlite and 707 passed / 36 skipped on both engines**, 0 failed — the growth is Part C's
+own test file, not a re-measurement. See
+[evidence/ac14c-partC-offline-verification.md](ac14c-partC-offline-verification.md) for the final battery, the
+security replica and the demo-database refresh. The parked alias in §22 was deleted from origin at the mission close
+(its head `2900f44` is an ancestor of the canonical branch; no unique commit was lost) — see Part C §15.

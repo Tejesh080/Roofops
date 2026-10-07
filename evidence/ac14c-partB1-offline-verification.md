@@ -465,3 +465,13 @@ Everything in §1–§13 was produced on branch `factory/ac14c-integrity-followu
 **FIXED OFFLINE, NOT HOSTED/DEPLOYED.** Nothing in Part B1 has been deployed, pushed to any hosted system, or applied
 to any hosted database; the only "push" is the git branch push of this offline work to the mission's own remote, per
 the phase gate.
+
+## 15. Later-phase note (added at the AC-14C mission close)
+
+The PGlite close figure in §8 (340 passed / 35 skipped) was correct when this file was written; Part B2's close and
+Part C's final battery grew the suite further (B2: 364/36 PGlite, 695/36 dual; final: **370/36 PGlite, 707/36 dual**,
+32 files passed | 3 skipped, 0 failed). The growth is the later phases' own test files, not a re-measurement of this
+file's runs. The final numbers, the fresh-chain run, the security replica and the demo-database refresh are recorded
+in [evidence/ac14c-partC-offline-verification.md](ac14c-partC-offline-verification.md). The parked alias
+`factory/ac14c-integrity-followup` quoted in §14 was deleted from origin at the mission close (its head `2900f44` is
+an ancestor of the canonical branch; nothing unique was lost) — see Part C §15.

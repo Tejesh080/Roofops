@@ -35,7 +35,7 @@ local Docker container `roofops-postgres` (PostgreSQL 17.11) at `127.0.0.1:54322
   builder `test/helpers/reissue-scenario.ts`. Part C itself is test-only: commit `3a12de4` touches exactly one file
   (`test/xero-reissue-lifecycle.test.ts`, 571 insertions, no production byte).
 - Phase commits: B1a `2f3a13b`, B1b `dd9c4c8` + evidence addendum `2900f44`; B2 facility `a19b3dc` + phase close
-  `22805d0` + evidence addenda `9ab8efb`/`97394da`; C `3a12de4`; this close (§20).
+  `22805d0` + evidence addenda `9ab8efb`/`97394da`; C `3a12de4`; this close (§19).
 
 ## 1. What Part C is
 
@@ -525,7 +525,7 @@ branch and could recreate the alias in one command if ever needed.
 2. **Starting SHA**: `153d87bc43d30ec54377101c201a234d74248f21`; **final SHA**: `3a12de44…` + this feature's docs
    commit (§19).
 3. **Commits**: `2f3a13b` (B1a), `dd9c4c8`+`2900f44` (B1b + addendum), `a19b3dc` (B2 facility), `22805d0`+`9ab8efb`
-   +`97394da` (B2 close + addenda), `3a12de4` (C lifecycle), this docs/evidence commit (§20).
+   +`97394da` (B2 close + addenda), `3a12de4` (C lifecycle), this docs/evidence commit (§19).
 4. **Files**: 3 additive migrations; 5 new test files + 1 committed builder; `scripts/reissue.ts`; the extended
    `scripts/security-check.ts`; `package.json` (the `reissue` script); README; regenerated `docs/state-machines.md`;
    3 evidence files; the defect ledger.

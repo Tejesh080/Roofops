@@ -24,8 +24,8 @@ local Docker container `roofops-postgres` (PostgreSQL 17.11) at `127.0.0.1:54322
 - Starting SHA (the mission's branch point, Part A): `153d87bc43d30ec54377101c201a234d74248f21`.
 - Final SHA (the frozen tree this battery ran on, before this feature's docs commit):
   `3a12de441a0a9d40a9d6a6c727b71873963d08aa` ("AC-14C-C: the end-to-end recovery lifecycle is proved on both engines"),
-  branch `factory/ac14-integrity-followup`. This feature adds one docs/evidence commit on top (§19 records it and the
-  push).
+  branch `factory/ac14-integrity-followup`. This feature adds a docs/evidence commit on top plus the sanctioned
+  evidence-only follow-up that records the push (§19).
 - Migrations (three new files; no applied migration was edited, deleted or re-ordered — §3):
   - `supabase/migrations/20261001150000_one_live_xero_draft_generation.sql` (B1a), SHA-256 `710a22b5db1e…`
   - `supabase/migrations/20261001160000_voided_invoice_has_no_collectible_balance.sql` (B1b), SHA-256 `59e21084532b…`
@@ -579,4 +579,42 @@ locally with the repository, Node and a local PostgreSQL; it has never been exer
 
 ## 19. The phase record on origin (added by the follow-up commit)
 
-Recorded after the push, per the mission's phase-gate rule (§20).
+The phase commit is `76951d4956ecbaf8dfd0ae25ece603aed5b3ad47` ("AC-14C: the supervised recovery is proved offline and
+the mission closes"), on top of the C lifecycle commit `3a12de441a0a9d40a9d6a6c727b71873963d08aa`. It contains this
+file plus the defect-ledger, README and B1/B2 pointer-note updates — 5 files changed, 624 insertions(+), 8
+deletions(-) — and nothing else.
+
+Alias deletion (per §15, before the commit):
+
+```
+git push origin --delete factory/ac14c-integrity-followup
+ → - [deleted]         factory/ac14c-integrity-followup                                       exit 0
+git ls-remote origin "refs/heads/factory/*"     # immediately after the deletion
+ → 97394daa6a65e44d0a02aeb49c05ef82ae9fb845  refs/heads/factory/ac14-integrity-followup
+```
+
+The phase push and the confirmation:
+
+```
+git push origin factory/ac14-integrity-followup
+ → 97394da..76951d4  factory/ac14-integrity-followup -> factory/ac14-integrity-followup       exit 0
+git ls-remote origin "refs/heads/factory/*"
+ → 76951d4956ecbaf8dfd0ae25ece603aed5b3ad47  refs/heads/factory/ac14-integrity-followup
+git rev-parse HEAD
+ → 76951d4956ecbaf8dfd0ae25ece603aed5b3ad47     # the remote ref equals the local HEAD
+git status -sb
+ → ## factory/ac14-integrity-followup...origin/factory/ac14-integrity-followup    # clean, in sync
+```
+
+Final hygiene checks on the committed tree:
+
+```
+git status --porcelain                          → (empty)
+git ls-files .env .env.local backups/           → (empty; .gitignore covers .env/.env.local, .git/info/exclude covers backups/)
+git ls-files | rg "backups/|\.env|credential|secret|\.dump|\.patch|\.bak"
+ → .env.example, web/.env.example, n8n/99-credential-check.sdk.ts    # pre-existing templates/check script, tracked long before this mission
+```
+
+The parked alias is gone from origin; the canonical branch is the only `factory/*` ref and carries the whole mission
+(`97394da..76951d4` published the C lifecycle commit and this close). No hosted system was touched at any point
+(`FIXED OFFLINE, NOT HOSTED/DEPLOYED`); the only network traffic was this push to the repository's own remote.

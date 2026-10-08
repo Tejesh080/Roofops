@@ -38,7 +38,7 @@ alter table staff_sessions enable row level security;
 
 -- Owner-only: create or reset one employee's dashboard login. The password is never stored or logged in clear.
 create or replace function ops_staff_set_password(p_employee_code text, p_login text, p_password text)
-returns jsonb language plpgsql security definer set search_path = public, extensions, pg_temp as $$
+returns jsonb language plpgsql security definer set search_path = extensions, public, pg_temp as $$
 declare v_emp employees; v_login text := lower(btrim(coalesce(p_login, '')));
 begin
   select * into v_emp from employees where employee_code = p_employee_code;
@@ -47,6 +47,9 @@ begin
   end if;
   if length(coalesce(p_password, '')) < 12 then
     return jsonb_build_object('ok', false, 'reason', 'a password needs at least 12 characters');
+  end if;
+  if octet_length(p_password) > 72 then   -- bcrypt ignores everything after 72 bytes: refuse rather than silently truncate
+    return jsonb_build_object('ok', false, 'reason', 'a password can be at most 72 bytes');
   end if;
   if length(v_login) < 3 then return jsonb_build_object('ok', false, 'reason', 'a login needs at least 3 characters'); end if;
   if exists (select 1 from staff_accounts where login = v_login and employee_id <> v_emp.id) then
@@ -65,15 +68,17 @@ end $$;
 
 -- The current employee behind a session token, or null (expired, revoked, unknown, or the employee is inactive).
 create or replace function staff_session_employee(p_token text)
-returns employees language sql stable security definer set search_path = public, extensions, pg_temp as $$
+returns employees language sql stable security definer set search_path = extensions, public, pg_temp as $$
   select e.* from staff_sessions s join employees e on e.id = s.employee_id
    where s.token_sha256 = encode(digest(coalesce(p_token, ''), 'sha256'), 'hex')
      and s.revoked_at is null and s.expires_at > now() and e.is_active
 $$;
 
 create or replace function web_staff_sign_in(p_login text, p_password text)
-returns jsonb language plpgsql security definer set search_path = public, extensions, pg_temp as $$
-declare a staff_accounts; v_emp employees; v_token text; v_hours int; v_fail constant text := 'That login and password did not match.';
+returns jsonb language plpgsql security definer set search_path = extensions, public, pg_temp as $$
+declare a staff_accounts; v_emp employees; v_token text; v_hours int;
+  -- One answer for every refusal (unknown login, wrong password, locked, inactive): nothing tells a login exists.
+  v_fail constant text := 'That login and password did not match. After 5 wrong attempts a login is locked for 10 minutes.';
 begin
   select * into a from staff_accounts where login = lower(btrim(coalesce(p_login, ''))) for update;
   if a.employee_id is null then
@@ -81,7 +86,8 @@ begin
     return jsonb_build_object('ok', false, 'reason', v_fail);
   end if;
   if a.locked_until > now() then
-    return jsonb_build_object('ok', false, 'reason', 'Too many attempts. Try again in a few minutes.');
+    perform crypt(coalesce(p_password, ''), gen_salt('bf', 10));   -- same work and answer as any refusal
+    return jsonb_build_object('ok', false, 'reason', v_fail);
   end if;
   select * into v_emp from employees where id = a.employee_id;
   if crypt(coalesce(p_password, ''), a.password_hash) <> a.password_hash or not v_emp.is_active then
@@ -97,6 +103,7 @@ begin
   v_hours := coalesce((select value::int from app_settings where key = 'staff.session_hours'), 12);
   v_token := encode(gen_random_bytes(32), 'hex');
   update staff_accounts set failed_attempts = 0, locked_until = null where employee_id = a.employee_id;
+  delete from staff_sessions where expires_at < now() - interval '30 days';   -- housekeeping: ended sessions are not kept forever
   insert into staff_sessions (token_sha256, employee_id, expires_at)
   values (encode(digest(v_token, 'sha256'), 'hex'), v_emp.id, now() + make_interval(hours => v_hours));
   insert into audit_events (actor_type, actor_id, action, entity_type, entity_id, business_reference, reason)
@@ -106,7 +113,7 @@ begin
 end $$;
 
 create or replace function web_staff_session(p_token text)
-returns jsonb language sql stable security definer set search_path = public, extensions, pg_temp as $$
+returns jsonb language sql stable security definer set search_path = extensions, public, pg_temp as $$
   select case when e.id is null then null
               else jsonb_build_object('employee_code', e.employee_code, 'name', e.full_name, 'role', e.role,
                      'may_resolve_exceptions', e.role = any (string_to_array((select value from app_settings where key = 'exception.resolver_roles'), ',')))
@@ -115,13 +122,13 @@ returns jsonb language sql stable security definer set search_path = public, ext
 $$;
 
 create or replace function web_staff_sign_out(p_token text)
-returns void language sql security definer set search_path = public, extensions, pg_temp as $$
+returns void language sql security definer set search_path = extensions, public, pg_temp as $$
   update staff_sessions set revoked_at = now() where token_sha256 = encode(digest(coalesce(p_token, ''), 'sha256'), 'hex') and revoked_at is null
 $$;
 
 -- Resolve an exception from the dashboard as the signed-in employee (the same rules as npm run exception:resolve).
 create or replace function web_resolve_exception(p_token text, p_exception text, p_note text)
-returns jsonb language plpgsql security definer set search_path = public, extensions, pg_temp as $$
+returns jsonb language plpgsql security definer set search_path = extensions, public, pg_temp as $$
 declare v_emp employees := staff_session_employee(p_token);
 begin
   if v_emp.id is null then

@@ -68,7 +68,13 @@ export async function login(_prev: LoginState, form: FormData): Promise<LoginSta
 export async function logout() {
   const jar = await cookies();
   const s = await verifySession(jar.get(SESSION_COOKIE)?.value);
-  if (s?.t) await query('select web_staff_sign_out($1)', [s.t]).catch(() => undefined);   // end the database session too
+  if (s?.t) {
+    // End the database session too (retried once); the cookie goes either way, and the session still expires.
+    const revoke = () => query('select web_staff_sign_out($1)', [s.t]);
+    await revoke().catch(() => revoke()).catch((e: unknown) => {
+      console.error('sign-out: the database session could not be revoked; it ends at its expiry', (e as Error).message);
+    });
+  }
   jar.delete(SESSION_COOKIE);
   redirect('/login');
 }

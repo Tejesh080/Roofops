@@ -10,6 +10,8 @@ import { TARGETS, col, migratedDb } from './helpers/db.js';
 
 type R = Record<string, unknown>;
 const PW = 'correct horse battery staple';
+// One answer for every refusal (unknown login, wrong password, locked, inactive): nothing reveals that a login exists.
+const REFUSED = { ok: false, reason: 'That login and password did not match. After 5 wrong attempts a login is locked for 10 minutes.' };
 
 describe.each(TARGETS)('staff sign-in and sessions [%s]', (target) => {
   let db: Db;
@@ -42,6 +44,7 @@ describe.each(TARGETS)('staff sign-in and sessions [%s]', (target) => {
     await db.exec(`update employees set is_active = false where employee_code = 'EMP-007'`);
     expect(await setPw('EMP-900', 'finance', 'short')).toMatchObject({ ok: false, reason: expect.stringMatching(/12 characters/) as unknown });
     expect(await setPw('EMP-900', 'ab', PW)).toMatchObject({ ok: false, reason: expect.stringMatching(/login/) as unknown });
+    expect(await setPw('EMP-900', 'finance', 'x'.repeat(73))).toMatchObject({ ok: false, reason: expect.stringMatching(/72 bytes/) as unknown });
     expect(await setPw('EMP-999', 'nobody', PW)).toMatchObject({ ok: false });
     expect(await setPw('EMP-007', 'inactive', PW)).toMatchObject({ ok: false, reason: expect.stringMatching(/not an active/) as unknown });
     expect(await setPw('EMP-900', ' Finance.Approver ', PW)).toMatchObject({ ok: true, login: 'finance.approver' });
@@ -55,9 +58,8 @@ describe.each(TARGETS)('staff sign-in and sessions [%s]', (target) => {
   });
 
   it('signs in with the right password (any case of login), a random token stored only as its SHA-256; wrong or unknown logins get one generic answer', async () => {
-    const generic = { ok: false, reason: 'That login and password did not match.' };
-    expect(await signIn('finance.approver', 'wrong password!')).toEqual(generic);
-    expect(await signIn('no.such.login', PW)).toEqual(generic);
+    expect(await signIn('finance.approver', 'wrong password!')).toEqual(REFUSED);
+    expect(await signIn('no.such.login', PW)).toEqual(REFUSED);
     const s = await signIn('FINANCE.APPROVER', PW);
     expect(s).toMatchObject({ ok: true, employee_code: 'EMP-900', role: 'FINANCE' });
     expect(String(s!.token)).toMatch(/^[0-9a-f]{64}$/);
@@ -80,7 +82,7 @@ describe.each(TARGETS)('staff sign-in and sessions [%s]', (target) => {
     const c = await t();
     await db.exec(`update employees set is_active = false where employee_code = 'EMP-002'`);
     expect(await session(c)).toBeNull();
-    expect(await signIn('estimator', PW)).toMatchObject({ ok: false });   // an inactive employee cannot sign in
+    expect(await signIn('estimator', PW)).toEqual(REFUSED);   // an inactive employee cannot sign in
     await db.exec(`update employees set is_active = true where employee_code = 'EMP-002'`);
     const d = await t();
     expect(await session(d)).toMatchObject({ employee_code: 'EMP-002' });
@@ -88,9 +90,10 @@ describe.each(TARGETS)('staff sign-in and sessions [%s]', (target) => {
     expect(await session(d)).toBeNull();
   });
 
-  it('five wrong passwords lock the login for 10 minutes (even the right password is refused), audited; then it signs in again', async () => {
+  it('five wrong passwords lock the login for 10 minutes (even the right password is refused, with the same answer as any refusal), audited; then it signs in again', async () => {
     for (let i = 0; i < 5; i++) expect(await signIn('estimator', 'nope nope nope')).toMatchObject({ ok: false });
-    expect(await signIn('estimator', PW + '!')).toEqual({ ok: false, reason: 'Too many attempts. Try again in a few minutes.' });
+    expect(await signIn('estimator', PW + '!')).toEqual(REFUSED);   // locked: the right password is refused, with the same answer
+    expect(await col(db, "select (locked_until > now())::text v from staff_accounts where login = 'estimator'")).toEqual(['true']);
     expect(await col(db, `select count(*)::text v from audit_events where action = 'staff.login_locked' and business_reference = 'EMP-002'`)).toEqual(['1']);
     await db.exec(`update staff_accounts set locked_until = now() - interval '1 second' where login = 'estimator'`);
     expect(await signIn('estimator', PW + '!')).toMatchObject({ ok: true, employee_code: 'EMP-002' });

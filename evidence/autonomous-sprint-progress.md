@@ -31,6 +31,7 @@ No secrets in this file.
 | 11 | **Four-eyes for reissues:** setting `invoice.reissue_requires_second_person`; the requester is refused (SAME_PERSON) | P1 | done, **shipped OFF** `adb5ed5` | 8 tests on both engines; the existing reissue suites are unchanged (82). Switching the existing tests' deciders was blocked as security-test removal, so the owner turns the rule on |
 | 12 | The demo login's capability is stated accurately (cannot approve or resolve) | P3 | fixed `2a2077a` | — |
 | 14 | Copilot prepares are attributed to the database-verified staff member (actor dashboard:copilot:EMP-NNN); the demo viewer stays dashboard:copilot. The approval itself still has no employee id (that needs a DB change) | P2 | done | VERIFIED LOCAL: APR-2026-0001 for PRJ-2026-0005, event actor dashboard:copilot:EMP-900 |
+| 16 | Amounts in database explanations shown as money on the Finance card (the over-billing message read "billed 30888.72") | P3 | fixed | test (references, dates and formatted amounts untouched); VERIFIED LOCAL on PRJ-2026-0006 |
 | 15 | Checkpoint: the full suite on **PGlite + PostgreSQL 17** | — | **810 passed, 0 failed** (36 hosted-only skipped) | after items 1-12 |
 | 13 | Regression run against the **hosted** dashboard: the read-only Playwright smoke and state-sync specs | — | 20/20 passed | VERIFIED LIVE (read-only); the screens spec was skipped because it prepares a real preview |
 
@@ -54,8 +55,7 @@ No secrets in this file.
 
 - **Airtable *Invoice Preview* text is stale after a reissue.** The field is WORKFLOW-owned and IGNORE-class; fixing
   it needs an n8n or DB change.
-- **`voided_reason` survives a reissue** (cosmetic).
+- **`voided_reason` survives a reissue**: by design (20261001170000:56, it records how the invoice came back); the dashboard never shows it on an approved invoice. Not a defect.
 - **Approvals created by a Copilot prepare** carry no requested_by_employee_id (the event actor is attributed since item 14).
 - **One shared Airtable account** for staff edits and RoofOps writes; it needs Airtable seats.
-- **Raw figures in the over-billing message** (e.g. 30888.72); cosmetic.
 - **Untested live:** Xero payments read back, the void of an issued invoice, real uncertain creates, variations.

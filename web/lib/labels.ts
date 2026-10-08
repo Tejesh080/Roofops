@@ -166,6 +166,10 @@ export const label = (map: Record<string, Label>, code: string | null | undefine
 export const money = (n: number | null | undefined) =>
   n === null || n === undefined ? '—' : n.toLocaleString('en-AU', { style: 'currency', currency: 'AUD' });
 
+/** Database explanations carry plain amounts ("billed 30888.72"); show them as money. Only 2-decimal numbers change. */
+export const moneyInText = (s: string) =>
+  s.replace(/(?<![\w.,$-])(\d+\.\d{2})(?!\d|\.\d)/g, (_m, n: string) => money(Number(n)));
+
 export function date(d: string | null | undefined): string {
   if (!d) return '—';
   const [y, m, day] = d.slice(0, 10).split('-').map(Number);

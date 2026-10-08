@@ -1,6 +1,6 @@
 import { ChevronRight, ExternalLink, History, Receipt } from 'lucide-react';
 import type { InvoiceLine, ProjectRow } from '@/lib/queries';
-import { INVOICE_LINE_STATUS, INVOICE_NEXT_STEP, INVOICE_STATUS, airtableProjectUrl, date, label, money } from '@/lib/labels';
+import { INVOICE_LINE_STATUS, INVOICE_NEXT_STEP, INVOICE_STATUS, airtableProjectUrl, date, label, money, moneyInText } from '@/lib/labels';
 import { Badge } from '@/components/ui/Badge';
 import { CardHead } from '@/components/ui/Empty';
 import { CopyButton } from '@/components/ui/CopyButton';
@@ -36,7 +36,7 @@ export function FinanceCard({ p, invoices }: { p: ProjectRow; invoices: InvoiceL
           <>
             <div className="t-label">Invoice status</div>
             <div style={{ marginTop: 6 }}><Badge l={status} /></div>
-            {p.invoice_blocker && <p className="attn-note" style={{ marginTop: 10 }}>{p.invoice_blocker}</p>}
+            {p.invoice_blocker && <p className="attn-note" style={{ marginTop: 10 }}>{moneyInText(p.invoice_blocker)}</p>}
           </>
         )}
         {(p.invoice_status === 'READY_TO_INVOICE' || p.invoice_status === 'AWAITING_APPROVAL') && (

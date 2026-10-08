@@ -99,3 +99,13 @@ describe('business interpretations', () => {
     }
   });
 });
+
+describe('money in database explanations', () => {
+  it('formats 2-decimal amounts as AUD and leaves references, dates and versions alone', async () => {
+    const { moneyInText } = await import('../web/lib/labels.ts');
+    expect(moneyInText('PRJ-2026-0006 is over-billed: billed 30888.72 (INV-2026-0006, INV-2026-0036) against quote 25740.60 + approved variations 0.00 = 25740.60; over by 5148.12.'))
+      .toBe('PRJ-2026-0006 is over-billed: billed $30,888.72 (INV-2026-0006, INV-2026-0036) against quote $25,740.60 + approved variations $0.00 = $25,740.60; over by $5,148.12.');
+    expect(moneyInText('Q-2026-0002 v2 dated 2026-09-29, rate 0.1')).toBe('Q-2026-0002 v2 dated 2026-09-29, rate 0.1');
+    expect(moneyInText('already $1,234.56')).toBe('already $1,234.56');
+  });
+});

@@ -1,4 +1,4 @@
-# AC-14C Stage 2A: n8n deployment (2026-10-08). STOPPED before publishing 08
+# AC-14C Stage 2A: n8n deployment (2026-10-08). COMPLETED (08 published after the owner's decision; dispatch still disabled)
 
 Authorised by the owner: n8n workflow deployment and configuration only. The dispatch token stays blank.
 - **No migration, no reissue, no dispatch credential, no Xero, Airtable or Drive call, no invoice created.**
@@ -90,3 +90,49 @@ token remains readable, and no manual run is kept.
 
 **62 of 62 tables byte-identical** to the post-Stage-1 fingerprint. Dispatch hash blank, 0 in flight, 0
 REISSUE_INVOICE approvals.
+
+## 7. Completion (owner approval of 2026-10-08, checkpoint `b1381ef`)
+
+The owner approved finishing Stage 2A with conditions. The dispatch token was **not** generated, stored or activated.
+There was no Xero call and no invoice or reissue change.
+
+| Condition | Result |
+|---|---|
+| 1. `availableInMCP` off on 08 before publishing | **PASS**. The MCP settings operation has no such field, so it was set with the n8n public API workflow update, sending back the exact nodes and connections. Read back as `false`; it was the only settings key that changed; nodes and connections were byte-identical. MCP then refused to publish 08 ("not available in MCP"), which confirms the setting |
+| 2. The four execution-saving settings off on 08 | **PASS**: `saveDataSuccessExecution: none`, `saveDataErrorExecution: none`, `saveManualExecutions: false`, `saveExecutionProgress: false`, read back after publishing |
+| 3. 08 published in Roofops | **PASS** through the public API `activate` (after checking the name and draft version): **active version `facd57c8-7b60-4106-9d05-90beba3e8369`** (= draft), project `4kSuZdSc0Opp3juv`. Before publishing, the production webhook returned **404 "not registered"**; after publishing, **200** |
+| 4. Matches the repo, no pinned data, calls 05 only by its path | **PASS**: live 08 **IDENTICAL to HEAD** (6 nodes, 5 edges); `pinData` none; `callerPolicy: none` (no workflow may call 08). Of all **43** workflows in the instance, only **04** and **08** contain an Execute Workflow node that references 05 |
+| 5. Dispatch hash blank | **PASS**: length 0 before, during and after |
+| 6. Controlled negative webhook test | **PASS**. Three POSTs at 09:06:33–09:06:53 UTC: no token and no selection; a dummy non-secret token with `INV-2026-0039` generation 2; and generation 1. All accepted (HTTP 200, `onReceived`). Two earlier sends with malformed JSON (Windows PowerShell 5.1 quote stripping) were refused by n8n with **422** before any execution existed. Results: **62 of 62 tables unchanged** (fingerprint before and after); no new exception; no outbox change; a read-only replay of the same inputs gives `TOKEN_REFUSED` with `writes: []` for each, so 08's IF branch could not reach the 05 node; **0 saved executions for 08** and 05; no running or waiting execution |
+| 7. 07 retention | **PASS**: `saveDataErrorExecution: none` and `saveExecutionProgress: false` added. The existing `saveDataSuccessExecution: none`, `saveManualExecutions: false`, `timezone`, `executionTimeout` and `executionOrder` were preserved. **Active version unchanged `a0ca9e60-a812-450f-b754-673882d0d656`**; nodes IDENTICAL to HEAD |
+| 8. Health | **PASS**: the scheduled 08-Health check at 09:00 UTC (after the 05 publish) passed n8n, Postgres and Xero through the n8n credentials; integrity 28 PASS / 4 WARNING / **0 FAIL**; security all PASS (tenant pinned, dispatch hash blank); 05 IDENTICAL to HEAD; 07 IDENTICAL to HEAD |
+
+**Live versions at the end of Stage 2A**
+
+| Workflow | ID | Active version | MCP | Caller policy | Execution data saved |
+|---|---|---|---|---|---|
+| 05 Xero Draft Invoice | `Y2deCFTZzpv1uo8C` | `feab88d9-1753-4471-9167-cbfeff29225a` | on (it has no webhook or schedule trigger; MCP cannot execute a sub-workflow trigger) | default (same owner/project): 04 and 08 | instance default (no saved executions exist) |
+| 08 Reissue Dispatch | `JH1H0EmMzpdNWmcp` | `facd57c8-7b60-4106-9d05-90beba3e8369` | **off** | **none** | **none** (success, error, manual, progress) |
+| 07 Reconcile | `EiBs0AB2NfOua7AM` | `a0ca9e60-a812-450f-b754-673882d0d656` (unchanged) | on | default | **none** (success, error, manual, progress) |
+
+**Rollback readiness**
+- **05:** `restore_workflow_version(Y2deCFTZzpv1uo8C, e6c57486-46f1-4e8a-9de9-b9f19a2f9cc9)` and publish. The full
+  definition is in `D:\Claude\roofops-backups\n8n-05-…-e6c57486…-20261008-192214.json`.
+- **08:** deactivate with the public API `POST /workflows/JH1H0EmMzpdNWmcp/deactivate` (MCP has no access to it).
+  With the hash blank, it refuses every dispatch anyway.
+- **07:** set `saveDataErrorExecution` and `saveExecutionProgress` back to `DEFAULT`. The original settings are in the
+  07 snapshot.
+
+**Remaining security caveats**
+1. **Structural (§4).** While an 08 or 07 run is in progress, or if it crashes or waits, n8n holds its webhook headers
+   in the execution row, including the token. **07 has a Wait node** ("Wait Before Drive Retry"), so a waiting
+   operator-triggered 07 run is saved in full. The planned short-lived dispatch token, revoked immediately after the
+   one dispatch, reduces 08's exposure to a dead token. `RECONCILE_TRIGGER_TOKEN` is long-lived.
+2. **07 is still `availableInMCP: true`.** An MCP-authorised client could execute it, including a schedule-mode repair
+   run that needs no token. Not changed in this stage; it is the owner's decision.
+3. **08's webhook URL is public.** Any POST runs one short read-only check and is refused while the hash is blank or
+   the token is wrong.
+4. **The 08 → 05 call** (05's default caller policy) is first exercised by the first real dispatch. If it is refused,
+   08 errors, the write stays PENDING and nothing reaches Xero.
+5. **Operator identity** (`--by` on the owner credential) is accepted for the supervised demo only; see the runbook §5.
+6. The older container dump `/tmp/roofops-pre-ac14c-final.dump` is still the owner's to delete.

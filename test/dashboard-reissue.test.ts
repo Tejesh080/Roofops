@@ -140,7 +140,7 @@ describe.each(TARGETS)('dashboard reissue and the Airtable identity [%s]', (targ
   });
 
   it('a project that was never reissued gets no preview expectation (the AC-03 preview flow is untouched)', async () => {
-    const others = await db.query<{ n: string }>(`select count(*) n from v_airtable_expected x join projects p on p.id = x.entity_id
+    const others = await db.query<{ n: number | string }>(`select count(*) n from v_airtable_expected x join projects p on p.id = x.entity_id
       where x.entity_type = 'project' and p.project_number <> $1 and x.expected ? 'fldt9KIOPXh3c3pGU'`, [s.invoice.project]);
     expect(String(others[0]!.n)).toBe('0');
     expect(await s.integrityFails()).toEqual([]);

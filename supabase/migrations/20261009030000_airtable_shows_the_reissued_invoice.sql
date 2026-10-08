@@ -47,7 +47,8 @@ select 'tblvUPIoebC3zoacv'::text as table_id, 'project'::text as entity_type, p.
          left join employees re on re.id = ap.requested_by_employee_id
          left join employees de on de.id = ap.decided_by
          left join invoice_xero_draft_generations prev on prev.invoice_id = g.invoice_id and prev.generation = g.generation - 1
-         where g.invoice_id = fi.id and g.superseded_at is null and g.generation >= 2 and g.status = 'CREATED' and g.xero_invoice_id is not null), '{}'::jsonb)
+         where g.invoice_id = fi.id and g.superseded_at is null and g.generation >= 2 and g.status = 'CREATED'
+           and g.xero_invoice_id is not null and g.xero_invoice_number is not null), '{}'::jsonb)   -- never a null (blank) preview
     when fi.id is not null then '{}'::jsonb
     when pa.id is not null and pa.created_at < now() - interval '2 minutes' then jsonb_build_object('fldPuGgo27oWLKB5R', 'Awaiting approval',
       'fld5JDnWI3RFehQxA', (pa.action_payload ->> 'amount_inc_gst')::numeric, 'fldgkN0Vm6k1MZLJp', null, 'fld3sDI9LIX8Voo4u', null)

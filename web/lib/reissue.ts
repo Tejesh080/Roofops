@@ -20,14 +20,17 @@ export interface ReissueOverview {
   me?: { employee_code: string; name: string; role: string; may_reissue: boolean };
 }
 
-/** Staff only: the database checks the session token and answers for that employee. Fails closed when unavailable. */
+/** Postgres 42883 (undefined function): the dashboard reissue migration is not installed on this database. */
+export const notInstalled = (e: unknown) => (e as { code?: string } | null)?.code === '42883';
+
+/** Staff only (null without a staff session): the database checks the session token and answers for that employee. */
 export async function getReissueOverview(q: Query, token: string | undefined): Promise<ReissueOverview | null> {
   if (!token) return null;
   try {
     const [row] = await q<{ r: ReissueOverview }>('select web_reissue_overview($1) r', [token]);
-    return row?.r ?? null;
-  } catch {
-    return null;   // reissue from the dashboard is not available on this database yet
+    return row?.r ?? { ok: false, reason: 'Invoice reissues could not be loaded. Reload the page.' };
+  } catch (e) {
+    return { ok: false, reason: notInstalled(e) ? 'Reissue from the dashboard is not available on this server yet.' : 'Invoice reissues could not be loaded. Reload the page.' };
   }
 }
 

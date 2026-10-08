@@ -14,7 +14,8 @@ const PUB = `from pg_proc p join pg_namespace n on n.oid = p.pronamespace where 
  *  `invoice_void_guard` is the AC-05 trigger replaced (not created) by B2: it keeps the repo's trigger style - pinned
  *  search_path, invoker rights - so it is the one name the SECURITY DEFINER check excludes explicitly. */
 const REISSUE = `'ops_reissue_request', 'ops_reissue_decide', 'invoice_reissue_generation', 'invoice_reissue_preview',
-  'invoice_reissue_preview_hash', 'invoice_reissue_check', 'invoice_reissue_guard', 'invoice_void_guard', 'wf_complete_side_effect_core'`;
+  'invoice_reissue_preview_hash', 'invoice_reissue_check', 'invoice_reissue_guard', 'invoice_void_guard', 'wf_complete_side_effect_core',
+  'xero_draft_payload', 'xero_reissue_proof'`;
 let failures = 0;
 const check = (name: string, got: string[], ok: (g: string[]) => boolean) => {
   const pass = ok(got);
@@ -60,6 +61,9 @@ try {
     (g) => g[0] === '96643bb0-3a0a-406e-96fb-ab8a933ee6b8');
   check('reconcile trigger token stored only as a hash', await list(`select length(value)::text v from app_settings where key = 'reconcile.trigger_token_sha256'`),
     (g) => g[0] === '64');
+  // AC-14C P2-D1: the reissue dispatch token (n8n 08) is stored only as a hash; empty = every dispatch refused.
+  check('reissue dispatch token stored only as a hash (or unset)', await list(`select length(value)::text v from app_settings where key = 'reissue.dispatch_token_sha256'`),
+    (g) => g[0] === '64' || g[0] === '0');
   console.log(failures ? `\n${failures} FAIL` : '\nall privilege checks pass');
   if (failures) process.exitCode = 1;
 } finally {

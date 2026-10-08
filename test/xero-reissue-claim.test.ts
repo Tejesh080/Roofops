@@ -8,15 +8,22 @@
  * claim and completion are unchanged.
  */
 import { createHash } from 'node:crypto';
-import { afterEach, describe, expect, it } from 'vitest';
+import { runInNewContext } from 'node:vm';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { openPostgres } from '../src/db/db.js';
 import { TARGETS } from './helpers/db.js';
+import { recorded } from './helpers/n8n-sdk-shim.js';
 import { approvedReissueScenario, deletedReissueScenario, type ReissueScenario, type ScenarioTarget } from './helpers/reissue-scenario.js';
 
 type R = Record<string, unknown>;
 const FINANCE = 'EMP-900';
 const REASON = 'Customer asked for the voided final to be reissued unchanged';
 const uuidFor = (seed: string) => createHash('md5').update(seed).digest('hex').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
+
+beforeAll(async () => {
+  const sdk = '../n8n/04-approved-project-to-xero-draft-invoice.sdk.ts';            // a variable: typecheck does not follow it into n8n's SDK
+  await import(/* @vite-ignore */ sdk);
+});
 
 describe.each(TARGETS)('AC-14C P2-D2: generation-aware claim and completion [%s]', (t) => {
   const target = t as ScenarioTarget;
@@ -94,6 +101,24 @@ describe.each(TARGETS)('AC-14C P2-D2: generation-aware claim and completion [%s]
     } finally { await other.close(); }
   }, 120_000);
 
+  it('a replayed generation-1 approval (04, ALREADY_PROCESSED) sends only generation 1\'s DONE key: 04 never dispatches a reissue', async () => {
+    const { key } = await reissued();
+    const project = s!.invoice.project;
+    // A fresh Airtable "Approve" delivery for the project resolves to the already-executed CREATE_INVOICE approval.
+    const ev = { event_id: `EVT-REPLAY-${s!.invoice.id}`, event_type: 'invoice.approved', source: 'airtable', actor_id: 'usr7uCnNO15fCefbH',
+      occurred_at: new Date().toISOString(), payload: { project_number: project, airtable_record_id: `rec${createHash('md5').update(project).digest('hex').slice(0, 14)}`, displayed_preview: '' } };
+    const r = (await one(`select wf_invoice_decide($1::jsonb, 'n8n:04') r`, [JSON.stringify(ev)])).r as R;
+    expect(r).toMatchObject({ outcome: 'ALREADY_PROCESSED', xero_key: s!.invoice.key });
+    expect((r.pending_side_effects as R[]).map((p) => p.key)).toContain(key);           // the reissue's write is pending ...
+    // ... and 04's real Normalise Invoice Outcome code (runOnceForEachItem: $json is the item) still picks generation 1.
+    const code = String((recorded.nodes.get('Normalise Invoice Outcome')!.config.parameters as R).jsCode);
+    const out = runInNewContext(`(function () {\n${code}\n})()`, { $json: { r, event_id: ev.event_id, project_record_id: ev.payload.airtable_record_id } }) as { json: R };
+    expect(out.json).toMatchObject({ needs_xero: true, xero_key: s!.invoice.key });
+    // 05 on that key finds generation 1 DONE: nothing claimed, nothing sent; the reissue's write is untouched.
+    expect(await claim(s!.invoice.key)).toMatchObject({ claimed: false });
+    expect(await one(`select status, attempts from outbox where idempotency_key = $1`, [key])).toMatchObject({ status: 'PENDING', attempts: 0 });
+  }, 120_000);
+
   it('generation 1 is unchanged: its claim result carries no generation keys', async () => {
     s = await approvedReissueScenario(target);
     await force(`update outbox set status = 'PENDING', next_attempt_at = now() where idempotency_key = xero_draft_outbox_key($1, 1)`, [s.invoice.id]);
@@ -113,9 +138,10 @@ describe.each(TARGETS)('AC-14C P2-D2: generation-aware claim and completion [%s]
       if ((await claim(key)).claimed) await q(`select wf_fail_side_effect($1, 'RATE_LIMITED', 'search by invoice number: HTTP 429', 429, 0)`, [key]);
     }
     expect(await s!.state()).toMatchObject({ sync_status: 'UNKNOWN' });
-    expect((await one(`select wf_reissue_dispatch('x', 'test') d`)).d).toMatchObject({ ok: false });   // no token: nothing dispatched
+    expect((await one(`select wf_reissue_dispatch('x', $1, 2, 'test') d`, [s!.invoice.number])).d).toMatchObject({ ok: false });   // no token: nothing dispatched
     await q(`update app_settings set value = encode(sha256(convert_to('t', 'UTF8')), 'hex') where key = 'reissue.dispatch_token_sha256'`);
-    expect(((await one(`select wf_reissue_dispatch('t', 'test') d`)).d as R).writes).toEqual([]);  // a dead letter is never redispatched
+    expect((await one(`select wf_reissue_dispatch('t', $1, 2, 'test') d`, [s!.invoice.number])).d)                   // a dead letter is never redispatched
+      .toMatchObject({ ok: false, code: 'NOT_DUE', writes: [] });
     expect(await s!.link()).toBe(s!.invoice.xid);
   });
 });

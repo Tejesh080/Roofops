@@ -800,7 +800,7 @@ describe.each(TARGETS)('AC-14C B2: the supervised final-invoice reissue [%s]', (
     expect(await k.col(db, `select has_function_privilege('roofops_workflow', 'wf_complete_side_effect(text,jsonb)', 'execute')::text v`)).toEqual(['true']);
     expect(await k.col(db, `select p.proname v from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public' and has_function_privilege('roofops_workflow', p.oid, 'execute') order by 1`)).toHaveLength(22);   // + wf_reissue_dispatch (P2-D1)
-    expect(await k.col(db, `select has_function_privilege('roofops_workflow', 'wf_reissue_dispatch(text,text)', 'execute')::text v`)).toEqual(['true']);
+    expect(await k.col(db, `select has_function_privilege('roofops_workflow', 'wf_reissue_dispatch(text,text,integer,text)', 'execute')::text v`)).toEqual(['true']);   // one selected write (release gate)
     // SECURITY DEFINER with a safe search_path.
     for (const f of ['invoice_reissue_generation', 'invoice_reissue_preview', 'invoice_reissue_preview_hash', 'invoice_reissue_check',
       'invoice_reissue_guard', 'ops_reissue_request', 'ops_reissue_decide']) {

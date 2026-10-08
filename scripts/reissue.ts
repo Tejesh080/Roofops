@@ -24,7 +24,7 @@ import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describeUrl, hostedDbConfig } from '../src/config/env.js';
 import { openPostgres, type Db } from '../src/db/db.js';
-import { dispatchReissue, n8nReissueTrigger, reissueStatus } from '../src/ops/reissue-dispatch.js';
+import { dispatchReissue, n8nReissueTrigger, reissueStatus, type DispatchSelection } from '../src/ops/reissue-dispatch.js';
 
 const LOCAL_DEFAULT = 'postgresql://postgres:postgres@127.0.0.1:54322/roofops';
 const NIL_UUID = '00000000-0000-0000-0000-000000000000';
@@ -41,7 +41,8 @@ export const USAGE = [
   'request asks for a reissue of a voided final invoice (a FINANCE or ADMIN employee, a real reason);',
   'decide approves the fresh request and queues exactly one new Xero draft generation for the same invoice;',
   'status shows the invoice\'s current Xero draft generation, its write and any open exception;',
-  'dispatch asks [RoofOps] 08 in n8n to create the queued generation in Xero (REISSUE_DISPATCH_TOKEN) and waits for it.',
+  'dispatch asks [RoofOps] 08 in n8n to create exactly that invoice\'s queued generation in Xero (REISSUE_DISPATCH_TOKEN;',
+  'no other queued reissue can be sent) and waits for it.',
   '--hosted runs against the hosted database (SUPABASE_DB_URL); without it DATABASE_URL picks the local database',
   '(default postgresql://postgres:postgres@127.0.0.1:54322/roofops). dispatch needs --hosted.',
   'Exit codes: 0 success, 2 refused or not finished (the code is in the JSON), 1 usage or connection error.',
@@ -50,7 +51,7 @@ export const USAGE = [
 /** Where the CLI writes; tests pass a collector instead of the console. */
 export interface ReissueIo { print: (line: string) => void; error: (line: string) => void }
 /** How `dispatch` reaches [RoofOps] 08 and waits; main() wires the n8n webhook only for --hosted, tests inject it. */
-export interface ReissueDeps { trigger?: () => Promise<void>; sleep?: (ms: number) => Promise<void>; polls?: number }
+export interface ReissueDeps { trigger?: (selection: DispatchSelection) => Promise<void>; sleep?: (ms: number) => Promise<void>; polls?: number }
 
 const FLAGS: Record<string, readonly string[]> = {
   request: ['--invoice', '--by', '--reason'],

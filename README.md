@@ -321,7 +321,9 @@ the JSON - `REASON_REQUIRED`, `ACTOR_UNAUTHORIZED`, `INVOICE_NOT_VOIDED`, `TENAN
 `WRITE_IN_FLIGHT`, `ALREADY_PROCESSED`, ...) and `1` for a usage or connection error. A refusal changes nothing.
 
 The queued generation is then created in Xero by **[RoofOps] 08 Reissue Dispatch**, which runs the unchanged
-[RoofOps] 05 for every write Postgres proves is a supervised reissue (05's claim re-proves it before any Xero call):
+[RoofOps] 05 for exactly one write: the invoice number and generation the operator names. Postgres lists it only when it
+is that invoice's current generation ≥ 2, due and proven to be the supervised reissue; no other queued reissue is ever
+dispatched with it, and 05's claim re-proves the write before any Xero call:
 
 ```bash
 # 3. where does the invoice's current Xero draft generation stand? (read-only)
@@ -332,7 +334,8 @@ npm run reissue -- dispatch --invoice INV-2026-0004 --hosted
 ```
 
 `--hosted` runs any step against the hosted database (`SUPABASE_DB_URL`, like `db:load --hosted`). `dispatch` POSTs
-08's webhook with `REISSUE_DISPATCH_TOKEN` from `.env.local`; Postgres keeps only its SHA-256 in
+08's webhook with `REISSUE_DISPATCH_TOKEN` from `.env.local` and the selection (`{ invoice_number, generation }`, read
+from the invoice's current generation); Postgres keeps only the token's SHA-256 in
 `app_settings.reissue.dispatch_token_sha256` (empty = every dispatch refused). It reports `REISSUE_CREATED` (exit 0),
 `NO_REISSUE_QUEUED`, `REISSUE_NOT_CREATED` (05 failed it: see `last_error` / `open_exceptions`) or `STILL_PENDING`
 (token refused, 08 not published, or the write not proven - see `open_exceptions`) (exit 2).

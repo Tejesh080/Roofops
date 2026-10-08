@@ -30,21 +30,29 @@ export async function reissueStatus(db: Db, invoiceId: string): Promise<ReissueS
   return rows[0];
 }
 
-/** POSTs [RoofOps] 08's operator webhook with REISSUE_DISPATCH_TOKEN (checked in Postgres against its SHA-256). */
-export function n8nReissueTrigger(fetchImpl: typeof fetch = fetch): () => Promise<void> {
-  return async () => {
+/** The one write a dispatch names: 08 and Postgres refuse anything without it and never list another write. */
+export interface DispatchSelection { invoice_number: string; generation: number }
+
+/**
+ * POSTs [RoofOps] 08's operator webhook with REISSUE_DISPATCH_TOKEN (checked in Postgres against its SHA-256) and the
+ * selection in the body.
+ */
+export function n8nReissueTrigger(fetchImpl: typeof fetch = fetch): (selection: DispatchSelection) => Promise<void> {
+  return async (selection) => {
     const token = requireEnv('REISSUE_DISPATCH_TOKEN');
     const base = process.env.N8N_BASE_URL ?? 'https://tejesh08.app.n8n.cloud';
     const res = await fetchImpl(`${base}/webhook/roofops/reissue/dispatch`, {
-      method: 'POST', headers: { 'content-type': 'application/json', 'x-roofops-token': token }, body: '{}' });
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-roofops-token': token },
+      body: JSON.stringify({ invoice_number: selection.invoice_number, generation: selection.generation }) });
     if (!res.ok) throw new Error(`n8n did not accept the reissue dispatch trigger: HTTP ${res.status}`);
   };
 }
 
-export interface DispatchOptions { trigger: () => Promise<void>; sleep?: (ms: number) => Promise<void>; polls?: number; intervalMs?: number }
+export interface DispatchOptions { trigger: (selection: DispatchSelection) => Promise<void>; sleep?: (ms: number) => Promise<void>; polls?: number; intervalMs?: number }
 
 /**
- * Dispatches an invoice's queued reissue and waits for its write to settle. Outcomes (the CLI's report, not a rule):
+ * Dispatches exactly this invoice's current generation (the selection 08 and Postgres require; no other queued reissue
+ * can be sent) and waits for its write to settle. Outcomes (the CLI's report, not a rule):
  *  REISSUE_CREATED   the current generation >= 2 is CREATED and the invoice SYNCED (before or after the trigger)
  *  NO_REISSUE_QUEUED the current generation is 1: there is nothing for 08 to dispatch (the trigger is not sent)
  *  REISSUE_NOT_CREATED the write settled without a draft (05 refused or failed it; see last_error / open_exceptions)
@@ -58,7 +66,7 @@ export async function dispatchReissue(db: Db, invoiceId: string, o: DispatchOpti
   if (before.generation < 2) return { ok: false, code: 'NO_REISSUE_QUEUED', detail: 'the current Xero draft generation is 1; decide a reissue first', ...before };
   if (created(before)) return { ok: true, code: 'REISSUE_CREATED', detail: 'the reissued draft already exists', ...before };
 
-  await o.trigger();
+  await o.trigger({ invoice_number: before.invoice_number, generation: before.generation });
   let now = before;
   for (let i = 0; i < (o.polls ?? 90); i += 1) {
     await sleep(o.intervalMs ?? 2000);

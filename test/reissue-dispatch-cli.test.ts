@@ -58,8 +58,8 @@ describe.each(TARGETS)('AC-14C P2-D3: the reissue status and dispatch operator p
    */
   const n8n = (token: string, o: { fail?: boolean } = {}) => {
     const calls: R[] = [];
-    const trigger = async () => {
-      const d = (await one(`select wf_reissue_dispatch($1, 'n8n:test') d`, [token])).d as R;
+    const trigger = async (sel: { invoice_number: string; generation: number }) => {
+      const d = (await one(`select wf_reissue_dispatch($1, $2, $3, 'n8n:test') d`, [token, sel.invoice_number, sel.generation])).d as R;
       calls.push(d);
       for (const w of (d.writes ?? []) as R[]) {
         const key = String(w.xero_key);
@@ -91,6 +91,7 @@ describe.each(TARGETS)('AC-14C P2-D3: the reissue status and dispatch operator p
     expect(r.json).toMatchObject({ ok: true, code: 'REISSUE_CREATED', generation: 2, ledger_status: 'CREATED', sync_status: 'SYNCED',
       outbox_status: 'DONE', xero_invoice_id: fresh, xero_link: fresh, xero_invoice_number: (await s.ledger())[0]!.xero_invoice_number });
     expect(fake.calls).toHaveLength(1);
+    expect(fake.calls[0]).toMatchObject({ ok: true, selection: { invoice_number: s.invoice.number, generation: 2 } });   // the one write the CLI named
     expect(await s.integrityFails()).toEqual([]);
 
     // Dispatching again sends nothing: the generation already exists.
@@ -161,17 +162,18 @@ describe('AC-14C P2-D3: the dispatch trigger', () => {
     process.env.N8N_BASE_URL = 'https://n8n.example.test';
     const seen: { url: string; init: RequestInit }[] = [];
     const ok = ((url: string, init: RequestInit) => { seen.push({ url, init }); return Promise.resolve(new Response(null, { status: 200 })); }) as unknown as typeof fetch;
-    await n8nReissueTrigger(ok)();
+    await n8nReissueTrigger(ok)({ invoice_number: 'INV-2026-0040', generation: 2 });
     expect(seen).toHaveLength(1);
     expect(seen[0]!.url).toBe('https://n8n.example.test/webhook/roofops/reissue/dispatch');
     expect(seen[0]!.init).toMatchObject({ method: 'POST', headers: { 'x-roofops-token': TOKEN } });
+    expect(JSON.parse(seen[0]!.init.body as string)).toEqual({ invoice_number: 'INV-2026-0040', generation: 2 });   // exactly one selected write
     // The path is exactly 08's webhook path.
     expect(readFileSync(fileURLToPath(new URL('../n8n/08-reissue-dispatch.sdk.ts', import.meta.url)), 'utf8')).toContain("path: 'roofops/reissue/dispatch'");
 
     const refused = (() => Promise.resolve(new Response(null, { status: 403 }))) as unknown as typeof fetch;
-    await expect(n8nReissueTrigger(refused)()).rejects.toThrow(/HTTP 403/);
+    await expect(n8nReissueTrigger(refused)({ invoice_number: 'INV-2026-0040', generation: 2 })).rejects.toThrow(/HTTP 403/);
     delete process.env.REISSUE_DISPATCH_TOKEN;
-    await expect(n8nReissueTrigger(ok)()).rejects.toThrow(/REISSUE_DISPATCH_TOKEN/);
+    await expect(n8nReissueTrigger(ok)({ invoice_number: 'INV-2026-0040', generation: 2 })).rejects.toThrow(/REISSUE_DISPATCH_TOKEN/);
     expect(seen).toHaveLength(1);
   });
 

@@ -19,7 +19,8 @@ import {
 } from '../labels.ts';
 
 export type Tier = 'GREEN' | 'AMBER';
-export interface ToolContext { query: Query; requestId: string; lastUserMessage: string }
+/** actor: who asked, for the audit trail: dashboard:copilot:<employee code> for a database-verified staff session. */
+export interface ToolContext { query: Query; requestId: string; lastUserMessage: string; actor?: string }
 export interface ToolCard { kind: 'invoice_preview'; data: PreparedInvoiceCard }
 export interface ToolResult { data: unknown; card?: ToolCard }
 export interface PreparedInvoiceCard extends PreparedInvoice { project: string; airtable_record_id: string | null; status_text: string }
@@ -182,7 +183,7 @@ export const TOOLS: Record<string, ToolDef> = {
     description: 'Prepare (preview only) the final invoice for a completed project. Use ONLY when the user explicitly asks to prepare/create/raise an invoice. '
       + 'It never creates the invoice: it returns the amount and details and waits for a finance approver.',
     parameters: projectArg,
-    run: async (a, { query, requestId, lastUserMessage }) => {
+    run: async (a, { query, requestId, lastUserMessage, actor }) => {
       if (!/invoice/i.test(lastUserMessage) || !/\b(prepare|create|raise|draft|make|generate|bill)\b/i.test(lastUserMessage)) {
         return { data: { refused: 'Invoices are only prepared when you explicitly ask, e.g. "Prepare invoice for PRJ-2026-0005".' } };
       }
@@ -195,7 +196,7 @@ export const TOOLS: Record<string, ToolDef> = {
                          reason: p.status === 'CANCELLED' ? `${n} is cancelled; a cancelled job is never final-invoiced (earlier invoices stay as they are)`
                            : p.invoice_blocker ?? (p.is_active ? `${n} is still ${label(PROJECT_STAGE, p.status).text.toLowerCase()}; only completed jobs get a final invoice` : 'Nothing left to invoice') } };
       }
-      const r = await prepareInvoice(query, n, requestId, 'dashboard:copilot');
+      const r = await prepareInvoice(query, n, requestId, actor ?? 'dashboard:copilot');
       const status_text = r.outcome === 'PREVIEW_READY' ? 'Prepared: awaiting approval'
         : r.outcome === 'ALREADY_PENDING' ? 'Already prepared: awaiting approval'
         : r.outcome === 'ALREADY_INVOICED' ? 'Already invoiced: nothing new prepared' : 'Not prepared';

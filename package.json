@@ -17,7 +17,7 @@
     "db:down": "docker compose down",
     "db:load": "tsx scripts/db-load.ts",
     "db:reset": "tsx scripts/db-load.ts --reset",
-    "check": "npm run lint && npm run typecheck && npm test",
+    "check": "npm run lint && npm run typecheck && npm run typecheck:web && npm test",
     "data:check": "tsx scripts/normalise-dates.ts --check",
     "db:provision-n8n": "tsx scripts/provision-n8n-role.ts",
     "demo:status": "tsx scripts/demo.ts status",
@@ -28,7 +28,8 @@
     "reconcile": "tsx scripts/reconcile.ts",
     "contract:export": "tsx scripts/export-contract.ts",
     "ai:eval": "tsx scripts/ai-eval.ts",
-    "security:check": "tsx scripts/security-check.ts"
+    "security:check": "tsx scripts/security-check.ts",
+    "typecheck:web": "npm --prefix web run typecheck"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

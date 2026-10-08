@@ -74,6 +74,18 @@ describe('business interpretations', () => {
     expect(items).toEqual([expect.objectContaining({ project: 'PRJ-2026-0006', severity: 'high', kind: 'billing',
       summary: 'Billed more than the quote and approved variations: over by $5,148.12' })]);
   });
+  it('an overdue customer payment is in "needs me today" (needs_attention projects are never missing from the list)', () => {
+    const rows = [row({ project_number: 'PRJ-2026-0025', risk_level: 'LOW', risk_reasons: [], invoice_status: 'PAYMENT_OVERDUE',
+      has_overdue_invoice: true, outstanding_inc_gst: 3518.67, needs_attention: true })];
+    expect(attentionToday(rows, [], 5)).toEqual([expect.objectContaining({ project: 'PRJ-2026-0025', severity: 'medium', kind: 'payment',
+      summary: 'Customer payment overdue: $3,518.67 outstanding' })]);
+    // Every project the database flags needs_attention is on the list (here: risk, billing, approval, payment, issue).
+    const mixed = [row({}), row({ project_number: 'PRJ-2026-0006', is_active: false, risk_level: 'LOW', risk_reasons: [], invoice_status: 'OVER_BILLED', needs_attention: true }),
+      row({ project_number: 'PRJ-2026-0002', is_active: false, risk_level: 'LOW', risk_reasons: [], invoice_status: 'AWAITING_APPROVAL', invoice_amount_inc_gst: 15155.98,
+        has_overdue_invoice: true, outstanding_inc_gst: 10103.98, needs_attention: true }), ...rows];
+    const listed = new Set(attentionToday(mixed, [], 100).map((i) => i.project));
+    for (const p of mixed.filter((r) => r.needs_attention)) expect(listed).toContain(p.project_number);
+  });
   it('AC-08: an over-billing refusal is described as over-billing, not as supplier totals', () => {
     expect(describeIssue({ error_class: 'ARITHMETIC_MISMATCH', error_message: 'PRJ-2026-0006 is over-billed: billed 30888.72 (…) against quote 25740.60 …; over by 5148.12.', attempt_count: 1 }))
       .toEqual({ title: 'Project is over-billed', explanation: 'More has been invoiced than the quote and approved variations allow; a person must correct the billing before the job can be closed.' });

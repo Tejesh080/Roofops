@@ -60,10 +60,14 @@ export function attentionToday(rows: ProjectRow[], issues: ExceptionRow[], max =
   const approvals = rows.filter((p) => p.invoice_status === 'AWAITING_APPROVAL').map((p): AttentionItem => ({
     project: p.project_number, customer: p.customer_name, severity: 'medium', kind: 'approval',
     summary: `Invoice ${p.invoice_amount_inc_gst?.toLocaleString('en-AU', { style: 'currency', currency: 'AUD' }) ?? ''} awaiting finance approval` }));
+  // A customer invoice past its due date: the database flags the project needs_attention, so it belongs on this list.
+  const payments = rows.filter((p) => p.has_overdue_invoice).map((p): AttentionItem => ({
+    project: p.project_number, customer: p.customer_name, severity: 'medium', kind: 'payment',
+    summary: `Customer payment overdue: ${p.outstanding_inc_gst.toLocaleString('en-AU', { style: 'currency', currency: 'AUD' })} outstanding` }));
   const issueItems = issues.filter((e) => e.project_number && (e.resolution_status === 'OPEN' || e.resolution_status === 'RETRY_QUEUED'))
     .map((e): AttentionItem => ({ project: e.project_number!, customer: rows.find((r) => r.project_number === e.project_number)?.customer_name ?? '',
       severity: 'medium', kind: 'issue', summary: describeIssue(e).title }));
-  return [...risk, ...billing, ...approvals, ...issueItems].slice(0, max);
+  return [...risk, ...billing, ...approvals, ...payments, ...issueItems].slice(0, max);
 }
 
 /** Business language first; the technical class and reference are for "Technical details". */

@@ -15,8 +15,13 @@ export function dashboardDbTarget(connectionString: string, env: Record<string, 
   const url = new URL(connectionString);
   url.search = '';
   if (LOCAL.has(url.hostname)) return { connectionString: url.toString(), ssl: false };
-  const ca = env.DASHBOARD_DB_CA_PEM?.replace(/\\n/g, '\n').trim()
-    || (env.DASHBOARD_DB_CA_CERT ? readFileSync(env.DASHBOARD_DB_CA_CERT, 'utf8').trim() : '');
+  // DASHBOARD_DB_CA_PEM wins when both are set. DASHBOARD_DB_CA_CERT should be an absolute path (a relative one is
+  // resolved from the web server's working directory, i.e. web/).
+  let ca = env.DASHBOARD_DB_CA_PEM?.replace(/\\n/g, '\n').trim() ?? '';
+  if (!ca && env.DASHBOARD_DB_CA_CERT) {
+    try { ca = readFileSync(env.DASHBOARD_DB_CA_CERT, 'utf8').trim(); }
+    catch { throw new Error('Database certificate cannot be verified: DASHBOARD_DB_CA_CERT does not name a readable file (use an absolute path)'); }
+  }
   if (!ca.includes('BEGIN CERTIFICATE')) {
     throw new Error('Database certificate cannot be verified: set DASHBOARD_DB_CA_PEM or DASHBOARD_DB_CA_CERT (Supabase root CA)');
   }

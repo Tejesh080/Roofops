@@ -32,3 +32,15 @@ describe('dashboard database TLS', () => {
     expect(t.ssl).toMatchObject({ rejectUnauthorized: true });
   });
 });
+
+describe('dashboard database TLS: configuration mistakes fail closed with a clear message', () => {
+  it('a CA file that cannot be read (wrong or relative path) is refused, not an unverified fallback', () => {
+    expect(() => dashboardDbTarget(REMOTE, { DASHBOARD_DB_CA_CERT: 'secrets/does-not-exist.crt' })).toThrow(/absolute path/);
+  });
+  it('PEM wins when both are set; an invalid PEM is refused even if the file is fine', () => {
+    const f = join(mkdtempSync(join(tmpdir(), 'roofops-ca-')), 'ca.crt');
+    writeFileSync(f, PEM);
+    expect(() => dashboardDbTarget(REMOTE, { DASHBOARD_DB_CA_PEM: 'garbage', DASHBOARD_DB_CA_CERT: f })).toThrow(/cannot be verified/);
+    expect(dashboardDbTarget(REMOTE, { DASHBOARD_DB_CA_PEM: '', DASHBOARD_DB_CA_CERT: f }).ssl).toMatchObject({ rejectUnauthorized: true });
+  });
+});

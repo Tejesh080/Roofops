@@ -9,6 +9,7 @@
  */
 import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
+import { openPostgres } from '../src/db/db.js';
 import { TARGETS } from './helpers/db.js';
 import { approvedReissueScenario, deletedReissueScenario, type ReissueScenario, type ScenarioTarget } from './helpers/reissue-scenario.js';
 
@@ -77,6 +78,21 @@ describe.each(TARGETS)('AC-14C P2-D2: generation-aware claim and completion [%s]
     await expect(complete(key, proofFor(payload, uuidFor(`replacement:${s!.invoice.id}`)))).rejects.toThrow(/not the approved draft/);
     expect(await s!.link()).toBe(s!.invoice.xid);
   });
+
+  it('two simultaneous 05 claims of one generation-2 write (two connections): exactly one claims it, once', async () => {
+    const { key } = await reissued();
+    const url = (s!.db as { url?: string }).url;
+    if (target !== 'postgres' || !url) { expect(target).toBe('pglite'); return; }   // PGlite has one connection
+    const other = await openPostgres(url);
+    try {
+      const results = await Promise.all([claim(key),
+        other.query<{ c: R }>(`select wf_claim_side_effect($1, 'n8n:05b', 120) c`, [key]).then((r) => r[0]!.c)]);
+      expect(results.filter((r) => r.claimed === true), JSON.stringify(results)).toHaveLength(1);
+      expect(results.find((r) => r.claimed === true)).toMatchObject({ generation: 2, superseded_xero_invoice_ids: [s!.invoice.xid] });
+      expect(await one(`select status, attempts from outbox where idempotency_key = $1`, [key])).toMatchObject({ status: 'DISPATCHING', attempts: 1 });
+      expect((await s!.ledger()).map((g) => [g.generation, g.status])).toEqual([[1, 'SUPERSEDED'], [2, 'DISPATCHING']]);
+    } finally { await other.close(); }
+  }, 120_000);
 
   it('generation 1 is unchanged: its claim result carries no generation keys', async () => {
     s = await approvedReissueScenario(target);

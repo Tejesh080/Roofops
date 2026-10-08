@@ -6,7 +6,7 @@ import { describeIssue } from '@/lib/insights';
 import { Badge } from '@/components/ui/Badge';
 import { Empty } from '@/components/ui/Empty';
 
-export function IssueList({ issues, emptyTitle = 'No automation issues', showWhere = true }: { issues: ExceptionRow[]; emptyTitle?: string; showWhere?: boolean }) {
+export function IssueList({ issues, emptyTitle = 'No automation issues', showWhere = true, action }: { issues: ExceptionRow[]; emptyTitle?: string; showWhere?: boolean; action?: (e: ExceptionRow) => React.ReactNode }) {
   if (!issues.length) return <Empty icon={ShieldCheck} title={emptyTitle} text="Every automated step completed normally." />;
   return (
     <div>
@@ -31,6 +31,7 @@ export function IssueList({ issues, emptyTitle = 'No automation issues', showWhe
                 <span className="t-meta">Message</span><span className="mono">{e.error_message}</span><span />
               </div>
             </details>
+            {action?.(e)}
           </div>
         );
       })}

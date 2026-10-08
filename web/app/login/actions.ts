@@ -3,10 +3,12 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { SESSION_COOKIE, SESSION_TTL_SECONDS, signSession } from '@/lib/session';
-import { authConfigured } from '@/lib/auth';
+import { SESSION_COOKIE, SESSION_TTL_SECONDS, signSession, verifySession } from '@/lib/session';
+import { authConfigured, demoLoginConfigured } from '@/lib/auth';
+import { query } from '@/lib/db';
 
 // Simple per-instance throttle: 5 failures per 10 minutes per client address, plus a fixed delay on failure.
+// (Staff logins are also locked in the database after 5 wrong passwords, whatever instance served them.)
 const failures = new Map<string, { n: number; until: number }>();
 const WINDOW_MS = 10 * 60 * 1000;
 
@@ -14,6 +16,18 @@ const digest = (s: string) => createHash('sha256').update(s, 'utf8').digest();
 const same = (a: string, b: string) => timingSafeEqual(digest(a), digest(b));
 
 export interface LoginState { error?: string; username?: string }
+
+type StaffSignIn = { ok: true; token: string; employee_code: string; name: string; role: string } | { ok: false; reason: string };
+
+/** A person's own login, checked by the database (bcrypt in Postgres). null when staff sign-in is not available here. */
+async function staffSignIn(login: string, password: string): Promise<StaffSignIn | null> {
+  try {
+    const [row] = await query<{ r: StaffSignIn }>('select web_staff_sign_in($1, $2) r', [login, password]);
+    return row?.r ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export async function login(_prev: LoginState, form: FormData): Promise<LoginState> {
   if (!authConfigured()) return { error: 'Sign-in is not configured on this server.' };
@@ -24,23 +38,37 @@ export async function login(_prev: LoginState, form: FormData): Promise<LoginSta
   if (f && f.n >= 5 && f.until > Date.now()) return { error: 'Too many attempts. Try again in a few minutes.', username };
 
   const password = String(form.get('password') ?? '');
-  const userOk = same(username, process.env.DEMO_USERNAME!);
-  const passOk = same(password, process.env.DEMO_PASSWORD!);   // always compare both (no early exit)
-  const ok = userOk && passOk;
-  if (!ok) {
+  let session: string | null = null;
+  let refusal = 'That username and password did not match.';
+  // 1. The shared demo viewer (read-only), when configured: compare both values, no early exit.
+  if (demoLoginConfigured()) {
+    const userOk = same(username, process.env.DEMO_USERNAME!);
+    const passOk = same(password, process.env.DEMO_PASSWORD!);
+    if (userOk && passOk) session = await signSession(username);
+  }
+  // 2. A person's own staff login.
+  if (!session) {
+    const staff = await staffSignIn(username, password);
+    if (staff?.ok) session = await signSession(staff.name, { t: staff.token, e: staff.employee_code, r: staff.role });
+    else if (staff && !staff.ok) refusal = staff.reason;
+  }
+  if (!session) {
     const cur = f && f.until > Date.now() ? f : { n: 0, until: Date.now() + WINDOW_MS };
     failures.set(client, { n: cur.n + 1, until: cur.until });
     await new Promise((r) => setTimeout(r, 600));
-    return { error: 'That username and password did not match.', username };
+    return { error: refusal, username };
   }
   failures.delete(client);
-  (await cookies()).set(SESSION_COOKIE, await signSession(username), {
+  (await cookies()).set(SESSION_COOKIE, session, {
     httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/', maxAge: SESSION_TTL_SECONDS,
   });
   redirect('/');
 }
 
 export async function logout() {
-  (await cookies()).delete(SESSION_COOKIE);
+  const jar = await cookies();
+  const s = await verifySession(jar.get(SESSION_COOKIE)?.value);
+  if (s?.t) await query('select web_staff_sign_out($1)', [s.t]).catch(() => undefined);   // end the database session too
+  jar.delete(SESSION_COOKIE);
   redirect('/login');
 }

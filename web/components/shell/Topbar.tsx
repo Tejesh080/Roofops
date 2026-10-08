@@ -15,7 +15,10 @@ export function RoofMark({ size = 18 }: { size?: number }) {
   );
 }
 
-export function Topbar({ user }: { user: string }) {
+const roleName = (r: string) => r.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
+
+/** user: the signed-in person's name; role: set for a staff sign-in, absent for the shared demo viewer. */
+export function Topbar({ user, role }: { user: string; role?: string }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -36,12 +39,12 @@ export function Topbar({ user }: { user: string }) {
         <span className="env-badge"><span className="dot" aria-hidden />Demo <span className="long">environment</span></span>
         <div className="menu-wrap" ref={ref}>
           <button className="btn btn-ghost btn-sm" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
-            <UserRound size={15} aria-hidden /> Demo <ChevronDown size={14} aria-hidden />
+            <UserRound size={15} aria-hidden /> {role ? user.split(' ')[0] : 'Demo'} <ChevronDown size={14} aria-hidden />
           </button>
           <AnimatePresence>
             {open && (
               <motion.div className="menu" role="menu" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.16 }}>
-                <div className="m-head">Signed in as <strong>{user}</strong><br />Synthetic demo data only</div>
+                <div className="m-head">Signed in as <strong>{user}</strong><br />{role ? roleName(role) : 'Demo viewer: read only'} · synthetic demo data</div>
                 <Link className="mi" role="menuitem" href="/demo" onClick={() => setOpen(false)}><Presentation size={15} aria-hidden /> Interview demo guide</Link>
                 <form action={logout}><button className="mi" role="menuitem"><LogOut size={15} aria-hidden /> Sign out</button></form>
               </motion.div>

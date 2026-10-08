@@ -29,7 +29,8 @@
     "contract:export": "tsx scripts/export-contract.ts",
     "ai:eval": "tsx scripts/ai-eval.ts",
     "security:check": "tsx scripts/security-check.ts",
-    "typecheck:web": "npm --prefix web run typecheck"
+    "typecheck:web": "npm --prefix web run typecheck",
+    "staff:set-password": "tsx scripts/staff.ts set-password"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

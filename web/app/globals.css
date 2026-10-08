@@ -447,3 +447,10 @@ details.tech summary svg { transition: transform .15s; }
 .cons-value { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .inv-row { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 10px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
 .inv-row:last-child { border-bottom: 0; }
+
+/* ---------- Resolve an issue (staff sign-in) ---------- */
+.resolve-form { margin-top: 10px; display: grid; gap: 8px; justify-items: start; }
+.resolve-form .field { width: 100%; }
+.resolve-form textarea { width: 100%; font: inherit; font-size: 13.5px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface); resize: vertical; }
+.resolve-done { margin: 10px 0 0; display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--good); }
+.resolve-hint { margin: 0 0 10px; }

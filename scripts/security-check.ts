@@ -26,7 +26,8 @@ try {
   check('dashboard role: readable tables', await list(`select c.relname v from pg_class c join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relkind = 'r' and has_table_privilege('roofops_dashboard', c.oid, 'select')`), (g) => g.length === 0);
   check('dashboard role: SECURITY DEFINER functions', await list(`select p.proname v ${PUB} and p.prosecdef and has_function_privilege('roofops_dashboard', p.oid, 'execute') order by 1`),
-    (g) => g.every((f) => ['app_today', 'at_link', 'integrity_check', 'invoice_final_preview', 'project_left_to_bill_after_final', 'project_over_billing', 'sm_label', 'wf_invoice_prepare'].includes(f)));
+    (g) => g.every((f) => ['app_today', 'at_link', 'integrity_check', 'invoice_final_preview', 'project_left_to_bill_after_final', 'project_over_billing', 'sm_label', 'wf_invoice_prepare',
+      'web_resolve_exception', 'web_staff_session', 'web_staff_sign_in', 'web_staff_sign_out'].includes(f)));
   check('dashboard role: can it write via wf_* (other than prepare)?', await list(`select p.proname v ${PUB} and p.proname like 'wf\\_%'
       and p.proname <> 'wf_invoice_prepare' and has_function_privilege('roofops_dashboard', p.oid, 'execute')`), (g) => g.length === 0);
   check('workflow role: executable functions', await list(`select p.proname v ${PUB} and has_function_privilege('roofops_workflow', p.oid, 'execute') order by 1`),

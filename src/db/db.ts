@@ -1,4 +1,5 @@
 import { PGlite } from '@electric-sql/pglite';
+import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
 import pg from 'pg';
 
 /** Minimal database port. One connection; PGlite and node-postgres both implement it. */
@@ -22,7 +23,8 @@ export async function withTransaction<T>(db: Db, fn: () => Promise<T>): Promise<
 }
 
 export async function openPglite(dataDir?: string): Promise<Db> {
-  const lite = dataDir ? new PGlite(dataDir) : new PGlite();
+  // pgcrypto: staff sign-in checks bcrypt hashes inside the database (as Postgres and Supabase do).
+  const lite = new PGlite({ ...(dataDir ? { dataDir } : {}), extensions: { pgcrypto } });
   await lite.waitReady;
   return {
     kind: 'pglite',

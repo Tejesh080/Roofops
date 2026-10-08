@@ -305,7 +305,7 @@ TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres npm te
 A final invoice whose Xero document was legitimately **voided or deleted** in Xero is not collectible, but the customer
 still owes the job. A FINANCE or ADMIN employee brings the *same* invoice back with two explicit, audited steps against
 the local database (`DATABASE_URL`, default `postgresql://postgres:postgres@127.0.0.1:54322/roofops`; a non-local host
-is refused):
+is refused) or, with `--hosted`, the hosted one:
 
 ```bash
 # 1. ask for a reissue of a voided final invoice (the reason is mandatory)
@@ -319,6 +319,23 @@ Both steps print the JSON the database returns (`{ ok, code, detail, ... }`) and
 of its own, writes nothing itself and never calls Xero. Exit codes: `0` success, `2` refused (the canonical code is in
 the JSON - `REASON_REQUIRED`, `ACTOR_UNAUTHORIZED`, `INVOICE_NOT_VOIDED`, `TENANT_MISMATCH`, `PAYMENT_EXISTS`,
 `WRITE_IN_FLIGHT`, `ALREADY_PROCESSED`, ...) and `1` for a usage or connection error. A refusal changes nothing.
+
+The queued generation is then created in Xero by **[RoofOps] 08 Reissue Dispatch**, which runs the unchanged
+[RoofOps] 05 for every write Postgres proves is a supervised reissue (05's claim re-proves it before any Xero call):
+
+```bash
+# 3. where does the invoice's current Xero draft generation stand? (read-only)
+npm run reissue -- status --invoice INV-2026-0004
+
+# 4. create it in Xero through 08 -> 05 and wait for the outcome (hosted only: 08 reads the hosted database)
+npm run reissue -- dispatch --invoice INV-2026-0004 --hosted
+```
+
+`--hosted` runs any step against the hosted database (`SUPABASE_DB_URL`, like `db:load --hosted`). `dispatch` POSTs
+08's webhook with `REISSUE_DISPATCH_TOKEN` from `.env.local`; Postgres keeps only its SHA-256 in
+`app_settings.reissue.dispatch_token_sha256` (empty = every dispatch refused). It reports `REISSUE_CREATED` (exit 0),
+`NO_REISSUE_QUEUED`, `REISSUE_NOT_CREATED` (05 failed it: see `last_error` / `open_exceptions`) or `STILL_PENDING`
+(token refused, 08 not published, or the write not proven - see `open_exceptions`) (exit 2).
 
 ## 🧪 Testing
 

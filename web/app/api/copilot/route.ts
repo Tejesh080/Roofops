@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { query } from '@/lib/db';
 import { currentSession, staffIdentity } from '@/lib/auth';
 import { runCopilot, type ChatTurn } from '@/lib/copilot/agent';
+import { sameOriginJson } from '@/lib/same-origin';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,6 +10,7 @@ export async function POST(req: Request) {
   // The proxy already requires a session; check again here so the API never depends on the proxy alone.
   const session = await currentSession();
   if (!session) return Response.json({ error: 'Sign in required' }, { status: 401 });
+  if (!sameOriginJson(req)) return Response.json({ error: 'Cross-site request refused' }, { status: 403 });
   // Audit: a staff member is named by the employee code the database confirmed for their session, never by a claim.
   const me = await staffIdentity(session.t);
   const actor = me ? `dashboard:copilot:${me.employee_code}` : 'dashboard:copilot';

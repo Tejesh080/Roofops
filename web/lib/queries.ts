@@ -100,6 +100,24 @@ export async function getPurchaseOrders(q: Query, p: string): Promise<PurchaseOr
   return rows.map((r) => ({ ...(r as unknown as PurchaseOrder), total_inc_gst: Number(r.total_inc_gst) }));
 }
 
+/** One Xero draft generation of an invoice: generation 1 is the first draft, each reissue adds the next. */
+export interface XeroGeneration {
+  invoice_number: string; generation: number; status: string; is_current: boolean;
+  xero_invoice_id: string | null; xero_invoice_number: string | null; xero_status_verified: string | null;
+  approval_number: string | null; approval_kind: string | null; requested_by: string | null; approved_by: string | null; approved_at: string | null;
+}
+/** Every Xero document a project's invoices have had, oldest first. Empty where the history view is not installed yet. */
+export async function getXeroHistory(q: Query, p: string): Promise<XeroGeneration[]> {
+  try {
+    return await q<XeroGeneration>(`select invoice_number, generation, status, is_current, xero_invoice_id, xero_invoice_number, xero_status_verified,
+                                           approval_number, approval_kind, requested_by, approved_by, approved_at::text
+                                      from v_dashboard_invoice_xero_history where project_number = $1 order by invoice_number, generation`, [p]);
+  } catch (e) {
+    if ((e as { code?: string }).code === '42P01') return [];   // undefined view: migration 20261009040000 not applied here
+    throw e;
+  }
+}
+
 export interface InvoiceLine { invoice_number: string; status: string; sync_status: string; issue_date: string | null; due_date: string | null;
   total_inc_gst: number; amount_paid: number; outstanding: number; is_overdue: boolean }
 export async function getInvoices(q: Query, p: string): Promise<InvoiceLine[]> {

@@ -277,6 +277,9 @@ table.data td.right, table.data th.right { text-align: right; }
 /* Finance */
 .fin-amount { font-size: 30px; font-weight: 650; letter-spacing: -0.025em; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .fin-ref { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+.xero-doc { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; align-items: start; padding: 9px 0; border-top: 1px solid var(--border); font-size: 13.5px; }
+.xero-doc:first-of-type { margin-top: 6px; }
+.xero-doc .mono { overflow-wrap: anywhere; }
 .fin-table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 6px; }
 .fin-table td { padding: 9px 0; border-top: 1px solid var(--border); }
 .fin-table td.amt { text-align: right; font-variant-numeric: tabular-nums; font-weight: 550; padding-right: 12px; }

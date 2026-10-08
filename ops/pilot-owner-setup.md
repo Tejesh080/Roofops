@@ -41,9 +41,13 @@ shared demo login then disappears, and only individual staff logins work.
 
 ## 2. Two individual Finance/Admin staff accounts
 
-Today the only FINANCE/ADMIN employee is **EMP-900 "Demo Finance Approver"**. That is the demo identity behind the
-shared Airtable account, not a person. Leave it without a dashboard login. Add two real people instead, run from this
-repository on your machine (it uses `SUPABASE_DB_URL` and verified TLS):
+**Hosted today (checked read-only on 2026-10-09):**
+- `staff_accounts`: 0 rows, so nobody can sign in as an individual. `staff_sessions`: 0.
+- Employees: EMP-001…007, which are project managers and estimators, and EMP-900 "Demo Finance Approver".
+- EMP-900 is the only FINANCE or ADMIN employee. It is the demo identity behind the shared Airtable account, not a person; leave it without a dashboard login.
+
+So **both** pilot people must be added as new employees, then given logins. The exact commands were rehearsed locally
+by `scripts/pilot-rehearsal.ts`. Run from this repository on your machine (it uses `SUPABASE_DB_URL` and verified TLS):
 
 ```bash
 npm run staff:add-employee -- EMP-101 --name "First Person Full Name" --email first.person@yourcompany.com.au --role FINANCE
@@ -72,6 +76,12 @@ row. Running it again resets that person's password.
 - On Automation, both see "Mark resolved" (FINANCE and ADMIN may resolve). Only resolve a real exception when you mean
   to.
 - Five wrong passwords lock that login for 10 minutes; `staff:set-password` unlocks it.
+
+**Order (do not skip ahead):**
+1. Create both logins.
+2. Each person signs in and the first supervised acceptance test passes (`ops/pilot-release-checklist.md`).
+3. Only then remove `DEMO_USERNAME`/`DEMO_PASSWORD`.
+4. Only then consider four-eyes on the CLI (below). With it on, `npm run reissue -- decide` must name a different FINANCE or ADMIN person than the requester, and EMP-900 alone can no longer complete a CLI reissue.
 
 **Afterwards (optional):** once both people have logins, also require two people on the owner CLI:
 

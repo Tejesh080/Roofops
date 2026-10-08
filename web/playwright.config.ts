@@ -21,5 +21,7 @@ export default defineConfig({
     { name: 'smoke', testMatch: /smoke\.spec\.ts/, dependencies: ['setup'], use: { storageState: 'e2e/.auth/state.json' } },
     { name: 'screens', testMatch: /screens\.spec\.ts/, dependencies: ['setup'], use: { storageState: 'e2e/.auth/state.json' } },
     { name: 'state-sync', testMatch: /state-sync\.spec\.ts/, dependencies: ['setup'], use: { storageState: 'e2e/.auth/state.json' } },
+    // Opt-in (E2E_PILOT=1), local rehearsal database only: see scripts/pilot-rehearsal.ts.
+    { name: 'staff-journey', testMatch: /staff-journey\.spec\.ts/ },
   ],
 });

@@ -62,6 +62,16 @@ owner's: see `ops/pilot-owner-setup.md`.
      Creating the Xero draft remains the supervised dispatch (`npm run reissue -- dispatch --invoice … --hosted`,
      short-lived token).
 
+7. **Current vs replaced Xero document** (separately approvable; read models only):
+   - Run `npm run db:load -- --hosted`. Expect exactly `20261009040000_dashboard_shows_current_and_replaced_xero_invoice.sql`.
+   - What it fixes: during a queued reissue, the project page showed the voided or deleted document as "Draft in Xero",
+     with an "Open in Xero" link to it.
+   - **Rehearsed on a restored copy of hosted:** 48 migrations; every `v_dashboard_projects` row is identical before and
+     after (row hash `031b1087…`); integrity 28/4/0; all privilege checks pass; the new history view is readable by the
+     dashboard role only.
+   - Verify: 48 migrations, checksums equal, integrity 0 FAIL, `npm run security:check` all PASS. PRJ-2026-0002's
+     project page lists `61e09cad…` as Current and `21545f60…` as Replaced (deleted in Xero).
+
 ## Rollback (each step independently)
 
 | Step | Rollback | Proven |
@@ -71,4 +81,5 @@ owner's: see `ops/pilot-owner-setup.md`.
 | 3 | Redeploy the previous dashboard build (it does not need the CA) | — |
 | 4 | Run the same command with `availableInMCP: true`, or set it in the n8n UI. If 07's version changed, re-publish `a0ca9e60` from its history | — |
 | 5 | Set the value to `false` (takes effect at once) | tests |
+| 7 | `npx tsx scripts/sql.ts -f ops/rollback/20261009040000_dashboard_shows_current_and_replaced_xero_invoice.down.sql` (restores the view exactly; drops the history view) | yes, locally: view definition hash identical to before; re-apply works |
 | 6 | Run `ops/rollback/20261009030000_airtable_shows_the_reissued_invoice.down.sql`, then `…020000_dashboard_reissue.down.sql`. Requests and decisions already made stay; the CLI keeps working | yes: all four rolled back on a restored copy; schema, view definition and 62 tables identical to before |

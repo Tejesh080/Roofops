@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { query } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
-import { getChecklist, getExceptions, getInvoices, getProject, getPurchaseOrders, getTimeline } from '@/lib/queries';
+import { getChecklist, getExceptions, getInvoices, getProject, getPurchaseOrders, getTimeline, getXeroHistory } from '@/lib/queries';
 import { date } from '@/lib/labels';
 import { healthStrip, materialsAction } from '@/lib/insights';
 import { groupTimeline } from '@/lib/timeline';
@@ -22,8 +22,9 @@ export default async function ProjectPage({ params }: { params: Promise<{ number
   const p = await getProject(query, decodeURIComponent((await params).number).toUpperCase());
   if (!p) notFound();
   const n = p.project_number;
-  const [checklist, pos, invoices, history, issues] = await Promise.all([
+  const [checklist, pos, invoices, history, issues, xero] = await Promise.all([
     getChecklist(query, n), getPurchaseOrders(query, n), getInvoices(query, n), getTimeline(query, n, 200), getExceptions(query, { project: n }),
+    getXeroHistory(query, n),
   ]);
   const openIssues = issues.filter((e) => e.resolution_status === 'OPEN' || e.resolution_status === 'RETRY_QUEUED');
   const atRisk = p.is_active && p.risk_level === 'HIGH';
@@ -37,7 +38,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ number
       <InfoCards p={p} />
       <div className="grid g-2">
         <MaterialsCard p={p} pos={pos} review={review} />
-        <FinanceCard p={p} invoices={invoices} />
+        <FinanceCard p={p} invoices={invoices} xero={xero} />
       </div>
       <div className="grid g-2-1">
         <Timeline groups={groupTimeline(history, n)} />

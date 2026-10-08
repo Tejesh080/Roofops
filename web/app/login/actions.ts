@@ -5,6 +5,7 @@ import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { SESSION_COOKIE, SESSION_TTL_SECONDS, signSession, verifySession } from '@/lib/session';
 import { authConfigured, demoLoginConfigured } from '@/lib/auth';
+import { clientAddress } from '@/lib/client-address';
 import { query } from '@/lib/db';
 
 // Simple per-instance throttle: 5 failures per 10 minutes per client address, plus a fixed delay on failure.
@@ -32,7 +33,7 @@ async function staffSignIn(login: string, password: string): Promise<StaffSignIn
 export async function login(_prev: LoginState, form: FormData): Promise<LoginState> {
   if (!authConfigured()) return { error: 'Sign-in is not configured on this server.' };
   const h = await headers();
-  const client = (h.get('x-forwarded-for') ?? '').split(',')[0]?.trim() || 'local';
+  const client = clientAddress(h.get('x-forwarded-for'));
   const f = failures.get(client);
   const username = String(form.get('username') ?? '');
   if (f && f.n >= 5 && f.until > Date.now()) return { error: 'Too many attempts. Try again in a few minutes.', username };
@@ -54,6 +55,7 @@ export async function login(_prev: LoginState, form: FormData): Promise<LoginSta
   }
   if (!session) {
     const cur = f && f.until > Date.now() ? f : { n: 0, until: Date.now() + WINDOW_MS };
+    if (failures.size > 10_000) for (const [k, v] of failures) if (v.until <= Date.now()) failures.delete(k);   // bounded memory
     failures.set(client, { n: cur.n + 1, until: cur.until });
     await new Promise((r) => setTimeout(r, 600));
     return { error: refusal, username };

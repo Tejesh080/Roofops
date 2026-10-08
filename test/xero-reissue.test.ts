@@ -765,7 +765,8 @@ describe.each(TARGETS)('AC-14C B2: the supervised final-invoice reissue [%s]', (
     await expect(k.complete(one.key, one.payload, { invoice_id: uuidFor('second:link') })).rejects.toThrow(/already linked to Xero invoice/);
     expect(await k.link(one.id)).toBe(XID2);
     await k.force(`update outbox set generation = 2 where idempotency_key = $1`, [one.key]);
-    await expect(k.complete(one.key, one.payload, { invoice_id: uuidFor('second:link:2') })).rejects.toThrow(/already linked to Xero invoice/);
+    // Since P2-D2 the unproven generation 2 is refused before the link check is reached.
+    await expect(k.complete(one.key, one.payload, { invoice_id: uuidFor('second:link:2') })).rejects.toThrow(/the generation 2 Xero draft .* was not linked/);
     expect(await k.link(one.id)).toBe(XID2);
 
     // The new InvoiceID cannot overwrite another invoice's link.

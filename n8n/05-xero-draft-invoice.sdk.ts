@@ -145,10 +145,24 @@ if (byNum.statusCode !== 200) return [{ json: fail('search by invoice number', b
 if (byRef.statusCode !== 200) return [{ json: fail('search by reference', byRef) }];
 const cs = $('Check Contact Search').first().json;
 const contact = cs.found ? cs.contact_id : $('Check Contact Create').first().json.contact_id;
-const mine = (byNum.body.Invoices || []).filter(function (i) { return i.InvoiceNumber === job.xero_invoice_number; });
-const live = mine.filter(function (i) { return i.Status !== 'DELETED' && i.Status !== 'VOIDED'; });
+let mine = (byNum.body.Invoices || []).filter(function (i) { return i.InvoiceNumber === job.xero_invoice_number; });
+let live = mine.filter(function (i) { return i.Status !== 'DELETED' && i.Status !== 'VOIDED'; });
 const others = (byRef.body.Invoices || []).filter(function (i) { return i.InvoiceNumber !== job.xero_invoice_number && i.Status !== 'DELETED' && i.Status !== 'VOIDED'; });
 if (others.length) return [{ json: refuse('reconcile', 'RECONCILIATION_MISMATCH', 'Xero already has ' + others.map(function (i) { return i.InvoiceNumber + ' (' + i.Status + ')'; }).join(', ') + ' with reference ' + job.reference + '; refusing to bill twice') }];
+// AC-14C P2-D2: a generation >= 2 write is a supervised reissue (the claim proved it in Postgres) that replaces the
+// superseded document(s) with the same number. Those must stay VOIDED/DELETED and are never adopted; any other document
+// with the number is judged exactly as for generation 1 (adopt only a fresh matching DRAFT, otherwise a person decides).
+const claimed = $('Claim Xero Draft').last().json.c || {};
+const gen = Number(claimed.generation || 1);
+if (gen >= 2) {
+  const stale = claimed.superseded_xero_invoice_ids;
+  if (!Array.isArray(stale) || !stale.length) return [{ json: refuse('reconcile', 'RECONCILIATION_MISMATCH', 'generation ' + gen + ' of ' + job.xero_invoice_number + ' was claimed without its superseded Xero invoice ids; refusing') }];
+  const revived = mine.filter(function (i) { return stale.indexOf(i.InvoiceID) >= 0 && i.Status !== 'DELETED' && i.Status !== 'VOIDED'; });
+  if (revived.length) return [{ json: refuse('reconcile', 'RECONCILIATION_MISMATCH', 'superseded Xero invoice ' + revived[0].InvoiceID + ' (' + job.xero_invoice_number + ') is ' + revived[0].Status + ' again; a person must decide') }];
+  mine = mine.filter(function (i) { return stale.indexOf(i.InvoiceID) < 0; });
+  live = mine.filter(function (i) { return i.Status !== 'DELETED' && i.Status !== 'VOIDED'; });
+  if (mine.length && !live.length) return [{ json: refuse('reconcile', 'RECONCILIATION_MISMATCH', job.xero_invoice_number + ' exists in Xero as ' + mine[0].Status + ' (' + mine[0].InvoiceID + '), not a superseded generation; a person must decide') }];
+}
 if (mine.length && !live.length) return [{ json: refuse('reconcile', 'RECONCILIATION_MISMATCH', job.xero_invoice_number + ' exists in Xero as ' + mine[0].Status + '; a person must decide') }];
 if (live.length > 1) return [{ json: refuse('reconcile', 'RECONCILIATION_MISMATCH', live.length + ' Xero invoices numbered ' + job.xero_invoice_number) }];
 if (live.length === 1) {
@@ -214,6 +228,8 @@ if (i.LineAmountTypes !== 'Inclusive' || i.CurrencyCode !== 'AUD') problems.push
 if (Number(i.AmountPaid || 0) !== 0 || i.SentToContact === true) problems.push('paid or sent');
 const matching = (rc.body.Invoices || []).filter(function (x) { return x.InvoiceNumber === job.xero_invoice_number; }).length;
 if (matching !== 1) problems.push(matching + ' live invoices numbered ' + job.xero_invoice_number);
+const vc = $('Claim Xero Draft').last().json.c || {};
+if (Number(vc.generation || 1) >= 2 && (vc.superseded_xero_invoice_ids || []).indexOf(i.InvoiceID) >= 0) problems.push('read back superseded Xero invoice ' + i.InvoiceID);
 if (problems.length) return [{ json: refuse('verify read-back', 'RECONCILIATION_MISMATCH', problems.join('; ')) }];
 const t = $('Check Pinned Tenant Connected').first().json;
 return [{ json: { ok: true, proof: { verified: true, tenant_id: t.tenant_id, tenant_name: t.tenant_name, organisation_class: $('Check Demo Company').first().json.organisation_class,

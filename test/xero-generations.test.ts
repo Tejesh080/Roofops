@@ -87,6 +87,13 @@ function kit(db: Db, rows: InvoiceRows, seq: { n: number }) {
     contact_id: uuidFor(`contact:${String(p.customer_id)}`), contact_number: p.xero_contact_number, total: p.amount_inc_gst, total_tax: p.gst_amount,
     currency: 'AUD', line_amount_types: 'Inclusive', matching_invoices: 1, ...over });
   const complete = (a: Job, over: R = {}) => q1(`select wf_complete_side_effect($1, $2::jsonb) r`, [a.key, JSON.stringify(proof(a.payload, over))]);
+  /**
+   * The two-generation fixture below is not a supervised reissue (no executed reissue approval), so since P2-D2 05's
+   * claim refuses its generation 2 (REISSUE_NOT_PROVEN, asserted where it is used). The generation mechanics these
+   * tests cover live in the owner-only core layer, which the fixture drives directly.
+   */
+  const claimCore = (key: string, w: string) => q1(`select wf_claim_side_effect_core($1, $2, 120) r`, [key, w]);
+  const completeCore = (a: Job, over: R = {}) => q1(`select wf_complete_side_effect_core($1, $2::jsonb) r`, [a.key, JSON.stringify(proof(a.payload, over))]);
   const ledger = (id: string) => db.query<R>(`select generation, status, outbox_idempotency_key key, xero_invoice_id, xero_invoice_number, tenant_id, opened_by,
       approval_id::text approval_id, superseded_at::text superseded_at, superseded_reason
     from invoice_xero_draft_generations where invoice_id = $1 order by generation`, [id]);
@@ -155,7 +162,7 @@ function kit(db: Db, rows: InvoiceRows, seq: { n: number }) {
     union all select 'approvals ' || count(*) || ' ' || coalesce(md5(string_agg(to_jsonb(t)::text, '|' order by t.id)), '-') from approvals t
     union all select 'audit ' || count(*) || ' ' || coalesce(md5(string_agg(to_jsonb(t)::text, '|' order by t.audit_id)), '-') from audit_events t`);
 
-  return { q1, one, force, rejects, approve, claim, fail, retryDue, complete, proof, ledger, state, insertObs, startRun, supersede, fingerprint };
+  return { q1, one, force, rejects, approve, claim, claimCore, fail, retryDue, complete, completeCore, proof, ledger, state, insertObs, startRun, supersede, fingerprint };
 }
 
 const pinTenant = (db: Db) => db.exec(`
@@ -522,9 +529,11 @@ describe.each(TARGETS)('AC-14C B1: Xero draft generations [%s]', (target) => {
       expect(attempt).not.toMatch(/more than one row/);
       expect(await k.state(a)).toMatchObject({ status: 'APPROVED', sync_status: 'PENDING' });
 
-      // 05's claim of the queued replacement behaves per the current generation: it claims it (no multi-row error).
+      // 05's claim reads the current generation (no multi-row error) and refuses the fixture's unproven replacement
+      // (P2-D2); the core claim of the current generation works with two ledger rows.
       const gen2Job: Job = { ...a, key: `xero:invoice:${a.id}:g2` };
-      expect(await k.claim(gen2Job.key, 'w2')).toMatchObject({ claimed: true });
+      expect(await k.claim(gen2Job.key, 'w2')).toMatchObject({ claimed: false, status: 'REISSUE_NOT_PROVEN' });
+      expect(await k.claimCore(gen2Job.key, 'w2')).toMatchObject({ claimed: true });
       expect(await k.ledger(a.id)).toMatchObject([{ generation: 1, status: 'SUPERSEDED' }, { generation: 2, status: 'DISPATCHING' }]);
 
       // The AC-14C-A void exemption with a superseded generation present. While the replacement's write is queued (the
@@ -544,8 +553,9 @@ describe.each(TARGETS)('AC-14C B1: Xero draft generations [%s]', (target) => {
       // The replacement completes (its write terminal, the link moved by Part B2) and its document is verified deleted:
       // the exemption applies as before, and no history row is touched.
       const bGen2: Job = { ...b, key: `xero:invoice:${b.id}:g2` };
-      expect(await k.claim(bGen2.key, 'w2')).toMatchObject({ claimed: true });
-      expect(await k.complete(bGen2, { invoice_id: newXid })).toMatchObject({ status: 'RECORDED' });
+      expect(await k.claimCore(bGen2.key, 'w2')).toMatchObject({ claimed: true });
+      await expect(k.complete(bGen2, { invoice_id: newXid })).rejects.toThrow(/was not linked/);   // unproven: 05's completion refuses (P2-D2)
+      expect(await k.completeCore(bGen2, { invoice_id: newXid })).toMatchObject({ status: 'RECORDED' });
       expect(await k.state(bGen2)).toMatchObject({ status: 'APPROVED', sync_status: 'SYNCED', xero_link: newXid });
       await k.insertObs(bGen2, { verdict: 'VERIFIED', settlement: 'DELETED', tenantId: TENANT, xeroInvoiceId: newXid });
       await db.query(`update invoices set status = 'VOIDED', voided_reason = 'deleted in Xero, verified by reconciliation' where id = $1`, [b.id]);
@@ -558,11 +568,12 @@ describe.each(TARGETS)('AC-14C B1: Xero draft generations [%s]', (target) => {
       const { oldLink, replacementNumber } = await k.supersede(a);
       const gen2: Job = { ...a, key: `xero:invoice:${a.id}:g2`, payload: { ...a.payload, xero_invoice_number: replacementNumber } };
       // The replacement write's create answer was lost, then it dead-lettered: the invoice stays UNKNOWN.
-      expect(await k.claim(gen2.key, 'w2')).toMatchObject({ claimed: true });
+      expect(await k.claim(gen2.key, 'w2')).toMatchObject({ claimed: false, status: 'REISSUE_NOT_PROVEN' });   // P2-D2: unproven fixture
+      expect(await k.claimCore(gen2.key, 'w2')).toMatchObject({ claimed: true });
       expect(await k.fail(gen2.key, 'TIMEOUT', 'create draft invoice', 'ETIMEDOUT after 20s')).toMatchObject({ retry: true });
       for (let i = 0; i < 4; i++) {
         await k.retryDue(gen2.key);
-        expect(await k.claim(gen2.key, `w${String(i + 3)}`)).toMatchObject({ claimed: true });
+        expect(await k.claimCore(gen2.key, `w${String(i + 3)}`)).toMatchObject({ claimed: true });
         await k.fail(gen2.key, 'RATE_LIMITED', 'search by invoice number', 'HTTP 429', 429);
       }
       expect(await k.state(gen2)).toMatchObject({ sync_status: 'UNKNOWN', outbox_status: 'FAILED', dead: true });
@@ -595,10 +606,11 @@ describe.each(TARGETS)('AC-14C B1: Xero draft generations [%s]', (target) => {
       await k.supersede(a);                                                  // gen 1 CREATED+SUPERSEDED, gen 2 queued: history, not proof-by-sync
       expect(await col(db, `select check_key v from integrity_check() where status = 'FAIL'`)).toEqual([]);
       const gen2: Job = { ...a, key: `xero:invoice:${a.id}:g2` };
-      expect(await k.claim(gen2.key, 'w2')).toMatchObject({ claimed: true });
+      expect(await k.claim(gen2.key, 'w2')).toMatchObject({ claimed: false, status: 'REISSUE_NOT_PROVEN' });   // P2-D2: unproven fixture
+      expect(await k.claimCore(gen2.key, 'w2')).toMatchObject({ claimed: true });
       // Part B2: a proof-carrying completion of a superseded generation's replacement MOVES the one current link.
       const newXid = uuidFor(`replacement:${a.id}`);
-      expect(await k.complete(gen2, { invoice_id: newXid })).toMatchObject({ status: 'RECORDED' });
+      expect(await k.completeCore(gen2, { invoice_id: newXid })).toMatchObject({ status: 'RECORDED' });
       expect(await k.state(gen2)).toMatchObject({ status: 'APPROVED', sync_status: 'SYNCED', xero_link: newXid });
       expect(await k.ledger(a.id)).toMatchObject([{ generation: 1, status: 'SUPERSEDED' }, { generation: 2, status: 'CREATED', xero_invoice_id: newXid }]);
       expect(await col(db, `select check_key v from integrity_check() where status = 'FAIL'`)).toEqual([]);

@@ -28,7 +28,8 @@ specification was read as documentation only (§6, D4).
 | `20261001200000_reissue_generation_dispatch.sql` (D1) | `81e42b315a3e` |
 | `20261001210000_reissue_claim_and_completion_are_generation_aware.sql` (D2) | `fbcd02fc074e` |
 
-  They redefine functions, change grants and insert one setting (`reissue.dispatch_token_sha256 = ''`,
+  These four (and the release gate's `220000`) redefine functions, change grants and insert one setting
+  (`reissue.dispatch_token_sha256 = ''`,
   `on conflict do nothing`). Every other `insert`/`update`/`delete` in them is inside a function body. No table, column,
   constraint or existing row is changed.
 
@@ -153,9 +154,9 @@ re-run after the one-line fix.
 2. **The token appears in n8n execution data.** 08's webhook node output (its headers) and its Read Request output hold
    the token in plain text in n8n's execution history. 07's reconcile trigger behaves the same way, so this is not new.
    Hosted step: review the execution-data saving setting for 08 (and 07), and rotate the token after the Demo proof.
-3. **Dispatch is global.** 08 dispatches every due, proven generation ≥ 2 write, not only the invoice passed to
-   `--invoice` (that is the one the CLI waits for). Each write is still re-proven by 05's claim. For the Demo proof
-   there is one.
+3. **Dispatch was global. Fixed at the release gate (`18be673`, §7).** 08 dispatched every due, proven generation ≥ 2
+   write, not only the invoice passed to `--invoice`. A dispatch now names exactly one invoice and generation, and
+   nothing else can be listed.
 4. **Two workflows numbered 08.** `[RoofOps] 08 Health Checks` (`roofops-health`) and `[RoofOps] 08 Reissue Dispatch`
    (`roofops-reissue-dispatch`) have distinct keys and names, so nothing collides technically, but operators may
    confuse them. Renaming to 09 would leave migration `20261001200000`'s comment ("n8n 08") stale, and an applied
@@ -179,7 +180,9 @@ re-run after the one-line fix.
 
 The hosted database has 33 migrations: through `20261001120000`, verified at the AC-14 deploy, `6b90dbe`. Pending
 since then:
-- **9 migrations:** `130000` (AC-14B), `140000`–`170000` (AC-14C A/B1/B2) and `180000`–`210000` (this follow-up).
+- **10 migrations:** `130000` (AC-14B), `140000`–`170000` (AC-14C A/B1/B2), `180000`–`210000` (this follow-up) and
+  `220000` (the release gate). `150000` and `170000` change schema and data; see §7.1 for each migration's impact and
+  rollback.
 - **2 workflow changes:** `n8n/05-xero-draft-invoice.sdk.ts` (republish) and `n8n/08-reissue-dispatch.sdk.ts` (new).
 - No other n8n file changed.
 
@@ -191,36 +194,34 @@ since then:
 
 The database goes first because AC-14B/C need it too.
 
-0. **Read-only pre-flight.**
-   - `npm run security:check` and `npm run integrity:check`: baseline.
-   - Hosted migration list = 33, checksums match the repo.
-   - The live 05 nodes equal the repo at `6b90dbe`. Record 05's current n8n version ID for rollback.
-   - 05's caller policy (§4.5).
-   - No `REISSUE_INVOICE` approval or generation ≥ 2 outbox row exists (none can before `170000`).
-1. **Migrations.** Apply the 9 in order, alone, with the mechanism used for AC-14. Then:
-   - migration checksums 42 of 42;
+0. **Read-only pre-flight:** the ten checks in §7.1, plus the `security:check` and `integrity:check` baselines.
+1. **Migrations.** `npm run db:load -- --hosted` applies the 10 in order, each in its own transaction, stopping at the
+   first failure. Then:
+   - migration checksums 43 of 43;
    - `npm run integrity:check`: 0 FAIL, `reissue_transition_bound` PASS;
    - `npm run security:check`: all pass, including the reissue and dispatch-token checks.
    No repair run.
 2. **05.** Update workflow `Y2deCFTZzpv1uo8C` from the repo file and publish. Confirm the live nodes equal the repo.
 3. **08.** Create `[RoofOps] 08 Reissue Dispatch` from the repo file with the RoofOps Postgres credential
-   (`kWqjtv0gz7ref2EN`, the `roofops_workflow` login) and 05's ID, then publish. The webhook path is
-   `roofops/reissue/dispatch`.
+   (`kWqjtv0gz7ref2EN`, the `roofops_workflow` login) and 05's ID. **Before publishing**, set its execution-saving
+   settings to "Do not save" (§7.3), then publish. The webhook path is `roofops/reissue/dispatch`.
 4. **Token.** Generate a random token locally and put it in `.env.local` as `REISSUE_DISPATCH_TOKEN`. Store only
    `encode(sha256(convert_to(<token>, 'UTF8')), 'hex')` in hosted `app_settings.reissue.dispatch_token_sha256`. Re-run
    `npm run security:check`.
 5. **Smoke test, no Xero write.** Run `npm run reissue -- dispatch --invoice INV-2026-0039 --hosted`. INV-2026-0039 is
-   generation 1, so the expected result is `NO_REISSUE_QUEUED` and nothing triggered. A wrong token sent by hand to the
-   webhook leaves 08's execution showing `TOKEN_REFUSED` and nothing dispatched.
+   generation 1, so the expected result is `NO_REISSUE_QUEUED` and nothing triggered. A wrong token, or no selection,
+   sent by hand to the webhook dispatches nothing. 08's execution list then holds no saved execution data (§7.3).
 
 **Rollback.**
 - **Kill switch first:** set `reissue.dispatch_token_sha256 = ''`. Every dispatch is then refused, while 05's claim
   still refuses any unproven generation ≥ 2.
 - **Unpublish 08.**
-- **05:** restore the recorded previous version in n8n. Safe against the new database for generation 1.
-- **The migrations** change functions, grants and one setting, not tables or rows. Rolling them back would mean a new
-  forward migration restoring the earlier function bodies, and that reopens H1/H2/D2, so it is not recommended.
-  Disabling dispatch is the safe lever.
+- **05:** restore the recorded previous version in n8n. That is safe for generation 1. With a generation-2 write, the
+  old 05 either refuses the same-numbered VOIDED/DELETED document (a person decides) or, if Xero's search does not
+  return it, creates the replacement, which Postgres's claim and completion still re-prove.
+- **The migrations: corrected at the release gate (§7.1).** `180000`–`220000` change only functions, grants and one
+  setting. `150000` and `170000` change schema and data, so their rollback is destructive and is not recommended once
+  any reissue exists. Disabling dispatch is the safe lever.
 - **Partial state:** a reissue decided but not dispatched is visible with `npm run reissue -- status --hosted` and stays
   queued; nothing reaches Xero.
 
@@ -269,3 +270,139 @@ INV-2026-0039 itself.
    the owner.
 9. **Clean-up (owner decides):** keep the Demo documents as evidence. Rotate `REISSUE_DISPATCH_TOKEN` afterwards
    (§4.2).
+
+## 7. Release-readiness gate (before any hosted step)
+
+**Correction to §5.** §5's rollback said the migrations "change functions, grants and one setting, not tables or rows".
+That is true only of `180000`–`210000` (and of `220000` below). It is **false for the deployment as a whole**:
+- `150000` and `170000` change schema and data;
+- `140000` and `160000` change behaviour that hosted runs and the dashboard already rely on.
+
+The migration-by-migration table below replaces it.
+
+**Release-gate change, `18be673` (`20261001220000_reissue_dispatch_is_explicitly_selected.sql`).**
+`wf_reissue_dispatch(token, invoice_number, generation, worker)` replaces the `(token, worker)` form, which is dropped.
+- It lists at most the one write the operator named, and only when that write is the invoice's current generation ≥ 2,
+  due and proven. Every other case lists nothing.
+- 08 reads `{ invoice_number, generation }` from the request body and hands 05 only a write matching it.
+- `npm run reissue -- dispatch` sends the selection read from the invoice's current generation.
+
+Proof, both engines:
+- With two queued, proven reissues A and B, selecting A lists only A. 08's real nodes hand 05 only A. A is claimed while
+  B stays PENDING with 0 attempts.
+- Every malformed selection lists nothing.
+- A replayed generation-1 approval through 04 (`ALREADY_PROCESSED`) sends only generation 1's DONE key; this is pinned
+  with 04's real Normalise code.
+
+5 ablations, all red: generation check removed; selection ignored; 08 dropping the body; the CLI sending no selection;
+04 preferring the pending key.
+
+No other path reaches 05: only 04 (generation 1 only) and 08 call it, and nothing sweeps the outbox.
+
+### 7.1 The ten pending hosted migrations
+
+Hosted is at `20261001120000` (33 migrations). The runner (`npm run db:load -- --hosted`, `src/db/migrate.ts`) applies
+every pending file in order, each in its own transaction, and stops at the first failure. It then runs the idempotent
+bundle import.
+
+| Migration | What it changes on hosted | Data-dependent failure risk | Rollback |
+|---|---|---|---|
+| `130000` AC-14B | `integrity_check()` only (a verified Xero void is not an AC-05 failure) | none | redefine the previous `integrity_check()` (forward migration); harmless to keep |
+| `140000` AC-14C A | Functions: `xero_settlement_status`, `xero_record_settlement`, `invoice_financial_state`, `invoice_void_guard`, `integrity_check`. **Behaviour:** a VERIFIED DELETED read with no money now voids the invoice in a **repair** run (observe runs only record) | none at migration time | forward migration restoring the old bodies; any invoice already voided by it stays voided (a person reissues it) |
+| `150000` AC-14C B1 | **Schema:** `outbox.generation` (int not null default 1) and a check; unique indexes `outbox_one_row_per_draft_generation` and `outbox_one_live_draft_per_invoice`; **new table** `invoice_xero_draft_generations` (RLS on), **backfilled from every existing draft write**; **three triggers** (outbox insert, outbox status update, invoices sync_status update) that keep the ledger; `v_airtable_expected` replaced (the invoice number now reads the newest generation; with one write per invoice the output is identical, so no Airtable drift); several functions (`wf_invoice_decide_core`, `xero_record_settlement`, `wf_reconcile_*`, `invoice_void_guard`, `invoice_xero_state`, `integrity_check`) | **Yes.** Index creation fails, rolling the migration back and stopping the deploy, if any invoice has two `xero.create_draft_invoice` rows, or two PENDING/DISPATCHING ones (pre-flight 2–3) | Destructive and **not recommended** once any reissue exists: drop the triggers, the table, the indexes and the column. Before any reissue it is mechanical but loses nothing |
+| `160000` AC-14C B1b | `v_invoice_balances` replaced: a VOIDED invoice shows outstanding 0 and is never overdue (dashboard money owed changes for voided invoices only) | none | redefine the previous view |
+| `170000` AC-14C B2 | **Data:** setting `invoice.reissue_roles = FINANCE,ADMIN`; 2 `state_transitions` rows; `state_machine_states` VOIDED no longer terminal. **Schema:** the `approvals_action_type_check` CHECK is dropped and re-added (a strict superset, adding `REISSUE_INVOICE`; validated against every approvals row); unique index `approvals_reissue_open_idx`; trigger `invoices_reissue_guard` (before update of status on invoices); functions `ops_reissue_*`, `invoice_reissue_*`, `invoice_void_guard`, `wf_complete_side_effect_core` | **Low.** It fails if the constraint has another name on hosted, or if an `action_type` outside the list exists (pre-flight 4–5) | Forward migration: drop the trigger, index and functions, restore the CHECK, and delete the 2 transition rows and the setting. **Refused if any REISSUE_INVOICE approval exists** |
+| `180000` P2-H1 | `invoice_reissue_guard()` and `integrity_check()` only | none | do not roll back (reopens H1) |
+| `190000` P2-H2 | Functions: `xero_draft_payload`, `wf_invoice_decide_core` (generation 1 now built by the builder and refused if it differs from the approved preview), `invoice_reissue_preview`, `ops_reissue_decide`, guard, `integrity_check` | none at migration time. **Live behaviour:** a generation-1 approval whose stored preview disagrees with canonical truth is refused (correct, but watch the first live approval) | do not roll back (reopens H2) |
+| `200000` P2-D1 | Setting `reissue.dispatch_token_sha256 = ''` (`on conflict do nothing`); `xero_reissue_proof`, `wf_reissue_dispatch(text,text)` (replaced by `220000`); grants | none | the kill switch: keep the setting `''` |
+| `210000` P2-D2 | `wf_claim_side_effect`, `wf_complete_side_effect` (generation 1 result unchanged) | none | do not roll back (reopens D2) |
+| `220000` gate | drops `wf_reissue_dispatch(text,text)`; creates `wf_reissue_dispatch(text,text,int,text)`; grants | none | n/a |
+
+**Operational rollback.**
+- Keep the schema.
+- Disable dispatch by leaving `reissue.dispatch_token_sha256 = ''`.
+- Unpublish 08.
+- Restore 05's recorded version. That is safe both ways (?5): with a generation-2 write, the old 05 either refuses the
+  same-numbered VOIDED/DELETED document or creates the replacement that Postgres re-proves. Nothing is duplicated.
+
+**Read-only pre-flight on hosted** (each needs the owner's go-ahead):
+1. `schema_migrations` holds 33 rows ending `20261001120000`, with checksums equal to the repo.
+2. `select aggregate_id from outbox where topic = 'xero.create_draft_invoice' group by 1 having count(*) > 1` gives 0
+   rows.
+3. The same with `and status in ('PENDING','DISPATCHING')` gives 0 rows.
+4. `approvals_action_type_check` exists on `approvals`.
+5. `select distinct action_type from approvals` gives values within the old list.
+6. No outbox row is PENDING or DISPATCHING, so nothing is in flight during the deploy.
+7. Snapshot `v_invoice_balances` for VOIDED invoices and the integrity and security baselines.
+8. `xero.demo_tenant_id = 96643bb0-3a0a-406e-96fb-ab8a933ee6b8` and the reconcile token hash has length 64. **None of
+   the ten migrations writes either key** (every reference is a read), so the two hosted-only security checks are
+   expected to keep passing; confirm by `npm run security:check` before and after.
+9. 05's live nodes compared with the repo at `becd3c1`, the last commit before D2. Only two commits ever touched 05
+   (`becd3c1`, `0b9cc23`), and the repo records **no** live n8n version ID for 05. Record the active version ID, which
+   is the rollback target.
+10. 05's "This workflow can be called by" setting allows 08.
+
+### 7.2 Operator identity (`--by`)
+
+**Today.** `ops_reissue_request` and `ops_reissue_decide` check that `--by` names an active employee in
+`invoice.reissue_roles`, and the audit trail records that code. Nothing authenticates the person.
+- With `--hosted` the CLI uses `SUPABASE_DB_URL`, the database **owner**.
+- Whoever holds that URL can type any employee code.
+- As owner they can also bypass triggers outright (`session_replication_role`). No database rule can constrain the
+  owner credential, so identity cannot be trusted while reissues run on it.
+- There is also no four-eyes rule: the same person may request and decide.
+
+**Minimal trustworthy option, fitting the existing architecture:** per-person database logins.
+- One `LOGIN` role per FINANCE/ADMIN person, each a member of a `NOLOGIN` group `roofops_reissue_operator`.
+- The group is granted EXECUTE on `ops_reissue_request` / `ops_reissue_decide` and on a SECURITY DEFINER status read,
+  and nothing else, so it needs no table access.
+- The login is mapped to the employee in `employee_external_identities`. That needs provider `POSTGRES` added to its
+  CHECK.
+- The functions derive the actor from `session_user` and refuse a mismatched `--by`. The decider may optionally be
+  required to differ from the requester.
+- The CLI takes the person's own URL (for example `REISSUE_DB_URL`) instead of the owner URL, and the owner credential
+  stays with deployment.
+- Cost: one migration, the CLI variable, a `security:check` rule and tests.
+
+The alternative is Airtable as the authenticated surface. Airtable already authenticates invoice approvals (AC-03:
+the webhook's Airtable user maps to an employee), but extending it to reissues is a larger feature.
+
+**For the supervised Demo test only**, these are acceptable if the owner accepts them explicitly:
+- the owner personally runs every command;
+- `--by` is the synthetic demo approver EMP-900, already mapped to the owner's Airtable user;
+- `SUPABASE_DB_URL` is held by the owner alone;
+- the data is synthetic.
+
+**Not acceptable for staff use.**
+
+### 7.3 Token retention in n8n
+
+Since n8n 1.0, every successful, failed and manual execution is saved by default (n8n docs, "Execution data
+retention"). 08's webhook trigger output contains the request headers, which include `x-roofops-token`, and Read
+Request's output contains the token, so the token is retained in 08's execution history. 07 already does the same with
+`RECONCILE_TRIGGER_TOKEN`.
+
+The control is per-workflow and lives in n8n, not in the repo. The repo's recorder shim cannot show whether the real
+`@n8n/workflow-sdk` accepts settings. For 08 (and, recommended, 07), set:
+- Save successful production executions: **Do not save**
+- Save failed production executions: **Do not save**
+- Save manual executions: **Do not save**
+- Save execution progress: **Do not save**
+
+Then generate the dispatch token. Rotate the reconcile token, because earlier 07 executions may hold it.
+
+Verification is hosted only: after the smoke dispatch, 08's execution list holds no saved execution data. Outcomes
+remain visible in Postgres (the outbox, ledger and exceptions) and in 05's own executions, which never receive the
+token.
+
+### 7.4 Gate battery (committed code `18be673`; local only)
+
+| Check | Result |
+|---|---|
+| Full suite, PGlite | exit 0: 37 files passed, 3 skipped (40); **414 passed, 0 failed, 36 skipped** (450) |
+| Full suite, PGlite + PostgreSQL 17 | exit 0: 37 files passed, 3 skipped (40); **781 passed, 0 failed, 36 skipped** (817) |
+| Lint, typecheck | exit 0, exit 0 |
+| Fresh chain | 43 migrations from zero ending with `20261001220000`; second migrate 0 applied / 43 skipped; integrity 27 PASS / 5 WARNING / 0 FAIL, `reissue_transition_bound` PASS |
+| Grants | `roofops_workflow` 22 functions (only the 4-argument `wf_reissue_dispatch` exists); `roofops_dashboard` cannot run it; all reissue functions SECURITY DEFINER with a pinned `search_path` |
+| `scripts/security-check.ts`, run locally | 14 of 14 local-applicable checks pass; the 2 hosted-only checks read blank values locally (?7.1 item 8) |
+| Working tree | clean after each run; local HEAD = `origin/factory/ac14-integrity-followup` |

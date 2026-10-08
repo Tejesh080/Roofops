@@ -1,0 +1,96 @@
+-- Rollback of 20261009030000_airtable_shows_the_reissued_invoice.sql (owner only; one transaction).
+-- Restores v_airtable_expected exactly as 20261001150000 defined it (copied verbatim) and Invoice Preview to
+-- reconcile = IGNORE with its original readback text. Effect: a reissued project's Invoice Preview is no longer
+-- compared or repaired (Xero Invoice ID still is). Nothing else changes. Roll this back BEFORE 20261009020000.
+-- Run: npx tsx scripts/sql.ts -f ops/rollback/20261009030000_airtable_shows_the_reissued_invoice.down.sql
+begin;
+create or replace view v_airtable_expected as
+select 'tblvUPIoebC3zoacv'::text as table_id, 'project'::text as entity_type, p.id as entity_id, p.project_number as business_key, l.external_id as record_id,
+  jsonb_strip_nulls(jsonb_build_object(
+    'fldhhnQXlbuFaveK3', p.project_number, 'fld08eKCeuDCsJLjz', at_link('quote', p.quote_id), 'fldG4mPoV6sUkA9rM', at_link('customer', p.customer_id),
+    'fldi2Qwz1dAh2tcTE', sm_label('project', p.status), 'fldc4T0AgU3zCmANC', p.id::text)) ||
+  jsonb_build_object(
+    'fldnZcRBxG7hTebD5', to_jsonb(e.full_name), 'fld8rf6RZLgfs6Ron', to_jsonb(p.planned_start_date::text), 'fldvZtiassZEgLMAN', to_jsonb(p.planned_completion_date::text),
+    'fldIje5e0a72cBfVD', to_jsonb(p.actual_start_date::text), 'fldWKRobTLlOjeN9j', to_jsonb(p.actual_completion_date::text),
+    'fldgVDT29UOOOtlqO', to_jsonb((select d.external_url from external_links d where d.provider = 'GOOGLE_DRIVE' and d.entity_type = 'project'
+                                     and d.external_type = 'Folder' and d.entity_id = p.id and d.verified_at is not null)),
+    -- AC-13A: completion gate (the label staff pick in Airtable; blank where the project has no such item).
+    'fldbbksVL3dT6cqyS', to_jsonb((select checklist_at_label(ci.status) from project_checklist_items ci where ci.project_id = p.id and ci.item_code = 'COMPLETION_PHOTOS')),
+    'fldf7iJiyHFxOQgUy', to_jsonb((select checklist_at_label(ci.status) from project_checklist_items ci where ci.project_id = p.id and ci.item_code = 'COMPLIANCE_CERTIFICATE'))) ||
+  -- Invoice projection, only where canonical invoice state is stable (never mid-flight).
+  case
+    when fi.sync_status = 'SYNCED' then jsonb_build_object('fldPuGgo27oWLKB5R', 'Xero draft created', 'fld5JDnWI3RFehQxA', fi.total_inc_gst,
+      -- The current generation's number, written out rather than called: a function inside a view is executed with the
+      -- CALLER's privileges (PostgreSQL), and roofops_dashboard reads this view - it must not need outbox_current, a
+      -- SECURITY DEFINER function (scripts/security-check.ts pins exactly which of those the dashboard role may run).
+      -- Same rule as outbox_current(): greatest generation for the invoice, ties broken by created_at then id.
+      'fldgkN0Vm6k1MZLJp', (select o.payload ->> 'xero_invoice_number' from outbox o
+                             where o.topic = 'xero.create_draft_invoice' and o.aggregate_id = fi.id
+                             order by o.generation desc, o.created_at desc, o.id desc limit 1),
+      'fld3sDI9LIX8Voo4u', (select external_id from external_links where provider = 'XERO' and external_type = 'Invoice' and entity_id = fi.id and verified_at is not null))
+    when fi.id is not null then '{}'::jsonb
+    when pa.id is not null and pa.created_at < now() - interval '2 minutes' then jsonb_build_object('fldPuGgo27oWLKB5R', 'Awaiting approval',
+      'fld5JDnWI3RFehQxA', (pa.action_payload ->> 'amount_inc_gst')::numeric, 'fldgkN0Vm6k1MZLJp', null, 'fld3sDI9LIX8Voo4u', null)
+    when pa.id is not null then '{}'::jsonb
+    else jsonb_build_object('fldPuGgo27oWLKB5R', jsonb_build_object('$not_in', jsonb_build_array('Awaiting approval', 'Xero draft created', 'Approved - creating in Xero'), '$repair', null),
+                            'fldgkN0Vm6k1MZLJp', null, 'fld3sDI9LIX8Voo4u', null)
+  end as expected
+from projects p
+join external_links l on l.provider = 'AIRTABLE' and l.entity_type = 'project' and l.external_type = 'Record' and l.entity_id = p.id
+left join employees e on e.id = p.project_manager_id
+left join lateral (select * from invoices i where i.project_id = p.id and i.invoice_type = 'FINAL' and i.status <> 'VOIDED' order by created_at desc limit 1) fi on true
+left join lateral (select * from approvals a where a.entity_id = p.id and a.action_type = 'CREATE_INVOICE' and a.status = 'PENDING' order by created_at desc limit 1) pa on true
+union all
+select 'tblzenPRNVV5O7lZP', 'quote', q.id, q.quote_number, l.external_id,
+  jsonb_build_object(
+    'fldyP20HNafS614d5', q.quote_number, 'fld4LsEu8c9EMFj0h', at_link('customer', q.customer_id), 'fldisUv1ckHz2Detv', at_link('property', q.property_id),
+    'fldQpTa5tvrzlNg1h', sm_label('quote', q.status), 'fldEjEqlzE8Y0M1nf', qv.version_number, 'fldbfUE8DVh1Dwjfs', qv.total_inc_gst,
+    'fldOaXGsOgYHuWFYg', case q.job_type when 'FULL_REROOF' then 'Full Re-roof' else at_title(q.job_type) end,
+    'fldhY6d0ikMnsc7D3', at_title(i.roof_type), 'fldLjvBaV1EFB5RMG', i.roof_area_sqm, 'fld5Bz9FDhJSPibPk', est.full_name,
+    'flduF4QFGUWbkuR2d', at_title(q.lead_source), 'fldHSFkvwuVLfAS7J', q.created_on::text, 'fldMnoHiondm5jBWv', q.sent_on::text,
+    'fldfhsHggkGd8GKVq', q.accepted_on::text, 'fld1sZibwdMVnI4Hd', q.lost_reason, 'fldVUpqZkVKid3Fyy', q.id::text)
+from quotes q
+join external_links l on l.provider = 'AIRTABLE' and l.entity_type = 'quote' and l.external_type = 'Record' and l.entity_id = q.id
+join lateral (select * from quote_versions v where v.quote_id = q.id order by version_number desc limit 1) qv on true
+left join inspections i on i.id = q.inspection_id
+left join employees est on est.id = q.estimator_id
+union all
+select 'tbluIbl4zpMiAlMVw', 'purchase_order', po.id, po.po_number, l.external_id,
+  jsonb_build_object(
+    'fld1yW7kd8vY975Tj', po.po_number, 'fldDVMu2hgtSVuJyR', at_link('project', po.project_id), 'fldnYTAgdcNXWUMfP', at_link('supplier', po.supplier_id),
+    'fldMtDddp1Rm4tDHf', sm_label('purchase_order', po.status), 'fldqNNcA85jAC9FxM', po.po_date::text, 'fldqkJourPRGAcJya', po.expected_delivery_date::text,
+    'fld8Muyf7XVB91CjK', po.subtotal_ex_gst, 'fldJ4Z5Rg5adnEFU0', po.supplier_reference, 'fldnzaXx4TTTjCakj', po.id::text)
+from purchase_orders po
+join external_links l on l.provider = 'AIRTABLE' and l.entity_type = 'purchase_order' and l.external_type = 'Record' and l.entity_id = po.id
+union all
+select 'tblHKX79FJFHn5FDc', 'customer', c.id, c.customer_number, l.external_id,
+  jsonb_build_object(
+    'fldzmWSHtLVZ4OTmZ', c.customer_number, 'fldI46VewtlNRnwui', c.display_name, 'fldNcSkEiFnb8m4XP', c.email, 'fldvBKPgd3UeIDYO4', c.phone,
+    'fldisVgB2WysksjwW', at_title(c.customer_type), 'fldfNc5n8m2kjiRcB', case when c.preferred_contact = 'SMS' then 'SMS' else at_title(c.preferred_contact) end,
+    'fldNu4bbDXjMbwmZ8', c.customer_since::text,
+    'fldPXNXPyYie2kKQk', (select b.customer_number from customer_match_candidates m join customers b on b.id = case when m.customer_id = c.id then m.candidate_customer_id else m.customer_id end
+                           where c.id in (m.customer_id, m.candidate_customer_id) and c.customer_number > b.customer_number limit 1),
+    'fldDClu1e0ffwnojn', c.id::text)
+from customers c
+join external_links l on l.provider = 'AIRTABLE' and l.entity_type = 'customer' and l.external_type = 'Record' and l.entity_id = c.id
+union all
+select 'tblSYcCqId9wTMg3c', 'property', pr.id, pr.property_number, l.external_id,
+  jsonb_build_object(
+    'fldIy8ab7Ky67jL31', pr.property_number, 'fldu0CsGG5uPOVbRN', pr.address_line1, 'fldl6gKbKuZSF9MJG', pr.suburb, 'fldYjfr3STs04XDZr', pr.state,
+    'flduw5J4VyRoOqEE2', pr.postcode, 'fldMH8wYXmkAYXCxe', at_title(pr.property_type), 'fldhsHUPCZ0pMbXeV', pr.storeys, 'fldP4PWGxdLZrA5ge', pr.access_notes,
+    'fldVpX0MOcA8TnGvo', (select at_link('customer', cp.customer_id) from customer_properties cp where cp.property_id = pr.id and cp.relationship = 'OWNER' limit 1),
+    'fldm6rtleyV6yp8ZS', pr.id::text)
+from properties pr
+join external_links l on l.provider = 'AIRTABLE' and l.entity_type = 'property' and l.external_type = 'Record' and l.entity_id = pr.id
+union all
+select 'tbloPJwCIcdIZQFVK', 'supplier', s.id, s.supplier_code, l.external_id,
+  jsonb_build_object(
+    'fldNy5hhua9oCbrge', s.supplier_code, 'fldmyVulHN1hsCE8f', s.name, 'fldPtnT9heTBGTFEM', s.orders_email, 'fldtNq7DluPgIM1rn', s.phone,
+    'fldfXKzmQJYzbzgZY', s.default_lead_time_days, 'fldLNYP5FsVaR6TFk', s.id::text)
+from suppliers s
+join external_links l on l.provider = 'AIRTABLE' and l.entity_type = 'supplier' and l.external_type = 'Record' and l.entity_id = s.id;
+
+update field_contract set reconcile = 'IGNORE', readback = '04 read-back; wf_invoice_preview_verified records the verified preview'
+ where entity = 'project' and field_key = 'invoice_preview';
+delete from schema_migrations where version = '20261009030000_airtable_shows_the_reissued_invoice.sql';
+commit;

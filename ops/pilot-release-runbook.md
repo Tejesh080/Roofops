@@ -41,6 +41,21 @@ below needs the owner's approval. No secret appears in this file.
    `update app_settings set value = 'true' where key = 'invoice.reissue_requires_second_person'`.
    - Verify: a reissue requested by A is refused for A (SAME_PERSON) and accepted for B.
 
+6. **Dashboard reissue and Airtable identity** (separately approvable; needs step 1):
+   - Run `npm run db:load -- --hosted` once these two files are on the release commit. Expect exactly
+     `20261009020000_dashboard_reissue.sql` and `20261009030000_airtable_shows_the_reissued_invoice.sql`.
+   - **Rehearsed on a restored copy of hosted:** 47 migrations; integrity unchanged; every privilege check passes.
+     Data changes: 1 `field_contract` row plus migration rows. Exactly **one** project gets a preview
+     expectation, PRJ-2026-0002 (the Stage 3C reissue).
+   - The next repair reconciliation (nightly, or `npm run reconcile`) then rewrites PRJ-2026-0002's Invoice
+     Preview. The new text shows RO-INV-2026-0040 / `61e09cad…` under APR-2026-0013 and "Replaces InvoiceID
+     21545f60…". This closes the Stage 3D gap.
+   - Verify: `npm run reconcile -- --dry-run` lists that one field as SAFE_AUTO_REPAIR; after the repair run,
+     0 drift.
+   - Staff then use Finance → "Invoice reissues": one FINANCE/ADMIN person requests and a different one approves.
+     Creating the Xero draft remains the supervised dispatch (`npm run reissue -- dispatch --invoice … --hosted`,
+     short-lived token).
+
 ## Rollback (each step independently)
 
 | Step | Rollback | Proven |
@@ -50,3 +65,4 @@ below needs the owner's approval. No secret appears in this file.
 | 3 | Redeploy the previous dashboard build (it does not need the CA) | — |
 | 4 | Run the same command with `availableInMCP: true`, or set it in the n8n UI. If 07's version changed, re-publish `a0ca9e60` from its history | — |
 | 5 | Set the value to `false` (takes effect at once) | tests |
+| 6 | Run `ops/rollback/20261009030000_airtable_shows_the_reissued_invoice.down.sql`, then `…020000_dashboard_reissue.down.sql`. Requests and decisions already made stay; the CLI keeps working | yes: all four rolled back on a restored copy; schema, view definition and 62 tables identical to before |

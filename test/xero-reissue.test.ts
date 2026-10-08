@@ -685,11 +685,12 @@ describe.each(TARGETS)('AC-14C B2: the supervised final-invoice reissue [%s]', (
       approval_id = (select id from approvals where approval_number = '${fixtureApr}') where id = '${noProof.id}'`, /matching REISSUE_INVOICE approval attached/);
     expect(await k.invState(noProof)).toMatchObject({ status: 'VOIDED' });
 
-    // (e) a valid pending reissue approval plus the evidence: the transition succeeds (and the approval is not consumed).
+    // (e) a valid pending reissue approval plus the evidence is still not a recovery path (audit P2-H1): the transition is
+    //     refused, nothing is consumed and no generation is opened; only the ops_reissue_decide transaction may do it.
     const okReq = await k.request(a.id, FINANCE, REASON);
-    await k.exec(`update invoices set status = 'APPROVED', sync_status = 'PENDING',
-      approval_id = (select id from approvals where approval_number = $2) where id = $1`, [a.id, String(okReq.approval_number)]);
-    expect(await k.invState(a)).toMatchObject({ status: 'APPROVED', sync_status: 'PENDING' });
+    await k.rejects(`update invoices set status = 'APPROVED', sync_status = 'PENDING',
+      approval_id = (select id from approvals where approval_number = '${String(okReq.approval_number)}') where id = '${a.id}'`, /only ops_reissue_decide/);
+    expect(await k.invState(a)).toMatchObject({ status: 'VOIDED' });
     expect(await k.approvalRow(String(okReq.approval_number))).toMatchObject({ status: 'PENDING' });
     expect(await k.ledger(a.id)).toHaveLength(1);                         // raw SQL is not a recovery path: no generation was opened
 
@@ -704,15 +705,17 @@ describe.each(TARGETS)('AC-14C B2: the supervised final-invoice reissue [%s]', (
       approval_id = (select id from approvals where approval_number = '${String(selfReq.approval_number)}') where id = '${self.id}'`, /older generation/);
     expect(await k.invState(self)).toMatchObject({ status: 'VOIDED' });
 
-    // (g) ... while a live write at the target generation (the one the reissue itself opens) is excluded: it passes.
+    // (g) ... and a hand-forged live write at the target generation does not make raw SQL a recovery path either (audit
+    //     P2-H1): the older-generation check no longer fires, but the transition is still refused because it is not the
+    //     ops_reissue_decide transaction (the approval is PENDING, unconsumed, and generation 2 is not bound to it).
     await k.force(`update invoice_xero_draft_generations set status = 'PENDING' where invoice_id = $1 and generation = 2`, [self.id]);
     await k.force(`update outbox set status = 'DONE', next_attempt_at = 'infinity' where idempotency_key = $1`, [self.key]);
     await k.force(`insert into outbox (topic, aggregate_type, aggregate_id, correlation_id, idempotency_key, payload, status, generation)
       select 'xero.create_draft_invoice', 'invoice', $1, correlation_id, xero_draft_outbox_key($1, 2), payload, 'PENDING', 2
         from outbox where idempotency_key = $2`, [self.id, self.key]);
-    await k.exec(`update invoices set status = 'APPROVED', sync_status = 'PENDING',
-      approval_id = (select id from approvals where approval_number = $2) where id = $1`, [self.id, String(selfReq.approval_number)]);
-    expect(await k.invState(self)).toMatchObject({ status: 'APPROVED', sync_status: 'PENDING' });
+    await k.rejects(`update invoices set status = 'APPROVED', sync_status = 'PENDING',
+      approval_id = (select id from approvals where approval_number = '${String(selfReq.approval_number)}') where id = '${self.id}'`, /only ops_reissue_decide/);
+    expect(await k.invState(self)).toMatchObject({ status: 'VOIDED' });
 
     // Ordering: the guard is a separate trigger on invoices, and it fires before the state-machine trigger (name order).
     const triggers = await k.col(db, `select tgname v from pg_trigger where tgrelid = 'public.invoices'::regclass and not tgisinternal order by tgname`);

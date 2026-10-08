@@ -15,6 +15,12 @@ below needs the owner's approval. No secret appears in this file.
 | 6. Existing flows | n8n uses only `roofops_workflow`, whose functions are unchanged. No `wf_*` function is modified. Airtable and Xero are untouched. The reissue CLI and 08 dispatch work as before (four-eyes ships off). The dashboard sign-in falls back to the demo login if the staff functions are absent. Full suite: 810 passed, 0 failed; hosted read-only Playwright: 20/20 |
 | Live n8n settings (read-only) | 07: MCP **on**, saving off, version `a0ca9e60`. 04: MCP on. 05: MCP on (sub-workflow trigger only). 08: MCP off. 08-health: MCP on |
 
+## Deployment status (2026-10-08 UTC)
+
+Steps 1, 4 (07 only) and 6 are **applied**, plus one repair reconciliation (the approved operations 1–3 at `8622414`); see
+`evidence/pilot-release-deployment.md`. Step 2 (staff logins), step 3 (dashboard TLS and build) and step 5 (four-eyes) are the
+owner's: see `ops/pilot-owner-setup.md`.
+
 ## Deployment sequence (owner, in order)
 
 0. **Before:** `npm run security:check` and `npm run integrity:check` (0 FAIL). If anything was written to hosted since the

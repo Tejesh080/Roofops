@@ -64,7 +64,7 @@ export async function dispatchReissue(db: Db, invoiceId: string, o: DispatchOpti
   if (before === undefined) return { ok: false, code: 'NOT_FOUND', detail: 'no invoice with a Xero draft generation has that id' };
   const created = (s: ReissueStatus) => s.generation >= 2 && s.ledger_status === 'CREATED' && s.sync_status === 'SYNCED';
   if (before.generation < 2) return { ok: false, code: 'NO_REISSUE_QUEUED', detail: 'the current Xero draft generation is 1; decide a reissue first', ...before };
-  if (created(before)) return { ok: true, code: 'REISSUE_CREATED', detail: 'the reissued draft already exists', ...before };
+  if (created(before)) return { ok: true, code: 'REISSUE_CREATED', detail: 'the reissued draft already exists. Airtable shows its InvoiceID after the next repair reconciliation (npm run reconcile updates it now)', ...before };
 
   await o.trigger({ invoice_number: before.invoice_number, generation: before.generation });
   let now = before;
@@ -73,7 +73,7 @@ export async function dispatchReissue(db: Db, invoiceId: string, o: DispatchOpti
     now = (await reissueStatus(db, invoiceId)) ?? now;
     if (now.outbox_status !== 'PENDING' && now.outbox_status !== 'DISPATCHING') break;
   }
-  if (created(now)) return { ok: true, code: 'REISSUE_CREATED', detail: 'generation ' + String(now.generation) + ' was created in Xero and linked', ...now };
+  if (created(now)) return { ok: true, code: 'REISSUE_CREATED', detail: 'generation ' + String(now.generation) + ' was created in Xero and linked. Airtable shows its InvoiceID after the next repair reconciliation (npm run reconcile updates it now)', ...now };
   if (now.outbox_status === 'PENDING' || now.outbox_status === 'DISPATCHING') {
     return { ok: false, code: 'STILL_PENDING', detail: 'nothing settled: the dispatch token was refused, [RoofOps] 08 is not published, or the write is not proven (see open_exceptions)', ...now };
   }

@@ -37,6 +37,9 @@ export function FinanceCard({ p, invoices }: { p: ProjectRow; invoices: InvoiceL
             <div className="t-label">Invoice status</div>
             <div style={{ marginTop: 6 }}><Badge l={status} /></div>
             {p.invoice_blocker && <p className="attn-note" style={{ marginTop: 10 }}>{moneyInText(p.invoice_blocker)}</p>}
+            {p.invoice_blocker && /was voided/.test(p.invoice_blocker) && (
+              <p className="t-meta" style={{ marginTop: 8 }}>Next: <a href="/finance#reissues">request a reissue on the Finance page</a> (one person requests, a second approves).</p>
+            )}
           </>
         )}
         {(p.invoice_status === 'READY_TO_INVOICE' || p.invoice_status === 'AWAITING_APPROVAL') && (

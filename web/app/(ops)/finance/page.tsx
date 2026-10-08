@@ -6,6 +6,8 @@ import { listOverdueInvoices, listProjects, type ProjectRow } from '@/lib/querie
 import { INVOICE_NEXT_STEP, date, money } from '@/lib/labels';
 import { CardHead, Empty } from '@/components/ui/Empty';
 import { AskButton } from '@/components/copilot/AskButton';
+import { ReissueSection } from '@/components/finance/ReissueSection';
+import { getReissueOverview } from '@/lib/reissue';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Finance · RoofOps' };
@@ -27,8 +29,8 @@ function Rows({ rows, right }: { rows: ProjectRow[]; right: (p: ProjectRow) => R
 }
 
 export default async function FinancePage() {
-  await requireSession();
-  const [rows, overdue] = await Promise.all([listProjects(query, 'all'), listOverdueInvoices(query)]);
+  const session = await requireSession();
+  const [rows, overdue, reissues] = await Promise.all([listProjects(query, 'all'), listOverdueInvoices(query), getReissueOverview(query, session.t)]);
   const ready = rows.filter((p) => p.invoice_status === 'READY_TO_INVOICE');
   const awaiting = rows.filter((p) => p.invoice_status === 'AWAITING_APPROVAL');
   const inXero = rows.filter((p) => p.xero_invoice_id);
@@ -82,6 +84,7 @@ export default async function FinancePage() {
           </div>
         </section>
       </div>
+      <div style={{ marginTop: 16 }}><ReissueSection overview={reissues} /></div>
       <p className="t-meta" style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 6 }}>
         <ChevronRight size={13} aria-hidden /> The Copilot can only prepare an invoice. Approval, and the draft in Xero, always need a person.
       </p>

@@ -40,7 +40,7 @@ export async function login(_prev: LoginState, form: FormData): Promise<LoginSta
   const password = String(form.get('password') ?? '');
   let session: string | null = null;
   let refusal = 'That username and password did not match.';
-  // 1. The shared demo viewer (read-only), when configured: compare both values, no early exit.
+  // 1. The shared demo viewer (browse, ask, prepare previews; never resolve or approve), when configured: compare both values, no early exit.
   if (demoLoginConfigured()) {
     const userOk = same(username, process.env.DEMO_USERNAME!);
     const passOk = same(password, process.env.DEMO_PASSWORD!);

@@ -38,7 +38,7 @@ export async function requireSession(): Promise<Session> {
   return s;
 }
 
-/** The demo sign-in (one shared, read-only viewer) is configured; staff sign-in needs only AUTH_SECRET. */
+/** The demo sign-in (one shared viewer: browse, ask, prepare previews; never resolve or approve) is configured; staff sign-in needs only AUTH_SECRET. */
 export function demoLoginConfigured(): boolean {
   return Boolean(process.env.DEMO_USERNAME && (process.env.DEMO_PASSWORD?.length ?? 0) >= 12);
 }

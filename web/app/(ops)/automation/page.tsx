@@ -37,7 +37,7 @@ export default async function AutomationPage() {
             <div className="card-body">
               {open.length > 0 && !me?.may_resolve_exceptions && (
                 <p className="t-meta resolve-hint">{me ? `Resolving issues needs a finance, admin, operations manager or project manager sign-in; you are signed in as ${me.role.toLowerCase().replace(/_/g, ' ')}.`
-                  : 'To resolve an issue, sign in as yourself (the shared demo login is read only).'}</p>
+                  : 'To resolve an issue, sign in as yourself (the shared demo login cannot resolve, approve or change records).'}</p>
               )}
               <IssueList issues={open} emptyTitle="Nothing needs a person"
                 action={me?.may_resolve_exceptions ? (e) => e.resolution_status === 'OPEN' ? <ResolveForm exception={e.exception_number} /> : null : undefined} />

@@ -44,7 +44,7 @@ export function Topbar({ user, role }: { user: string; role?: string }) {
           <AnimatePresence>
             {open && (
               <motion.div className="menu" role="menu" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.16 }}>
-                <div className="m-head">Signed in as <strong>{user}</strong><br />{role ? roleName(role) : 'Demo viewer: read only'} · synthetic demo data</div>
+                <div className="m-head">Signed in as <strong>{user}</strong><br />{role ? roleName(role) : 'Shared demo viewer: cannot approve or resolve'} · synthetic demo data</div>
                 <Link className="mi" role="menuitem" href="/demo" onClick={() => setOpen(false)}><Presentation size={15} aria-hidden /> Interview demo guide</Link>
                 <form action={logout}><button className="mi" role="menuitem"><LogOut size={15} aria-hidden /> Sign out</button></form>
               </motion.div>

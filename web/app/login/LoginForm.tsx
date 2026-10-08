@@ -10,7 +10,8 @@ export function LoginForm() {
     <form action={action} className="login-form">
       <label className="field">
         <span>Username</span>
-        <input name="username" autoComplete="username" required autoFocus />
+        {/* The form resets after each attempt; keep what the person typed as their username. */}
+        <input name="username" autoComplete="username" required autoFocus key={state.username ?? ''} defaultValue={state.username ?? ''} />
       </label>
       <label className="field">
         <span>Password</span>

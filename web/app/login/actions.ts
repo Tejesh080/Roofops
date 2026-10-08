@@ -13,16 +13,16 @@ const WINDOW_MS = 10 * 60 * 1000;
 const digest = (s: string) => createHash('sha256').update(s, 'utf8').digest();
 const same = (a: string, b: string) => timingSafeEqual(digest(a), digest(b));
 
-export interface LoginState { error?: string }
+export interface LoginState { error?: string; username?: string }
 
 export async function login(_prev: LoginState, form: FormData): Promise<LoginState> {
   if (!authConfigured()) return { error: 'Sign-in is not configured on this server.' };
   const h = await headers();
   const client = (h.get('x-forwarded-for') ?? '').split(',')[0]?.trim() || 'local';
   const f = failures.get(client);
-  if (f && f.n >= 5 && f.until > Date.now()) return { error: 'Too many attempts. Try again in a few minutes.' };
-
   const username = String(form.get('username') ?? '');
+  if (f && f.n >= 5 && f.until > Date.now()) return { error: 'Too many attempts. Try again in a few minutes.', username };
+
   const password = String(form.get('password') ?? '');
   const userOk = same(username, process.env.DEMO_USERNAME!);
   const passOk = same(password, process.env.DEMO_PASSWORD!);   // always compare both (no early exit)
@@ -31,7 +31,7 @@ export async function login(_prev: LoginState, form: FormData): Promise<LoginSta
     const cur = f && f.until > Date.now() ? f : { n: 0, until: Date.now() + WINDOW_MS };
     failures.set(client, { n: cur.n + 1, until: cur.until });
     await new Promise((r) => setTimeout(r, 600));
-    return { error: 'That username and password did not match.' };
+    return { error: 'That username and password did not match.', username };
   }
   failures.delete(client);
   (await cookies()).set(SESSION_COOKIE, await signSession(username), {

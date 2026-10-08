@@ -1,6 +1,6 @@
 import { ChevronRight, ExternalLink, History, Receipt } from 'lucide-react';
 import type { InvoiceLine, ProjectRow } from '@/lib/queries';
-import { INVOICE_LINE_STATUS, INVOICE_STATUS, airtableProjectUrl, date, label, money } from '@/lib/labels';
+import { INVOICE_LINE_STATUS, INVOICE_NEXT_STEP, INVOICE_STATUS, airtableProjectUrl, date, label, money } from '@/lib/labels';
 import { Badge } from '@/components/ui/Badge';
 import { CardHead } from '@/components/ui/Empty';
 import { CopyButton } from '@/components/ui/CopyButton';
@@ -39,6 +39,11 @@ export function FinanceCard({ p, invoices }: { p: ProjectRow; invoices: InvoiceL
             {p.invoice_blocker && <p className="attn-note" style={{ marginTop: 10 }}>{p.invoice_blocker}</p>}
           </>
         )}
+        {(p.invoice_status === 'READY_TO_INVOICE' || p.invoice_status === 'AWAITING_APPROVAL') && (
+          <p className="t-meta" style={{ margin: '10px 0 0' }}>
+            {p.invoice_status === 'READY_TO_INVOICE' ? INVOICE_NEXT_STEP.prepare : INVOICE_NEXT_STEP.approve}
+          </p>
+        )}
         {p.outstanding_inc_gst > 0 && (
           <p className="t-meta" style={{ margin: '10px 0 0' }}>Owed by the customer: <strong className="num" style={{ color: p.has_overdue_invoice ? 'var(--bad)' : 'var(--text)' }}>{money(p.outstanding_inc_gst)}</strong>{p.has_overdue_invoice ? ' (overdue)' : ''}</p>
         )}
@@ -61,6 +66,7 @@ export function FinanceCard({ p, invoices }: { p: ProjectRow; invoices: InvoiceL
         <div className="actions">
           {xeroUrl && <a className="btn btn-sm" href={xeroUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} aria-hidden /> Open in Xero</a>}
           {p.invoice_status === 'AWAITING_APPROVAL' && at && <a className="btn btn-sm btn-primary" href={at} target="_blank" rel="noreferrer">Open approval in Airtable</a>}
+          {p.invoice_status === 'READY_TO_INVOICE' && at && <a className="btn btn-sm btn-primary" href={at} target="_blank" rel="noreferrer">Open in Airtable</a>}
           <a className="btn btn-sm btn-ghost" href="#history"><History size={14} aria-hidden /> View audit</a>
         </div>
 

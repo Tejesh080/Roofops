@@ -33,6 +33,7 @@ equal to origin). No secrets in this file.
 | 0 | Phase 0: state confirmed, tracker created | — | done | this file |
 | 1 | Local test env: fresh DB `roofops_sprint` (43 migrations + bundle), least-privilege `roofops_web_local`, dashboard on 127.0.0.1:3100 | — | done | VERIFIED LOCAL (login, overview, search, filters, project page) |
 | 2 | **Dashboard production build failed** (`next build`: TS2741, `AttentionPanel` KIND lacked `billing`, added by AC-08). Screen readers also heard ", high priority:" with no category on over-billed items. Root `check` never type-checked `web/` | P1 | fixed | `next build` exit 1 → 0; Attention page reads "Billing problem, high priority:"; `npm run check` now runs `typecheck:web` |
+| 3 | Invoice next steps: a "Ready to invoice" project page offered no action. "Awaiting approval" said "approve in Airtable", but an Airtable Approve of a Copilot-prepared preview is always refused until Prepare shows it on the row (AC-03). Shared INVOICE_NEXT_STEP guidance now appears on the Finance card, the Finance page and the Copilot card | P2 | fixed | VERIFIED LOCAL: Copilot prepared APR-2026-0001 for PRJ-2026-0002 (local DB, no outbox, preview not on the row); guidance shown on PRJ-0004, PRJ-0002 and /finance |
 
 ## Approval queue (hosted / amber; not applied)
 

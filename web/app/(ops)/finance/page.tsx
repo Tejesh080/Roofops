@@ -3,7 +3,7 @@ import { BadgeDollarSign, CheckCircle2, ChevronRight, Clock3, FileWarning, Recei
 import { query } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
 import { listOverdueInvoices, listProjects, type ProjectRow } from '@/lib/queries';
-import { date, money } from '@/lib/labels';
+import { INVOICE_NEXT_STEP, date, money } from '@/lib/labels';
 import { CardHead, Empty } from '@/components/ui/Empty';
 import { AskButton } from '@/components/copilot/AskButton';
 
@@ -56,7 +56,7 @@ export default async function FinancePage() {
           <CardHead icon={Clock3} title="Awaiting finance approval"><span className="chip num">{money(sum(awaiting))}</span></CardHead>
           <div className="card-body">
             {awaiting.length === 0 ? <Empty icon={CheckCircle2} title="No invoices awaiting approval" text="Prepared invoices wait here until a finance approver approves them in Airtable." /> :
-              <Rows rows={awaiting} right={(p) => <><span className="strong num">{money(p.invoice_amount_inc_gst)}</span><span className="row-sub">{p.pending_approval_number} · approve in Airtable</span></>} />}
+              <Rows rows={awaiting} right={(p) => <><span className="strong num">{money(p.invoice_amount_inc_gst)}</span><span className="row-sub">{p.pending_approval_number} · {INVOICE_NEXT_STEP.approveShort}</span></>} />}
           </div>
         </section>
         <section className="card">

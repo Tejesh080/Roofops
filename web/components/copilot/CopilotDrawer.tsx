@@ -7,7 +7,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { ArrowUp, ChevronRight, FileCheck2, Loader2, Sparkles, X } from 'lucide-react';
 import type { CopilotReply, ToolStep } from '@/lib/copilot/agent';
 import type { PreparedInvoiceCard, ToolCard } from '@/lib/copilot/tools';
-import { airtableProjectUrl, date, money } from '@/lib/labels';
+import { INVOICE_NEXT_STEP, airtableProjectUrl, date, money } from '@/lib/labels';
 import { useToast } from '@/components/ui/Providers';
 import { ASK_EVENT } from './AskButton';
 
@@ -76,7 +76,7 @@ function InvoiceAction({ c }: { c: PreparedInvoiceCard }) {
               <tr><td>Reference · due</td><td>{p.reference} · {date(p.due_date)}</td></tr>
             </tbody></table>
             {awaiting && <div className="ac-status"><span className="pulse" aria-hidden />Awaiting finance approval{c.approval_number ? ` · ${c.approval_number}` : ''}</div>}
-            <div className="ac-note">{awaiting ? `Nothing has been sent to Xero. Once approved, RoofOps creates one draft invoice in ${p.xero_tenant_name || 'the Xero Demo Company'} and checks it.` : c.message}</div>
+            <div className="ac-note">{awaiting ? `Nothing has been sent to Xero. Once approved, RoofOps creates one draft invoice in ${p.xero_tenant_name || 'the Xero Demo Company'} and checks it. ${INVOICE_NEXT_STEP.approve}` : c.message}</div>
           </>
         ) : <div className="ac-note">{c.message}</div>}
       </div>

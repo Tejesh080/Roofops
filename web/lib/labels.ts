@@ -177,6 +177,17 @@ export const JOB_TYPE = (t: string | null) => (t ? t.replace(/_/g, ' ').toLowerC
 export const airtableProjectUrl = (rec: string | null) =>
   rec ? `https://airtable.com/appMc8V0Wm29tEeHQ/tblvUPIoebC3zoacv/${rec}` : null;
 
+/**
+ * What a person does next with a final invoice, in Airtable (Projects › Invoice Action). An Approve counts only for the
+ * preview 04 has written to and read back from that row (AC-03), so a preview prepared by the Copilot or the dashboard is
+ * first shown on the row with Prepare; Prepare again returns the same pending preview, so the step is always safe.
+ */
+export const INVOICE_NEXT_STEP = {
+  prepare: 'Next: in Airtable, set this project’s Invoice Action to “Prepare Xero draft invoice”, or use Prepare with Copilot on the Finance page.',
+  approve: 'Next, for a finance approver in Airtable: set Invoice Action to “Prepare Xero draft invoice” so the preview shows on the row, check it, then set “Approve Xero draft invoice”.',
+  approveShort: 'in Airtable: Prepare, check, then Approve',
+} as const;
+
 /** Outcome badge for a history entry: a scheduled retry is progress, not a failure. */
 export function outcomeLabel(kind: string, status: string | null): Label {
   if (kind === 'automation.retry_scheduled') return L('Retry in progress', 'warn');

@@ -34,6 +34,10 @@ No secrets in this file.
 | 16 | Amounts in database explanations shown as money on the Finance card (the over-billing message read "billed 30888.72") | P3 | fixed | test (references, dates and formatted amounts untouched); VERIFIED LOCAL on PRJ-2026-0006 |
 | 15 | Checkpoint: the full suite on **PGlite + PostgreSQL 17** | — | **810 passed, 0 failed** (36 hosted-only skipped) | after items 1-12 |
 | 13 | Regression run against the **hosted** dashboard: the read-only Playwright smoke and state-sync specs | — | 20/20 passed | VERIFIED LIVE (read-only); the screens spec was skipped because it prepares a real preview |
+| 17 | Pilot pre-flight: the CA contract was made consistent (PEM wins, absolute CERT path, clear failures; docs corrected), verified live with both forms; a fresh hosted backup was restored locally (62/62 identical); migrations were rehearsed on hosted copies; rollback scripts were proven exact; tooling: `npm run n8n:mcp` | — | done `de305e5`, `3aa932f`, `37cfe6b` | ops/pilot-release-runbook.md |
+| 18 | **Reissue from the dashboard:** staff request and approve as themselves; the requester can never approve; the existing reissue rules apply | P1 | done locally `409ed0d`, `b34fd26` | 14 tests (both engines); VERIFIED LOCAL in the browser (finance requests, admin approves, the demo viewer sees nothing); independent review: 0 critical or high |
+| 20 | Checkpoint: full suite PGlite + PostgreSQL 17 **827 passed, 0 failed** (at 409ed0d); after the review fixes, PGlite at b34fd26 443 passed, 0 failed; the dashboard production build, lint and both type-checks pass | — | green | — |
+| 19 | **Airtable shows the reissued invoice:** Invoice Preview is a PROJECTION for reissued finals, so the reconciler repairs it | P2 | done locally `409ed0d` | real-reconciler test plus ablation; on a hosted copy only PRJ-2026-0002 is affected, with the expected text |
 
 ## Approval queue (hosted; not applied)
 
@@ -53,8 +57,6 @@ No secrets in this file.
 
 ## Known open items (not fixed)
 
-- **Airtable *Invoice Preview* text is stale after a reissue.** The field is WORKFLOW-owned and IGNORE-class; fixing
-  it needs an n8n or DB change.
 - **`voided_reason` survives a reissue**: by design (20261001170000:56, it records how the invoice came back); the dashboard never shows it on an approved invoice. Not a defect.
 - **Approvals created by a Copilot prepare** carry no requested_by_employee_id (the event actor is attributed since item 14).
 - **One shared Airtable account** for staff edits and RoofOps writes; it needs Airtable seats.

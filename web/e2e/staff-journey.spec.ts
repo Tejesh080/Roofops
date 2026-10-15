@@ -192,6 +192,13 @@ test('staff journey: Finance requests, the requester cannot approve, a different
   expect(await approvals('INV-2026-0040')).toEqual([{ approval_number: apr40, status: 'EXECUTED', requested_by: 'EMP-801', decided_by: 'EMP-802' }]);
   expect(await gen2('INV-2026-0040')).toEqual({ ledger: '1', writes: '1', pending: '1' });
 
+  // 11a. The audit trail names the right person for each step, once, even after duplicates and races.
+  const audit = (inv: string) => db.query(`select action, actor_id from audit_events where business_reference = $1 and action like 'invoice.reissue%'
+                                            order by occurred_at, action`, [inv]).then((r) => r.rows);
+  for (const inv of ['INV-2026-0039', 'INV-2026-0040']) {
+    expect(await audit(inv), inv).toEqual([{ action: 'invoice.reissue_requested', actor_id: 'EMP-801' }, { action: 'invoice.reissued', actor_id: 'EMP-802' }]);
+  }
+
   // 11b. The project page never presents the voided document as current while the replacement is queued.
   await admin.page.goto('/projects/PRJ-2026-0005');
   const docs = admin.page.getByRole('group', { name: 'Xero documents for INV-2026-0040' });

@@ -63,3 +63,45 @@ accurate history.
 
 - No dashboard deployment; no staff logins (they need the owner's own passwords); four-eyes setting left off.
 - The scheduled 07 run at 16:30 UTC is not yet observed.
+
+## Migration 20261009040000 (approved; applied 2026-10-08 ~14:45 UTC)
+
+- **Before:**
+  - `19009ca`, equal to origin.
+  - TLS verified.
+  - Fresh backup `pre-040000-20261009-010740.dump` (SHA-256 `ebe31444…274e`; owner and SYSTEM only).
+  - Nothing in flight (outbox 0, reconciliation 0, open approvals 0, dispatch hash blank).
+  - Integrity 28/4/0.
+  - The file holds only two `create … view` statements and one `grant select` to `roofops_dashboard`.
+- **After:**
+  - 48/48 checksums equal.
+  - Integrity 28 PASS / 4 WARNING / 0 FAIL.
+  - All privilege checks PASS.
+  - Of 64 tables, only `schema_migrations` changed (+1).
+  - PRJ-2026-0002: generation 2 `61e09cad…` current; generation 1 `21545f60…` replaced (Xero: DELETED).
+  - n8n 04/05/07/08/08-health active, versions unchanged.
+- **07 since:** 7 nightly scheduled repair runs (to 2026-10-14 16:30 UTC), all COMPLETED, 0 Xero/Drive drift. One Drive rate-limit exception (EXC-0022) was auto-resolved by the next run.
+
+## Protected Vercel preview (2026-10-15)
+
+- **Project:** `tejesh1/roofops-dashboard`. Next.js, Node 24.x, functions in `syd1`. Not Git-connected (no auto-deploys). Vercel Authentication on **all** deployments.
+- **Environment:** 9 variables, Preview only, Sensitive. Names checked against the source (`DASHBOARD_DB_CA_CERT`, a local path, is not used).
+  - `DASHBOARD_DATABASE_URL` is the `roofops_web` login (asserted by the upload script).
+  - The CA is supplied as `DASHBOARD_DB_CA_PEM`.
+  - `AUTH_SECRET` is newly generated (64 characters).
+  - The DeepSeek settings and the temporary demo login complete the set.
+- `web/.vercelignore` keeps `.env*`, `e2e/` (local test logins) and test artefacts out of the upload.
+- **Incident:** the project's first CLI deployment (`ds14a9ig8`) was created with target **production** despite `--target preview`.
+  - It was never reachable: Vercel Authentication redirected every request, and it had no environment variables.
+  - It was removed after a real preview was created. The production domain now returns 404, and the project has no production deployment.
+- **Preview:** `roofops-dashboard-du3h1zvdr-tejesh1.vercel.app`, target preview.
+  - Unauthenticated requests: 302 to Vercel sign-in.
+  - Testing went through a temporary automation-bypass secret, **revoked** afterwards (0 bypass secrets remain).
+- **Results:**
+  - Playwright smoke and state-sync: 18/20. The 2 Copilot tests failed because DeepSeek returned HTTP 503 "Service is too busy", reproduced from this machine too; the dashboard shows its "copilot unavailable" message.
+  - Without an app session, pages redirect to `/login`, and the API returns 401 (also with a forged cookie).
+  - Headers: HSTS, `X-Frame-Options: DENY`, `noindex`.
+  - Overview, PRJ-2026-0002, Finance, Automation and Health load from hosted over verified TLS, with no horizontal overflow at 1440 px or 390 px.
+  - PRJ-2026-0002 shows Current `61e09cad…` and Replaced `21545f60…` (deleted in Xero).
+  - The demo viewer has no reissue or resolve controls.
+- **No financial mutation:** invoices, approvals, outbox, payments and the generation ledger are byte-identical to just after the migration; every other change came from the nightly reconciliation.

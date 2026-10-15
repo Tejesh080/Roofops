@@ -15,6 +15,8 @@ export default defineConfig({
     channel: 'chrome',
     viewport: { width: 1440, height: 900 },
     deviceScaleFactor: 1,
+    // A Vercel preview behind Vercel Authentication: the project's automation-bypass secret (never committed or printed).
+    ...(process.env.VERCEL_BYPASS ? { extraHTTPHeaders: { 'x-vercel-protection-bypass': process.env.VERCEL_BYPASS, 'x-vercel-set-bypass-cookie': 'true' } } : {}),
   },
   projects: [
     { name: 'setup', testMatch: /auth\.setup\.ts/ },

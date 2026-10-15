@@ -11,7 +11,7 @@ export interface PendingInvoice {
     billed_to_date_inc_gst: number; lines: { line_no: number; description: string; quantity: number; unit_amount: number }[];
   };
 }
-export type DraftState = 'READY_TO_SEND' | 'QUEUED' | 'STARTING' | 'SENDING' | 'CREATED' | 'RETRY_LATER' | 'FAILED' | 'STOPPED' | 'UNCERTAIN';
+export type DraftState = 'READY_TO_SEND' | 'QUEUED' | 'STARTING' | 'SENDING' | 'CREATED' | 'RETRY_LATER' | 'FAILED' | 'STOPPED' | 'UNCERTAIN' | 'VOIDED';
 /** One queued Xero draft write and where it stands (xero_draft_progress: outbox, invoice sync state, staff request). */
 export interface DraftProgress {
   invoice_number: string; project_number: string; customer: string; amount_inc_gst: string; xero_invoice_number: string; generation: number;
@@ -56,6 +56,7 @@ export const INVOICE_CODE: Record<string, string> = {
   NOT_DUE: 'It cannot be retried yet.',
   NOT_PROVEN: 'The replacement draft does not match its approval, so it is not sent.',
   NOT_APPROVED: 'There is no approval behind this draft.',
+  VOIDED: 'This invoice is voided, so it is not sent. A replacement goes through Invoice reissues.',
   PAYLOAD_CHANGED: 'The draft changed since you looked at it. Reload and check it again.',
 };
 export const invoiceRefusal = (r: { code?: string; detail?: string; message?: string }) =>
@@ -72,4 +73,5 @@ export const DRAFT_STATE: Record<DraftState, { badge: string; tone: 'good' | 'wa
   FAILED: { badge: 'Not sent', tone: 'warn', text: 'Xero did not take it last time. Check the reason, then send it again.' },
   STOPPED: { badge: 'Stopped', tone: 'bad', text: 'It stopped after repeated failures. The issue on Automation says why; nothing more is sent until a person fixes it.' },
   UNCERTAIN: { badge: 'Unclear', tone: 'bad', text: 'Xero may or may not have created it (its answer was lost). Do not send it again: RoofOps checks Xero at the next reconciliation and records the result.' },
+  VOIDED: { badge: 'Voided', tone: 'bad', text: 'Its Xero document was voided or deleted. It is not sent again; a replacement goes through Invoice reissues.' },
 };

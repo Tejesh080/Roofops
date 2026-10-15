@@ -207,6 +207,9 @@ describe.each(TARGETS)('staff invoice approval and Xero dispatch [%s]', (target)
 
   it('a reissue\'s replacement (generation 2) is sent on a Finance/Admin request with the exact generation', async () => {
     const s = await deletedReissueScenario(db, { project: 'PRJ-2026-0001', xid: 'aaaaaaaa-bbbb-cccc-dddd-00000000e001' });
+    // Voided (its draft was deleted in Xero): never listed as a draft "in Xero", never sent (found in the browser, 2026-10-15).
+    expect(((await overview(tok.finance!)).drafts as R[]).map((d) => d.invoice_number)).not.toContain(s.invoice.number);
+    expect(await request(tok.finance!, s.invoice.number, 1, 'any')).toMatchObject({ ok: false, code: 'VOIDED' });
     const r = await call('select web_reissue_request($1, $2, $3) r', [tok.finance, s.invoice.number, 'Deleted in Xero by mistake; reissue the same invoice']);
     expect(await call('select web_reissue_decide($1, $2, null) r', [tok.admin, r.approval_number])).toMatchObject({ ok: true, generation: 2 });
     const d = await draft(s.invoice.number);

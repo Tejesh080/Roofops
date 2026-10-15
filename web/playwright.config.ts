@@ -27,5 +27,6 @@ export default defineConfig({
     // Opt-in (E2E_PILOT=1), local rehearsal database only: see scripts/pilot-rehearsal.ts.
     { name: 'staff-journey', testMatch: /staff-journey\.spec\.ts/ },
     { name: 'operations', testMatch: /operations\.spec\.ts/ },
+    { name: 'invoice-approval', testMatch: /invoice-approval\.spec\.ts/ },
   ],
 });

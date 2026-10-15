@@ -232,6 +232,9 @@ declare i invoices; g invoice_xero_draft_generations; o outbox; v_ap approvals; 
 begin
   select * into i from invoices where invoice_number = p_invoice_number;
   if i.id is null then return jsonb_build_object('code', 'NOT_FOUND', 'detail', format('no invoice %s', p_invoice_number)); end if;
+  if i.status = 'VOIDED' then
+    return jsonb_build_object('code', 'VOIDED', 'detail', format('%s is voided; a replacement goes through Invoice reissues', i.invoice_number));
+  end if;
   select * into g from invoice_xero_draft_generations where invoice_id = i.id and superseded_at is null;
   if g.generation is distinct from p_generation then
     return jsonb_build_object('code', 'NOT_CURRENT_GENERATION', 'detail', format('the current Xero draft of %s is generation %s', i.invoice_number, coalesce(g.generation::text, 'none')));
@@ -277,6 +280,7 @@ begin
   select * into c from customers where id = i.customer_id;
   select * into r from xero_dispatch_requests where xero_key = o.idempotency_key order by requested_at desc limit 1;
   v_state := case
+    when i.status = 'VOIDED' then 'VOIDED'      -- its Xero document was voided or deleted (verified): never "in Xero"; see reissues
     when o.status = 'DONE' then 'CREATED'
     when i.sync_status = 'UNKNOWN' then 'UNCERTAIN'
     when o.status = 'DISPATCHING' then 'SENDING'
@@ -320,7 +324,8 @@ begin
     'drafts', coalesce((
       select jsonb_agg(x.d order by x.d ->> 'invoice_number')
         from (select xero_draft_progress(i.id) d from invoices i
-               where i.invoice_type = 'FINAL' and exists (select 1 from outbox o where o.topic = 'xero.create_draft_invoice' and o.aggregate_id = i.id)) x
+               where i.invoice_type = 'FINAL' and i.status <> 'VOIDED'   -- a voided final is handled under Invoice reissues
+                 and exists (select 1 from outbox o where o.topic = 'xero.create_draft_invoice' and o.aggregate_id = i.id)) x
        where x.d is not null and (x.d ->> 'state' <> 'CREATED' or exists (select 1 from outbox o where o.idempotency_key = xero_draft_outbox_key(
                (select id from invoices where invoice_number = x.d ->> 'invoice_number'), (x.d ->> 'generation')::int) and o.dispatched_at > now() - interval '2 days'))), '[]'::jsonb));
 end $$;

@@ -178,10 +178,10 @@ test('staff journey: Finance requests, the requester cannot approve, a different
   await expect(inv39).toContainText('Approved, queued');
   await expect(inv39).toContainText('approved by Synthetic Admin Approver');
   // Layout: the status text spans the row; the title is not squeezed into one word per line (found on the preview build).
-  const title = (await inv39.locator('.issue-title').boundingBox())!;
-  const row = (await inv39.boundingBox())!;
-  expect(title.height).toBeLessThan(40);
-  expect(title.width).toBeGreaterThan(row.width * 0.4);
+  // Measured once the streamed page has settled (a box is read instantly; the element may be swapped during streaming).
+  const title = inv39.locator('.issue-title');
+  await expect.poll(async () => (await title.boundingBox())?.height ?? Infinity).toBeLessThan(40);
+  await expect.poll(async () => ((await title.boundingBox())?.width ?? 0) / ((await inv39.boundingBox())?.width ?? Infinity)).toBeGreaterThan(0.4);
 
   // 11. Concurrent requests and concurrent approvals of INV-2026-0040: each happens exactly once.
   const swap40: [string, string][] = [['INV-2026-0039', 'INV-2026-0040']];

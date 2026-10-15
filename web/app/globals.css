@@ -123,7 +123,10 @@ button { font: inherit; color: inherit; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-1); }
 .card-head { display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-bottom: 1px solid var(--border); min-height: 52px; }
 .card-head .icon { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: var(--bg); color: var(--navy); flex: none; }
-.card-head .t-section { flex: 1; min-width: 0; }
+.card-head .t-section { flex: 1 1 auto; min-width: 8rem; }
+/* Narrow screens: a header chip moves to its own line instead of covering the title. */
+.card-head { flex-wrap: wrap; row-gap: 6px; }
+.card-head .chip { max-width: 100%; white-space: normal; height: auto; min-height: 22px; }
 .card-body { padding: 16px 18px 18px; }
 .grid { display: grid; gap: 16px; }
 .g-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }

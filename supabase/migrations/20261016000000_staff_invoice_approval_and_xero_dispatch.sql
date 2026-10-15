@@ -470,3 +470,64 @@ select x.exception_number, e.source, e.event_type, e.occurred_at,
        nullif(coalesce(e.payload -> 'payload' ->> 'quote_id', e.payload -> 'payload' ->> 'project_number'), '') as named_record
   from workflow_exceptions x join automation_events e on e.event_id = x.event_id;
 grant select on v_dashboard_exception_sources to roofops_dashboard;
+
+-- 9. Operations status for staff (Health page): each line is computed now from the authoritative rows, with an explicit
+--    state. Never "ok" without evidence: no reconciliation or health check yet is 'unknown'; an old one is 'stale'.
+--    States: ok, info (work waiting, normal), attention (a person should look), problem (something is stuck), stale, unknown.
+create view v_dashboard_ops_status as
+with
+  rec as (select max(finished_at) at from reconciliation_runs where status = 'COMPLETED'),
+  probe as (select max(checked_at) at from integration_health),
+  ap as (select count(*) n, min(created_at) oldest from approvals where status = 'PENDING' and expires_at > now()),
+  stuck as (select count(*) n, min(locked_until) oldest from outbox where status = 'DISPATCHING' and locked_until < now()),
+  unsure as (select count(*) n, min(updated_at) oldest from invoices where sync_status = 'UNKNOWN'),
+  stopped as (select count(*) n, min(created_at) oldest from outbox where status = 'FAILED' and next_attempt_at = 'infinity'),
+  retrying as (select count(*) n, min(next_attempt_at) oldest from outbox where status = 'FAILED' and next_attempt_at <> 'infinity'),
+  queued as (select count(*) n, min(requested_at) oldest from xero_dispatch_requests where status = 'QUEUED'),
+  exc as (select count(*) n, min(first_failed_at) oldest from workflow_exceptions where resolution_status in ('OPEN', 'RETRY_QUEUED'))
+select 1 as ord, 'reconciliation' as key, 'Last full check of Airtable, Drive and Xero (nightly)' as label,
+       case when rec.at is null then 'unknown' when rec.at < now() - interval '26 hours' then 'stale' else 'ok' end as state,
+       null::bigint as count, rec.at as since,
+       case when rec.at is null then 'No full check has completed yet' when rec.at < now() - interval '26 hours' then 'The nightly check is overdue' else 'Completed on schedule' end as detail
+  from rec
+union all
+select 2, 'health_probe', 'Last automatic health check (every 30 minutes)',
+       case when probe.at is null then 'unknown' when probe.at < now() - interval '45 minutes' then 'stale' else 'ok' end, null, probe.at,
+       case when probe.at is null then 'No health check has run yet' when probe.at < now() - interval '45 minutes' then 'Overdue: the automation engine may be down' else 'Running' end
+  from probe
+union all
+select 3, 'approvals', 'Invoices and reissues waiting for approval',
+       case when ap.n = 0 then 'ok' when ap.oldest < now() - interval '48 hours' then 'attention' else 'info' end, ap.n, ap.oldest,
+       case when ap.n = 0 then 'Nothing waiting' when ap.oldest < now() - interval '48 hours' then 'One has waited more than 2 days' else 'Waiting for a second person' end
+  from ap
+union all
+select 4, 'xero_queue', 'Xero drafts waiting for automation to pick them up',
+       case when queued.n = 0 then 'ok' when queued.oldest < now() - interval '5 minutes' then 'problem' else 'info' end, queued.n, queued.oldest,
+       case when queued.n = 0 then 'Nothing waiting' when queued.oldest < now() - interval '5 minutes' then 'Not picked up for over 5 minutes: the staff dispatch automation (n8n 09) may be off' else 'Normally picked up within a minute' end
+  from queued
+union all
+select 5, 'xero_stuck', 'Xero drafts stuck while being created',
+       case when stuck.n = 0 then 'ok' else 'problem' end, stuck.n, stuck.oldest,
+       case when stuck.n = 0 then 'None' else 'A creation started and never reported back; reconciliation checks Xero' end
+  from stuck
+union all
+select 6, 'xero_uncertain', 'Xero drafts with an unclear outcome',
+       case when unsure.n = 0 then 'ok' else 'problem' end, unsure.n, unsure.oldest,
+       case when unsure.n = 0 then 'None' else 'Xero may or may not have them; they are not sent again until reconciliation answers' end
+  from unsure
+union all
+select 7, 'xero_stopped', 'Xero drafts stopped after repeated failures',
+       case when stopped.n = 0 then 'ok' else 'problem' end, stopped.n, stopped.oldest,
+       case when stopped.n = 0 then 'None' else 'See the issue on Automation' end
+  from stopped
+union all
+select 8, 'xero_retrying', 'Xero drafts that failed and can be sent again',
+       case when retrying.n = 0 then 'ok' else 'attention' end, retrying.n, retrying.oldest,
+       case when retrying.n = 0 then 'None' else 'Finance → Xero drafts shows the reason and when to retry' end
+  from retrying
+union all
+select 9, 'exceptions', 'Issues waiting for a person',
+       case when exc.n = 0 then 'ok' when exc.oldest < now() - interval '7 days' then 'attention' else 'info' end, exc.n, exc.oldest,
+       case when exc.n = 0 then 'None' else 'See Automation' end
+  from exc;
+grant select on v_dashboard_ops_status to roofops_dashboard;

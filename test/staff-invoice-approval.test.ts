@@ -223,3 +223,97 @@ describe.each(TARGETS)('staff invoice approval and Xero dispatch [%s]', (target)
     expect(mine).toMatchObject({ invoice_number: s.invoice.number, generation: 2 });
   });
 });
+
+/**
+ * Operations status (v_dashboard_ops_status), on its own fresh database: every line is driven through the real
+ * functions (staff prepare/approve, the n8n 09 poller, 05's claim and failure report, the reconciler, the health probe);
+ * only timestamps are moved, to make something old. Read with the dashboard role's privileges.
+ */
+describe.each(TARGETS)('operations status [%s]', (target) => {
+  let db: Db;
+  const tok: Record<string, string> = {};
+  const one = async (sql: string, p: unknown[] = []) => (await db.query<R>(sql, p))[0]!;
+  const call = async (sql: string, p: unknown[]) => (await one(sql, p)).r as R;
+  const status = async () => {
+    await db.exec('begin; set local role roofops_dashboard;');
+    // count is bigint: a string on Postgres, a number on PGlite; compare numbers on both.
+    try {
+      return Object.fromEntries((await db.query<R>('select key, state, count from v_dashboard_ops_status'))
+        .map((r) => [String(r.key), { ...r, count: r.count === null ? null : Number(r.count) }]));
+    }
+    finally { await db.exec('rollback'); }
+  };
+  const asWorkflow = async (sql: string, p: unknown[]) => {
+    await db.exec('set role roofops_workflow');
+    try { return await call(sql, p); } finally { await db.exec('reset role'); }
+  };
+
+  beforeAll(async () => {
+    db = await migratedDb(target);
+    await importBundle(db);
+    await db.query(`update app_settings set value = $1 where key = 'xero.demo_tenant_id'`, [TENANT]);
+    await db.query(`insert into employees (employee_code, full_name, email, role, is_active) values
+      ('EMP-801', 'Synthetic Finance Requester', 'f@example.test', 'FINANCE', true), ('EMP-802', 'Synthetic Admin Approver', 'a@example.test', 'ADMIN', true)`);
+    for (const [emp, login] of [['EMP-801', 'finance'], ['EMP-802', 'admin']] as const) {
+      expect(await call('select ops_staff_set_password($1, $2, $3) r', [emp, login, PW])).toMatchObject({ ok: true });
+      tok[login] = String((await call('select web_staff_sign_in($1, $2) r', [login, PW])).token);
+    }
+  }, 180_000);
+  afterAll(async () => { await db.close(); });
+
+  it('with no evidence nothing is "ok": no reconciliation and no health check are unknown; empty queues are facts', async () => {
+    const st = await status();
+    expect(st.reconciliation).toMatchObject({ state: 'unknown' });
+    expect(st.health_probe).toMatchObject({ state: 'unknown' });
+    for (const k of ['approvals', 'xero_queue', 'xero_stuck', 'xero_uncertain', 'xero_stopped', 'xero_retrying']) expect(st[k], k).toMatchObject({ state: 'ok', count: 0 });
+    expect(Object.keys(st).sort()).toEqual(['approvals', 'exceptions', 'health_probe', 'reconciliation', 'xero_queue', 'xero_retrying', 'xero_stopped', 'xero_stuck', 'xero_uncertain']);
+  });
+
+  it('a recent reconciliation and health check are ok; old ones are stale (never ok)', async () => {
+    const run = await call(`select wf_reconcile_start('schedule', 'observe') r`, []);
+    expect(run, JSON.stringify(run)).toMatchObject({ started: true });
+    await db.query(`select wf_reconcile_finish($1, '{}'::jsonb, '[]'::jsonb)`, [run.run_key]);
+    await asWorkflow(`select wf_record_health($1::jsonb) r`, [JSON.stringify([{ service: 'n8n', ok: true, detail: { check: 'test' } }])]);
+    let st = await status();
+    expect(st.reconciliation).toMatchObject({ state: 'ok' });
+    expect(st.health_probe).toMatchObject({ state: 'ok' });
+    await db.query(`update reconciliation_runs set finished_at = finished_at - interval '30 hours', started_at = started_at - interval '30 hours'`);
+    await db.query(`update integration_health set checked_at = checked_at - interval '1 hour'`);
+    st = await status();
+    expect(st.reconciliation).toMatchObject({ state: 'stale' });
+    expect(st.health_probe).toMatchObject({ state: 'stale' });
+  });
+
+  it('approvals: one waiting is info, one waiting more than 2 days needs attention', async () => {
+    const p = await call('select web_invoice_prepare($1, $2) r', [tok.finance, 'PRJ-2026-0004']);
+    expect(p).toMatchObject({ ok: true, outcome: 'PREVIEW_READY' });
+    expect((await status()).approvals).toMatchObject({ state: 'info', count: 1 });
+    await db.query(`update approvals set created_at = created_at - interval '3 days' where approval_number = $1`, [p.approval_number]);
+    expect((await status()).approvals).toMatchObject({ state: 'attention', count: 1 });
+  });
+
+  it('the staff dispatch queue: a fresh request is info, one nobody picked up for 5 minutes is a problem, a picked-up one clears', async () => {
+    const p = (await one(`select approval_number, payload_hash from approvals where business_reference = 'PRJ-2026-0004' and status = 'PENDING'`)) as { approval_number: string; payload_hash: string };
+    const d = await call('select web_invoice_decide($1, $2, $3, $4, null) r', [tok.admin, p.approval_number, p.payload_hash, 'approve']);
+    expect(d).toMatchObject({ ok: true, outcome: 'APPROVED' });
+    const st = await status();
+    expect(st.approvals).toMatchObject({ state: 'ok', count: 0 });
+    expect(st.xero_queue).toMatchObject({ state: 'info', count: 1 });
+    await db.query(`update xero_dispatch_requests set requested_at = requested_at - interval '10 minutes' where xero_key = $1`, [d.xero_key]);
+    expect((await status()).xero_queue).toMatchObject({ state: 'problem', count: 1 });
+    expect(((await asWorkflow(`select wf_xero_dispatch_next('n8n:09:test') r`, [])).writes as R[])[0]).toMatchObject({ xero_key: d.xero_key });
+    expect((await status()).xero_queue).toMatchObject({ state: 'ok', count: 0 });
+  });
+
+  it('a creation that never reported back is stuck; an ambiguous one is uncertain; both are problems', async () => {
+    const key = String((await one(`select xero_key from xero_dispatch_requests order by requested_at desc limit 1`)).xero_key);
+    expect(await asWorkflow(`select wf_claim_side_effect($1, 'n8n:05', 120) r`, [key])).toMatchObject({ claimed: true });
+    await db.query(`update outbox set locked_until = now() - interval '1 minute' where idempotency_key = $1`, [key]);
+    expect((await status()).xero_stuck).toMatchObject({ state: 'problem', count: 1 });
+    await db.query(`update outbox set locked_until = now() + interval '2 minutes' where idempotency_key = $1`, [key]);
+    expect(await asWorkflow(`select wf_fail_side_effect($1, $2, $3, $4, 0) r`, [key, 'TIMEOUT', 'create draft invoice: ETIMEDOUT after 20s', null])).toMatchObject({ retry: true });
+    const st = await status();
+    expect(st.xero_stuck).toMatchObject({ state: 'ok', count: 0 });
+    expect(st.xero_uncertain).toMatchObject({ state: 'problem', count: 1 });
+  });
+});

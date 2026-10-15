@@ -3,7 +3,7 @@ import { Activity, Database, GitCompare, ListChecks, Radio, ShieldCheck } from '
 import { query } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
 import {
-  getBacklog, getChannelActivity, getConsistency, getDrift, getIntegrity, getLatestFindings, getLatestReconciliation, getServiceChecks,
+  getBacklog, getChannelActivity, getConsistency, getDrift, getIntegrity, getLatestFindings, getLatestReconciliation, getOpsStatus, getServiceChecks, type OpsStatus,
 } from '@/lib/queries';
 import { HEALTH_TONE, SERVICES, consistencyLine, overallState, serviceState, type HealthState } from '@/lib/health';
 import { Badge } from '@/components/ui/Badge';
@@ -13,6 +13,12 @@ export const dynamic = 'force-dynamic';
 export const metadata = { title: 'System health · RoofOps' };
 
 const S = (s: HealthState) => <Badge l={{ text: s, tone: HEALTH_TONE[s] }} />;
+/** Operations lines: plain words, and what each means for the overall state (no evidence is never healthy). */
+const OPS: Record<OpsStatus['state'], { text: string; tone: 'good' | 'info' | 'warn' | 'bad' | 'neutral'; overall: HealthState }> = {
+  ok: { text: 'OK', tone: 'good', overall: 'Healthy' }, info: { text: 'Waiting', tone: 'info', overall: 'Healthy' },
+  attention: { text: 'Look at', tone: 'warn', overall: 'Degraded' }, stale: { text: 'Overdue', tone: 'warn', overall: 'Degraded' },
+  problem: { text: 'Stuck', tone: 'bad', overall: 'Needs attention' }, unknown: { text: 'No data', tone: 'neutral', overall: 'Unknown' },
+};
 const SYSTEM_NAME: Record<string, string> = { AIRTABLE: 'Airtable ↔ RoofOps', GOOGLE_DRIVE: 'Google Drive ↔ RoofOps', XERO: 'Xero ↔ RoofOps' };
 const CLASS_TEXT: Record<string, string> = {
   SAFE_AUTO_REPAIR: 'Repaired automatically', REQUIRES_HUMAN: 'Needs a person', EXTERNAL_MISSING: 'Missing in the other system',
@@ -25,15 +31,15 @@ const ACTION_TEXT: Record<string, string> = {
 
 export default async function HealthPage() {
   await requireSession();
-  const [checks, cons, drift, run, findings, activity, integrity, backlog] = await Promise.all([
+  const [checks, cons, drift, run, findings, activity, integrity, backlog, ops] = await Promise.all([
     getServiceChecks(query), getConsistency(query), getDrift(query), getLatestReconciliation(query), getLatestFindings(query),
-    getChannelActivity(query), getIntegrity(query), getBacklog(query)]);
+    getChannelActivity(query), getIntegrity(query), getBacklog(query), getOpsStatus(query)]);
   const services = SERVICES.map((d) => ({ d, c: checks.find((x) => x.service === d.service) })).map((x) => ({ ...x, state: serviceState(x.c, x.d) }));
   const consistency = cons.map((c) => ({ c, ...consistencyLine(c) }));
   const fails = integrity.filter((i) => i.status === 'FAIL');
   const warns = integrity.filter((i) => i.status === 'WARNING');
   const integrityState: HealthState = fails.length ? 'Needs attention' : warns.length ? 'Degraded' : 'Healthy';
-  const overall = overallState([...services.map((s) => s.state), ...consistency.map((c) => c.state), integrityState]);
+  const overall = overallState([...services.map((s) => s.state), ...consistency.map((c) => c.state), integrityState, ...(ops?.rows ?? []).map((r) => OPS[r.state].overall)]);
   const lastAirtable = activity.find((a) => a.channel === 'airtable');
 
   return (
@@ -47,6 +53,24 @@ export default async function HealthPage() {
       </header>
 
       <div className="stack">
+        {ops && (
+          <section className="card" aria-label="Operations status">
+            <CardHead icon={Activity} title="Operations"><span className="chip">Read live from RoofOps at {new Date(ops.read_at).toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: '2-digit', minute: '2-digit' })}</span></CardHead>
+            <div className="card-body">
+              <ul className="rows">
+                {ops.rows.map((r) => (
+                  <li key={r.key} data-ops={r.key}>
+                    <div style={{ minWidth: 0 }}>
+                      <div className="strong">{r.label}</div>
+                      <div className="row-sub">{r.detail}{r.since ? ` · ${r.count !== null ? 'oldest' : 'last'} ${r.since}` : ''}</div>
+                    </div>
+                    <div className="row-right">{r.count !== null && r.count > 0 && <span className="strong num">{r.count}</span>}<Badge l={{ text: OPS[r.state].text, tone: OPS[r.state].tone }} /></div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </section>
+        )}
         <section className="card">
           <CardHead icon={Radio} title="Services" />
           <div className="card-body">

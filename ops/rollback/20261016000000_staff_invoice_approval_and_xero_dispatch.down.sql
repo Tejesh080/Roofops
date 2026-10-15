@@ -13,6 +13,7 @@ drop function if exists xero_draft_progress(uuid);
 drop function if exists xero_dispatch_problem(text, int, text);
 drop function if exists xero_dispatch_settle_claims();
 drop function if exists xero_payload_sha256(jsonb);
+drop view if exists v_dashboard_ops_status;
 drop view if exists v_dashboard_exception_sources;
 drop table if exists xero_dispatch_requests;
 drop function wf_invoice_decide_core(jsonb, text, uuid);

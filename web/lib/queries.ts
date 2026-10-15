@@ -139,6 +139,19 @@ export const getTimeline = (q: Query, p: string, limit = 60) =>
 export interface ExceptionRow { exception_number: string; project_number: string | null; business_reference: string | null; workflow_key: string | null;
   error_class: string; error_message: string; retryable: boolean; attempt_count: number; resolution_status: string;
   first_failed_at: string; last_attempt_at: string | null; resolution_note: string | null }
+/** One line of the operations status (v_dashboard_ops_status), computed now from the authoritative rows. */
+export interface OpsStatus { key: string; label: string; state: 'ok' | 'info' | 'attention' | 'problem' | 'stale' | 'unknown'; count: number | null; since: string | null; detail: string }
+/** null where the view is not installed yet (the Health page then shows the service checks only). */
+export async function getOpsStatus(q: Query): Promise<{ rows: OpsStatus[]; read_at: string } | null> {
+  try {
+    const rows = await q<OpsStatus>(`select key, label, state, count::int, to_char(since at time zone 'Australia/Brisbane', 'YYYY-MM-DD HH24:MI') since, detail
+                                     from v_dashboard_ops_status order by ord`);
+    return { rows, read_at: new Date().toISOString() };
+  } catch (e) {
+    if ((e as { code?: string }).code === '42P01') return null;
+    throw e;
+  }
+}
 /** Where an exception came from (v_dashboard_exception_sources; no payload). Empty where that view is not installed yet. */
 export interface ExceptionSource { exception_number: string; source: string | null; event_type: string | null; airtable_record_id: string | null; named_record: string | null }
 export async function getExceptionSources(q: Query, numbers: string[]): Promise<Record<string, ExceptionSource>> {

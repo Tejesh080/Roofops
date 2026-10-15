@@ -26,5 +26,6 @@ export default defineConfig({
     { name: 'state-sync', testMatch: /state-sync\.spec\.ts/, dependencies: ['setup'], use: { storageState: 'e2e/.auth/state.json' } },
     // Opt-in (E2E_PILOT=1), local rehearsal database only: see scripts/pilot-rehearsal.ts.
     { name: 'staff-journey', testMatch: /staff-journey\.spec\.ts/ },
+    { name: 'operations', testMatch: /operations\.spec\.ts/ },
   ],
 });

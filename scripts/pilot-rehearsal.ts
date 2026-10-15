@@ -18,7 +18,8 @@
  */
 import { execFileSync, execSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { parseEnv } from 'node:util';
 import { openPostgres } from '../src/db/db.js';
 import { deletedReissueScenario, voidedReissueScenario } from '../test/helpers/reissue-scenario.js';
 
@@ -27,7 +28,9 @@ const DB = 'roofops_pilot';
 const ADMIN_URL = `postgresql://postgres:postgres@${HOST}/${DB}`;
 const ENV_FILE = 'web/e2e/.auth/pilot.env';
 const WEB_ROLE = 'roofops_web_pilot';
-const secret = (bytes: number) => randomBytes(bytes).toString('base64url');
+// A rebuild keeps the previous local test secrets (so a running rehearsal server stays signed in); a first run makes new ones.
+const previous = existsSync('web/e2e/.auth/pilot.env') ? parseEnv(readFileSync('web/e2e/.auth/pilot.env', 'utf8')) : {};
+const secret = (bytes: number, keep?: string) => keep ?? randomBytes(bytes).toString('base64url');
 
 if (!process.argv.includes('--reset')) throw new Error('usage: npx tsx scripts/pilot-rehearsal.ts --reset (drops and rebuilds the LOCAL roofops_pilot database)');
 
@@ -59,20 +62,20 @@ const env: string[] = [
 ];
 for (const s of staff) {
   console.log(npm(`staff:add-employee -- ${s.code} --name "${s.name}" --email ${s.login}@example.test --role ${s.role} --local`).split('\n').pop());
-  const password = secret(18);
+  const password = secret(18, previous[`PILOT_${s.key}_PASSWORD`]);
   console.log(npm(`staff:set-password -- ${s.code} --login ${s.login} --local`, { STAFF_PASSWORD: password }).split('\n').pop());
   env.push(`PILOT_${s.key}_LOGIN=${s.login}`, `PILOT_${s.key}_PASSWORD=${password}`);
 }
 
-const webPassword = secret(24);
+const webPassword = secret(24, previous.DASHBOARD_DATABASE_URL ? decodeURIComponent(new URL(previous.DASHBOARD_DATABASE_URL).password) : undefined);
 const exists = psql(`select 1 from pg_roles where rolname = '${WEB_ROLE}'`);
 psql(`${exists ? 'alter' : 'create'} role ${WEB_ROLE} with login password '${webPassword}' connection limit 10`);
 if (!exists) psql(`grant roofops_dashboard to ${WEB_ROLE}; alter role ${WEB_ROLE} set search_path = public`);
 
-const demoPassword = secret(18);
+const demoPassword = secret(18, previous.DEMO_PASSWORD);
 env.push(
   `DASHBOARD_DATABASE_URL=postgresql://${WEB_ROLE}:${webPassword}@${HOST}/${DB}`,
-  `AUTH_SECRET=${secret(48)}`,
+  `AUTH_SECRET=${secret(48, previous.AUTH_SECRET)}`,
   'DEMO_USERNAME=pilot-demo-viewer',
   `DEMO_PASSWORD=${demoPassword}`,
   `PILOT_DEMO_LOGIN=pilot-demo-viewer`,

@@ -5,11 +5,13 @@
  * database, so the figures a person approves never come from model-generated text.
  */
 import { TOOLS, toolSchemas, type ToolCard, type ToolContext } from './tools.ts';
+import { answerWithoutAi, type Unavailable } from './fallback.ts';
 import type { Query } from '../queries.ts';
 
 export interface ChatTurn { role: 'user' | 'assistant'; content: string }
 export interface ToolStep { tool: string; tier: string; args: Record<string, unknown>; ok: boolean }
-export interface CopilotReply { reply: string; steps: ToolStep[]; cards: ToolCard[]; model: string }
+/** fallback: set when the AI provider was unavailable and the answer came straight from RoofOps data (fallback.ts). */
+export interface CopilotReply { reply: string; steps: ToolStep[]; cards: ToolCard[]; model: string; fallback?: Unavailable }
 
 interface Msg { role: 'system' | 'user' | 'assistant' | 'tool'; content: string | null; tool_calls?: ToolCall[]; tool_call_id?: string }
 interface ToolCall { id: string; type: 'function'; function: { name: string; arguments: string } }
@@ -43,37 +45,82 @@ function systemPrompt(today: string): string {
   ].join('\n');
 }
 
-async function chat(messages: Msg[]): Promise<{ message: Msg; model: string }> {
-  const key = process.env.DEEPSEEK_API_KEY;
-  const base = process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com';
-  const model = process.env.DEEPSEEK_MODEL ?? 'deepseek-flash';
-  if (!key) throw new Error('The copilot is not configured (DEEPSEEK_API_KEY missing on the server).');
-  const res = await fetch(`${base}/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-    body: JSON.stringify({ model, messages, tools: toolSchemas(), tool_choice: 'auto', temperature: 0, max_tokens: 900 }),
-    signal: AbortSignal.timeout(60_000),
-  });
-  if (!res.ok) throw new Error(`DeepSeek answered HTTP ${res.status}`);
-  const body = (await res.json()) as { choices?: { message: Msg }[]; model?: string };
-  const message = body.choices?.[0]?.message;
-  if (!message) throw new Error('DeepSeek returned no answer');
-  return { message, model: body.model ?? model };
+/** The provider could not give an answer; `reason` picks the plain-words explanation shown with the data-only answer. */
+export class ProviderUnavailable extends Error {
+  constructor(readonly reason: Unavailable, message: string) { super(message); }
 }
 
-export async function runCopilot(query: Query, history: ChatTurn[], requestId: string, actor?: string): Promise<CopilotReply> {
+/** Transient provider answers worth retrying; anything else (400, 401, 403, 404 …) fails at once. */
+const RETRYABLE = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
+/** Bounded: 3 attempts, each at most 25 s, all within 45 s, so a busy provider never hangs the request. */
+export const RETRY = { attempts: 3, attemptMs: 25_000, deadlineMs: 45_000, backoffMs: [800, 2_000], maxRetryAfterMs: 4_000 };
+
+export interface ChatDeps { fetch: typeof fetch; sleep: (ms: number) => Promise<void>; now: () => number; env: Record<string, string | undefined> }
+const realDeps = (): ChatDeps => ({ fetch, sleep: (ms) => new Promise((r) => setTimeout(r, ms)), now: Date.now, env: process.env });
+
+export async function chat(messages: Msg[], deps: ChatDeps = realDeps()): Promise<{ message: Msg; model: string }> {
+  const key = deps.env.DEEPSEEK_API_KEY;
+  const base = deps.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com';
+  const model = deps.env.DEEPSEEK_MODEL ?? 'deepseek-flash';
+  if (!key) throw new ProviderUnavailable('not_configured', 'DEEPSEEK_API_KEY is not set on the server');
+  const start = deps.now();
+  let last: ProviderUnavailable = new ProviderUnavailable('busy', 'no attempt made');
+  for (let attempt = 1; attempt <= RETRY.attempts; attempt++) {
+    const left = RETRY.deadlineMs - (deps.now() - start);
+    if (left < 1_000) break;
+    let wait = RETRY.backoffMs[attempt - 1] ?? 2_000;
+    let res: Response | null = null;
+    try {
+      res = await deps.fetch(`${base}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+        body: JSON.stringify({ model, messages, tools: toolSchemas(), tool_choice: 'auto', temperature: 0, max_tokens: 900 }),
+        signal: AbortSignal.timeout(Math.min(RETRY.attemptMs, left)),
+      });
+    } catch (e) {
+      const name = (e as Error).name;
+      last = new ProviderUnavailable(name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'busy', `DeepSeek request failed: ${(e as Error).message}`);
+    }
+    if (res?.ok) {
+      const body = (await res.json().catch(() => null)) as { choices?: { message: Msg }[]; model?: string } | null;
+      const message = body?.choices?.[0]?.message;
+      if (!message) throw new ProviderUnavailable('bad_answer', 'DeepSeek returned no answer');
+      return { message, model: body?.model ?? model };
+    }
+    if (res) {
+      last = new ProviderUnavailable('busy', `DeepSeek answered HTTP ${res.status}`);
+      if (!RETRYABLE.has(res.status)) throw last;
+      const after = Number(res.headers.get('retry-after'));
+      if (Number.isFinite(after) && after > 0) wait = Math.min(after * 1000, RETRY.maxRetryAfterMs);
+    }
+    if (attempt < RETRY.attempts && RETRY.deadlineMs - (deps.now() - start) > wait + 1_000) await deps.sleep(wait);
+    else break;
+  }
+  throw last;
+}
+
+export async function runCopilot(query: Query, history: ChatTurn[], requestId: string, actor?: string, deps?: ChatDeps): Promise<CopilotReply> {
   const turns = history.filter((t) => (t.role === 'user' || t.role === 'assistant') && typeof t.content === 'string').slice(-10)
     .map((t) => ({ role: t.role, content: t.content.slice(0, 2000) }));
   const lastUser = [...turns].reverse().find((t) => t.role === 'user')?.content ?? '';
   const [{ today } = { today: '' }] = await query<{ today: string }>('select as_of::text as today from v_dashboard_kpis');
   const messages: Msg[] = [{ role: 'system', content: systemPrompt(today) }, ...turns];
-  const ctx: ToolContext = { query, requestId, lastUserMessage: lastUser, actor };
+  const ctx: ToolContext = { query, requestId, lastUserMessage: lastUser, ...(actor ? { actor } : {}) };
   const steps: ToolStep[] = [];
   const cards: ToolCard[] = [];
   let model = '';
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
-    const { message, model: m } = await chat(messages);
+    let answer: Awaited<ReturnType<typeof chat>>;
+    try {
+      answer = await chat(messages, deps);
+    } catch (e) {
+      if (!(e instanceof ProviderUnavailable)) throw e;
+      // The assistant is down: answer from RoofOps data instead (read-only), keeping anything already prepared.
+      console.error(`copilot provider unavailable (${e.reason}): ${e.message}`);
+      return answerWithoutAi(lastUser, ctx, e.reason, { steps, cards });
+    }
+    const { message, model: m } = answer;
     model = m;
     const calls = message.tool_calls ?? [];
     if (!calls.length) return { reply: (message.content ?? '').trim(), steps, cards, model };

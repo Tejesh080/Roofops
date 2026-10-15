@@ -35,7 +35,7 @@ interface ToolDef {
 const projectArg = { type: 'object', properties: { project_number: { type: 'string', description: 'Project number, e.g. PRJ-2026-0004' } },
                      required: ['project_number'], additionalProperties: false };
 
-function normaliseProject(v: unknown): string {
+export function normaliseProject(v: unknown): string {
   const s = String(v ?? '').trim().toUpperCase();
   const m = /^(?:PRJ-?)?(\d{4})-?(\d{1,4})$/.exec(s) ?? /^(?:PRJ-?)?(\d{1,4})$/.exec(s);
   if (!m) return s;

@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import { SESSION_COOKIE, SESSION_TTL_SECONDS, signSession, verifySession } from '@/lib/session';
 import { authConfigured, demoLoginConfigured } from '@/lib/auth';
 import { clientAddress } from '@/lib/client-address';
+import { notInstalled } from '@/lib/reissue';
 import { query } from '@/lib/db';
 
 // Simple per-instance throttle: 5 failures per 10 minutes per client address, plus a fixed delay on failure.
@@ -18,15 +19,20 @@ const same = (a: string, b: string) => timingSafeEqual(digest(a), digest(b));
 
 export interface LoginState { error?: string; username?: string }
 
-type StaffSignIn = { ok: true; token: string; employee_code: string; name: string; role: string } | { ok: false; reason: string };
+type StaffSignIn = { ok: true; token: string; employee_code: string; name: string; role: string } | { ok: false; reason: string } | { ok: false; unavailable: true };
 
-/** A person's own login, checked by the database (bcrypt in Postgres). null when staff sign-in is not available here. */
+/**
+ * A person's own login, checked by the database (bcrypt in Postgres). null when staff sign-in is not installed here
+ * (42883); unavailable when the database did not answer, so an outage is never reported as a wrong password.
+ */
 async function staffSignIn(login: string, password: string): Promise<StaffSignIn | null> {
   try {
     const [row] = await query<{ r: StaffSignIn }>('select web_staff_sign_in($1, $2) r', [login, password]);
     return row?.r ?? null;
-  } catch {
-    return null;
+  } catch (e) {
+    if (notInstalled(e)) return null;
+    console.error('sign-in: the database did not answer', (e as Error).message);
+    return { ok: false, unavailable: true };
   }
 }
 
@@ -51,7 +57,10 @@ export async function login(_prev: LoginState, form: FormData): Promise<LoginSta
   if (!session) {
     const staff = await staffSignIn(username, password);
     if (staff?.ok) session = await signSession(staff.name, { t: staff.token, e: staff.employee_code, r: staff.role });
-    else if (staff && !staff.ok) refusal = staff.reason;
+    else if (staff && 'unavailable' in staff) {
+      // Not a failed attempt: nothing was checked. Say so plainly and do not count it towards the throttle.
+      return { error: 'Sign-in is unavailable right now: the RoofOps database did not answer, so your password was not checked. Try again in a minute.', username };
+    } else if (staff && !staff.ok) refusal = staff.reason;
   }
   if (!session) {
     const cur = f && f.until > Date.now() ? f : { n: 0, until: Date.now() + WINDOW_MS };

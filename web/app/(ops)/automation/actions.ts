@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { SESSION_COOKIE, verifySession } from '@/lib/session';
 import { query } from '@/lib/db';
+import { notInstalled } from '@/lib/reissue';
 
 export interface ResolveState { ok?: boolean; message?: string }
 
@@ -23,8 +24,12 @@ export async function resolveException(_prev: ResolveState, form: FormData): Pro
       'select web_resolve_exception($1, $2, $3) r', [s.t, exception, note]);
     const r = row!.r;
     if (!r.resolved) return { message: r.reason ?? 'Not resolved.' };
-  } catch {
-    return { message: 'Resolving from the dashboard is not available on this server yet.' };
+  } catch (e) {
+    if (notInstalled(e)) return { message: 'Resolving from the dashboard is not available on this server yet.' };
+    // The database may or may not have saved it: re-read and say so (a repeat is refused, never applied twice).
+    console.error('resolve: no answer from the database', (e as Error).message);
+    revalidatePath('/', 'layout');
+    return { message: 'Could not confirm the result: the RoofOps database did not answer. Reload the page and check whether it moved to Resolved before trying again.' };
   }
   revalidatePath('/', 'layout');
   return { ok: true, message: `${exception} resolved by you. It moves to Resolved with your note.` };

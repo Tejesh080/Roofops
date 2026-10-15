@@ -7,17 +7,20 @@
 -- Now, for a signed-in employee (the session token is checked here, never a claimed code):
 --  * web_invoice_prepare: the existing preview (wf_invoice_prepare, unchanged), recording that employee as requester.
 --  * web_invoice_decide: approve or reject that exact preview (its payload hash), by an approver role, never the
---    requester; it runs the existing decision core, unchanged except that it may be given the proven employee instead
---    of an Airtable identity (p_employee; only this function passes it, no app role can call the core).
+--    requester; it runs the existing decision core with two changes only: it may be given the proven employee instead
+--    of an Airtable identity (p_employee; only this function passes it, no app role can call the core), and a preview
+--    a named employee prepared in the dashboard cannot be approved through the shared Airtable account.
 --  * web_xero_dispatch_request: ask for one queued Xero draft write (exact invoice number + generation + the payload
---    the person saw) to be sent. An approval in the dashboard queues its own request. Nothing calls Xero here: the new
+--    the person saw) to be sent. An approval in the dashboard queues its own request, as an Airtable approval runs 05 at
+--    once: the approver's role (invoice.approver_roles) authorises that first send; xero.dispatch_roles governs sending
+--    again (retries, reissue replacements). Nothing calls Xero here: the new
 --    n8n poller (09) takes requests with wf_xero_dispatch_next and runs the unchanged 05, whose claim re-proves the
 --    write. No secret is ever needed by the browser or the web server.
 --  * web_invoice_overview: what the Finance page shows (pending previews with their figures, writes and progress).
 -- Fail closed: an uncertain write (invoice UNKNOWN), a dead letter, a write in progress or not yet due, a changed
 -- payload, a superseded generation or an unproven reissue is never requested or handed to n8n.
 
--- 1. The decision core may be given a proven employee (identical body otherwise; see the migration notes).
+-- 1. The decision core: the two changes above; otherwise identical to 20261001190000.
 drop function wf_invoice_decide_core(jsonb, text);
 create function wf_invoice_decide_core(p_event jsonb, p_worker text default 'n8n', p_employee uuid default null)
 returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
@@ -85,6 +88,11 @@ begin
     v_class := 'PERMISSION_DENIED';
     v_msg := case when p_employee is not null then format('%s is not an authorised invoice approver (%s)', p_event ->> 'actor_id', coalesce(v_emp.role, 'not active'))
              else format('Airtable user %s is not an authorised invoice approver (%s)', p_event ->> 'actor_id', coalesce(v_emp.role, 'not mapped to an employee')) end;
+  elsif p_employee is null and v_type = 'invoice.approved' and v_ap.idempotency_key like 'approval:dashboard:prepare:%' then
+    -- A preview a named employee prepared in the dashboard is approved there, by a different named person; never through
+    -- the shared Airtable account, which would let its own requester approve it (review finding, 2026-10-15).
+    v_class := 'PERMISSION_DENIED';
+    v_msg := format('%s was prepared in the RoofOps dashboard by a named person, so a different person approves it there (Finance → Invoice approvals). The shared Airtable account cannot approve it', v_ap.approval_number);
   elsif v_ap.status <> 'PENDING' then
     v_class := 'INVALID_STATE'; v_msg := format('%s is %s; only a PENDING preview can be decided', v_ap.approval_number, v_ap.status);
   elsif v_ap.expires_at <= now() then
@@ -245,6 +253,9 @@ begin
   if i.sync_status = 'UNKNOWN' then
     return jsonb_build_object('code', 'UNCERTAIN', 'detail', 'Xero may already have created it; the next reconciliation checks Xero and records the answer. Do not send it again');
   end if;
+  if o.status = 'DISPATCHING' and o.locked_until < now() then
+    return jsonb_build_object('code', 'STUCK', 'detail', 'its creation started and never reported back, so Xero may have it; reconciliation checks Xero. Do not send it again');
+  end if;
   if o.status = 'DISPATCHING' then return jsonb_build_object('code', 'IN_PROGRESS', 'detail', 'it is being created in Xero right now'); end if;
   if o.status = 'FAILED' and o.next_attempt_at = 'infinity' then
     return jsonb_build_object('code', 'STOPPED', 'detail', 'it stopped after repeated failures; see the open issue on Automation');
@@ -283,6 +294,7 @@ begin
     when i.status = 'VOIDED' then 'VOIDED'      -- its Xero document was voided or deleted (verified): never "in Xero"; see reissues
     when o.status = 'DONE' then 'CREATED'
     when i.sync_status = 'UNKNOWN' then 'UNCERTAIN'
+    when o.status = 'DISPATCHING' and o.locked_until < now() then 'STUCK'   -- 05 never reported back: not "being created now"
     when o.status = 'DISPATCHING' then 'SENDING'
     when o.status = 'FAILED' and o.next_attempt_at = 'infinity' then 'STOPPED'
     when r.status = 'QUEUED' then 'QUEUED'
@@ -443,8 +455,14 @@ begin
     if r.id is null then exit; end if;
     select * into i from invoices where id = r.invoice_id;
     v_problem := xero_dispatch_problem(i.invoice_number, r.generation, r.payload_sha256);
+    if v_problem is null and not exists (select 1 from employees e where e.id = r.requested_by and e.is_active) then
+      v_problem := jsonb_build_object('code', 'REQUESTER_INACTIVE', 'detail', 'the person who asked is no longer an active employee; ask again');
+    end if;
     if v_problem is not null then
       update xero_dispatch_requests set status = 'REFUSED', closed_reason = v_problem ->> 'detail' where id = r.id;
+      insert into audit_events (actor_type, actor_id, action, entity_type, entity_id, business_reference, after_state, reason)
+      values ('SYSTEM', p_worker, 'xero.dispatch_refused', 'invoice', i.id, i.invoice_number,
+              jsonb_build_object('generation', r.generation, 'code', v_problem ->> 'code'), v_problem ->> 'detail');
       v_refused := v_refused || jsonb_build_array(jsonb_build_object('invoice_number', i.invoice_number, 'code', v_problem ->> 'code'));
       r := null;
       continue;
@@ -472,7 +490,7 @@ grant execute on function wf_xero_dispatch_next(text) to roofops_workflow;
 create view v_dashboard_exception_sources as
 select x.exception_number, e.source, e.event_type, e.occurred_at,
        nullif(coalesce(e.payload -> 'payload' ->> 'airtable_record_id', e.payload ->> 'airtable_record_id'), '') as airtable_record_id,
-       nullif(coalesce(e.payload -> 'payload' ->> 'quote_id', e.payload -> 'payload' ->> 'project_number'), '') as named_record
+       left(nullif(coalesce(e.payload -> 'payload' ->> 'quote_id', e.payload -> 'payload' ->> 'project_number'), ''), 40) as named_record   -- an editable cell: shown as text, capped
   from workflow_exceptions x join automation_events e on e.event_id = x.event_id;
 grant select on v_dashboard_exception_sources to roofops_dashboard;
 
@@ -481,14 +499,22 @@ grant select on v_dashboard_exception_sources to roofops_dashboard;
 --    States: ok, info (work waiting, normal), attention (a person should look), problem (something is stuck), stale, unknown.
 create view v_dashboard_ops_status as
 with
+  -- Xero draft writes that matter now: each invoice's current generation only (a superseded generation is history).
+  xw as (select o.* from outbox o
+          where o.topic = 'xero.create_draft_invoice'
+            and o.generation = (select max(x.generation) from outbox x where x.topic = o.topic and x.aggregate_id = o.aggregate_id)),
   rec as (select max(finished_at) at from reconciliation_runs where status = 'COMPLETED'),
   probe as (select max(checked_at) at from integration_health),
   ap as (select count(*) n, min(created_at) oldest from approvals where status = 'PENDING' and expires_at > now()),
-  stuck as (select count(*) n, min(locked_until) oldest from outbox where status = 'DISPATCHING' and locked_until < now()),
-  unsure as (select count(*) n, min(updated_at) oldest from invoices where sync_status = 'UNKNOWN'),
-  stopped as (select count(*) n, min(created_at) oldest from outbox where status = 'FAILED' and next_attempt_at = 'infinity'),
-  retrying as (select count(*) n, min(next_attempt_at) oldest from outbox where status = 'FAILED' and next_attempt_at <> 'infinity'),
   queued as (select count(*) n, min(requested_at) oldest from xero_dispatch_requests where status = 'QUEUED'),
+  last_claim as (select max(claimed_at) at from xero_dispatch_requests),
+  unsent as (select count(*) n, min(xw.created_at) oldest from xw join invoices i on i.id = xw.aggregate_id
+              where xw.status = 'PENDING' and i.status <> 'VOIDED' and i.sync_status <> 'UNKNOWN' and xw.created_at < now() - interval '10 minutes'
+                and not exists (select 1 from xero_dispatch_requests r where r.xero_key = xw.idempotency_key and r.status in ('QUEUED', 'CLAIMED'))),
+  stuck as (select count(*) n, min(locked_until) oldest from xw where status = 'DISPATCHING' and locked_until < now()),
+  unsure as (select count(*) n, min(updated_at) oldest from invoices where sync_status = 'UNKNOWN'),
+  stopped as (select count(*) n, min(created_at) oldest from xw where status = 'FAILED' and next_attempt_at = 'infinity'),
+  retrying as (select count(*) n, min(next_attempt_at) oldest from xw where status = 'FAILED' and next_attempt_at <> 'infinity'),
   exc as (select count(*) n, min(first_failed_at) oldest from workflow_exceptions where resolution_status in ('OPEN', 'RETRY_QUEUED'))
 select 1 as ord, 'reconciliation' as key, 'Last full check of Airtable, Drive and Xero (nightly)' as label,
        case when rec.at is null then 'unknown' when rec.at < now() - interval '26 hours' then 'stale' else 'ok' end as state,
@@ -506,32 +532,44 @@ select 3, 'approvals', 'Invoices and reissues waiting for approval',
        case when ap.n = 0 then 'Nothing waiting' when ap.oldest < now() - interval '48 hours' then 'One has waited more than 2 days' else 'Waiting for a second person' end
   from ap
 union all
+-- A problem only when requests wait AND nothing has been picked up recently (the poller sends one a minute; a backlog
+-- that is moving is not an outage).
 select 4, 'xero_queue', 'Xero drafts waiting for automation to pick them up',
-       case when queued.n = 0 then 'ok' when queued.oldest < now() - interval '5 minutes' then 'problem' else 'info' end, queued.n, queued.oldest,
-       case when queued.n = 0 then 'Nothing waiting' when queued.oldest < now() - interval '5 minutes' then 'Not picked up for over 5 minutes: the staff dispatch automation (n8n 09) may be off' else 'Normally picked up within a minute' end
-  from queued
+       case when queued.n = 0 then 'ok'
+            when queued.oldest < now() - interval '5 minutes' and (last_claim.at is null or last_claim.at < now() - interval '5 minutes') then 'problem'
+            else 'info' end, queued.n, queued.oldest,
+       case when queued.n = 0 then 'Nothing waiting'
+            when queued.oldest < now() - interval '5 minutes' and (last_claim.at is null or last_claim.at < now() - interval '5 minutes')
+              then 'Nothing picked up for over 5 minutes: the staff dispatch automation (n8n 09) may be off'
+            else 'Sent one a minute, oldest first' end
+  from queued, last_claim
 union all
-select 5, 'xero_stuck', 'Xero drafts stuck while being created',
+select 5, 'xero_unsent', 'Approved invoices not sent to Xero',
+       case when unsent.n = 0 then 'ok' else 'attention' end, unsent.n, unsent.oldest,
+       case when unsent.n = 0 then 'None' else 'Approved, but no request to send them is waiting (it was refused or never picked up). Finance → Xero drafts says why; a Finance or Admin person sends them' end
+  from unsent
+union all
+select 6, 'xero_stuck', 'Xero drafts stuck while being created',
        case when stuck.n = 0 then 'ok' else 'problem' end, stuck.n, stuck.oldest,
        case when stuck.n = 0 then 'None' else 'A creation started and never reported back; reconciliation checks Xero' end
   from stuck
 union all
-select 6, 'xero_uncertain', 'Xero drafts with an unclear outcome',
+select 7, 'xero_uncertain', 'Xero drafts with an unclear outcome',
        case when unsure.n = 0 then 'ok' else 'problem' end, unsure.n, unsure.oldest,
        case when unsure.n = 0 then 'None' else 'Xero may or may not have them; they are not sent again until reconciliation answers' end
   from unsure
 union all
-select 7, 'xero_stopped', 'Xero drafts stopped after repeated failures',
+select 8, 'xero_stopped', 'Xero drafts stopped after repeated failures',
        case when stopped.n = 0 then 'ok' else 'problem' end, stopped.n, stopped.oldest,
        case when stopped.n = 0 then 'None' else 'See the issue on Automation' end
   from stopped
 union all
-select 8, 'xero_retrying', 'Xero drafts that failed and can be sent again',
+select 9, 'xero_retrying', 'Xero drafts that failed and can be sent again',
        case when retrying.n = 0 then 'ok' else 'attention' end, retrying.n, retrying.oldest,
        case when retrying.n = 0 then 'None' else 'Finance → Xero drafts shows the reason and when to retry' end
   from retrying
 union all
-select 9, 'exceptions', 'Issues waiting for a person',
+select 10, 'exceptions', 'Issues waiting for a person',
        case when exc.n = 0 then 'ok' when exc.oldest < now() - interval '7 days' then 'attention' else 'info' end, exc.n, exc.oldest,
        case when exc.n = 0 then 'None' else 'See Automation' end
   from exc;

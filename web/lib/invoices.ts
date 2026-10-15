@@ -11,7 +11,7 @@ export interface PendingInvoice {
     billed_to_date_inc_gst: number; lines: { line_no: number; description: string; quantity: number; unit_amount: number }[];
   };
 }
-export type DraftState = 'READY_TO_SEND' | 'QUEUED' | 'STARTING' | 'SENDING' | 'CREATED' | 'RETRY_LATER' | 'FAILED' | 'STOPPED' | 'UNCERTAIN' | 'VOIDED';
+export type DraftState = 'READY_TO_SEND' | 'QUEUED' | 'STARTING' | 'SENDING' | 'STUCK' | 'CREATED' | 'RETRY_LATER' | 'FAILED' | 'STOPPED' | 'UNCERTAIN' | 'VOIDED';
 /** One queued Xero draft write and where it stands (xero_draft_progress: outbox, invoice sync state, staff request). */
 export interface DraftProgress {
   invoice_number: string; project_number: string; customer: string; amount_inc_gst: string; xero_invoice_number: string; generation: number;
@@ -52,6 +52,8 @@ export const INVOICE_CODE: Record<string, string> = {
   ALREADY_QUEUED: 'It is already waiting to be sent.',
   UNCERTAIN: 'Xero may already have created it, so it is not sent again. RoofOps checks Xero at the next reconciliation.',
   IN_PROGRESS: 'It is being created in Xero right now.',
+  STUCK: 'Its creation started and never reported back, so Xero may have it. It is not sent again; reconciliation checks Xero.',
+  REQUESTER_INACTIVE: 'The person who asked is no longer active. Ask again.',
   STOPPED: 'It stopped after repeated failures. See the issue on Automation.',
   NOT_DUE: 'It cannot be retried yet.',
   NOT_PROVEN: 'The replacement draft does not match its approval, so it is not sent.',
@@ -68,6 +70,7 @@ export const DRAFT_STATE: Record<DraftState, { badge: string; tone: 'good' | 'wa
   QUEUED: { badge: 'Waiting to send', tone: 'info', text: 'Waiting for RoofOps automation to pick it up (usually within a minute).' },
   STARTING: { badge: 'Starting', tone: 'info', text: 'Automation has picked it up and is about to create it in Xero.' },
   SENDING: { badge: 'Creating in Xero', tone: 'info', text: 'Being created in Xero right now.' },
+  STUCK: { badge: 'No answer', tone: 'bad', text: 'Its creation started and never reported back, so Xero may have it. Do not send it again: RoofOps checks Xero at the next reconciliation.' },
   CREATED: { badge: 'Draft in Xero', tone: 'good', text: 'The draft exists in Xero.' },
   RETRY_LATER: { badge: 'Retry later', tone: 'warn', text: 'Xero did not take it last time; it can be sent again after the time shown.' },
   FAILED: { badge: 'Not sent', tone: 'warn', text: 'Xero did not take it last time. Check the reason, then send it again.' },

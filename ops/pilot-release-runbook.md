@@ -72,6 +72,27 @@ owner's: see `ops/pilot-owner-setup.md`.
    - Verify: 48 migrations, checksums equal, integrity 0 FAIL, `npm run security:check` all PASS. PRJ-2026-0002's
      project page lists `61e09cad…` as Current and `21545f60…` as Replaced (deleted in Xero).
 
+8. **Staff invoices and Xero dispatch** (STAFF-OPS-01; separately approvable). Order matters: steps a, b and c together.
+   a. Run `npm run db:load -- --hosted`. Expect exactly `20261016000000_staff_invoice_approval_and_xero_dispatch.sql`.
+      - It adds dashboard prepare and approve as the signed-in employee (two proven people, exact preview).
+      - It adds staff requests to send one Xero draft write, the operations status view and the exception-source view.
+      - The decision core changes only so that it can be given the proven employee.
+      - **Rehearsed on a restored copy of hosted:** every `v_dashboard_projects` row identical; all privilege checks
+        pass (dashboard SECURITY DEFINER functions 19, workflow functions 23); integrity unchanged apart from the
+        copy's age.
+      - **Rollback rehearsed:** back to 48 migrations, with the decision core byte-identical to before (`9213db08…`).
+   b. Publish **n8n 09 Staff Xero Dispatch** from `n8n/09-staff-xero-dispatch.sdk.ts`. It is validated against the live
+      node types, and nothing has been created or published. It has a one-minute schedule and no webhook or secret. It
+      runs the unchanged 05 (`Y2deCFTZzpv1uo8C`) for at most one write per run. Set it to save no execution data, like 07.
+      **Without 09, staff approvals queue writes that nothing sends**; System health then shows "Xero drafts waiting for
+      automation" as Stuck after 5 minutes.
+   c. Redeploy the dashboard (preview first).
+   - **Verify:**
+     - 49 migrations, checksums equal, `npm run security:check` all PASS;
+     - System health → Operations shows real states;
+     - with two individual logins, prepare and approve one synthetic Demo-tenant invoice; 09 picks it up within a minute;
+       Finance → Xero drafts shows "Draft in Xero".
+
 ## Rollback (each step independently)
 
 | Step | Rollback | Proven |
@@ -81,5 +102,6 @@ owner's: see `ops/pilot-owner-setup.md`.
 | 3 | Redeploy the previous dashboard build (it does not need the CA) | — |
 | 4 | Run the same command with `availableInMCP: true`, or set it in the n8n UI. If 07's version changed, re-publish `a0ca9e60` from its history | — |
 | 5 | Set the value to `false` (takes effect at once) | tests |
+| 8 | Deactivate n8n 09, then `npx tsx scripts/sql.ts -f ops/rollback/20261016000000_staff_invoice_approval_and_xero_dispatch.down.sql`. Decisions already made stay; open staff requests are dropped (their writes are then sent by a person through 04/08) | yes: decision core byte-identical after rollback; re-apply works |
 | 7 | `npx tsx scripts/sql.ts -f ops/rollback/20261009040000_dashboard_shows_current_and_replaced_xero_invoice.down.sql` (restores the view exactly; drops the history view) | yes, locally: view definition hash identical to before; re-apply works |
 | 6 | Run `ops/rollback/20261009030000_airtable_shows_the_reissued_invoice.down.sql`, then `…020000_dashboard_reissue.down.sql`. Requests and decisions already made stay; the CLI keeps working | yes: all four rolled back on a restored copy; schema, view definition and 62 tables identical to before |

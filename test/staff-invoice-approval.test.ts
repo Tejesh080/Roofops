@@ -94,6 +94,26 @@ describe.each(TARGETS)('staff invoice approval and Xero dispatch [%s]', (target)
     expect(await one(`select status from approvals where approval_number = $1`, [p.approval_number])).toEqual({ status: 'PENDING' });
   });
 
+  it('a preview a named employee prepared cannot be approved through the shared Airtable account (two people stay proven)', async () => {
+    // Review finding: Finance prepares in the dashboard, then shows the same preview on the Airtable row and approves it
+    // there as the shared account. The decision core refuses: only a different named person approves it, in the dashboard.
+    const rec = 'recSTAFFOPS000004';
+    await db.query(`insert into external_links (provider, entity_type, entity_id, external_type, external_id, verified_at)
+      select 'AIRTABLE', 'project', id, 'Record', $1, now() from projects where project_number = 'PRJ-2026-0004' on conflict do nothing`, [rec]);
+    const prj = String((await one(`select id::text v from projects where project_number = 'PRJ-2026-0004'`)).v);
+    const base = { source: 'airtable', actor_id: 'usr7uCnNO15fCefbH', actor_name: 'Demo Finance Approver', payload: { project_number: 'PRJ-2026-0004', airtable_record_id: rec, project_uuid: prj } };
+    const shown = await call(`select wf_invoice_prepare($1::jsonb, 'n8n:04') r`, [JSON.stringify({ ...base, event_id: 'airtable:SO:prep', event_type: 'invoice.prepare_requested', occurred_at: new Date().toISOString() })]);
+    expect(shown).toMatchObject({ outcome: 'ALREADY_PENDING' });
+    const text = String((await one(`select invoice_preview_marker(a) || E'\\n' || invoice_preview_amount_line(a) v from approvals a where approval_number = $1`, [shown.approval_number])).v);
+    await db.query('select wf_invoice_preview_verified($1, $2, $3)', ['airtable:SO:prep', rec, text]);
+    const d = await call(`select wf_invoice_decide($1::jsonb, 'n8n:04') r`, [JSON.stringify({ ...base, event_id: 'airtable:SO:approve', event_type: 'invoice.approved',
+      occurred_at: new Date(Date.now() + 2000).toISOString(), payload: { ...base.payload, displayed_preview: text } })]);
+    expect(d).toMatchObject({ outcome: 'PERMISSION_DENIED' });
+    expect(String(d.message)).toContain('The shared Airtable account cannot approve it');
+    expect(await one(`select status from approvals where approval_number = $1`, [shown.approval_number])).toEqual({ status: 'PENDING' });
+    expect(await one(`select count(*)::int n from invoices i join projects p on p.id = i.project_id where p.project_number = 'PRJ-2026-0004' and i.invoice_type = 'FINAL'`)).toEqual({ n: 0 });
+  });
+
   it('Admin approves the exact preview: one FINAL invoice, one Xero write, one staff request; a repeat does nothing', async () => {
     const p = ((await overview(tok.admin!)).pending as R[]).find((x) => x.project_number === 'PRJ-2026-0004')!;
     const d = await decide(tok.admin!, String(p.approval_number), String(p.payload_hash), 'approve', 'Checked amount and customer');
@@ -268,8 +288,8 @@ describe.each(TARGETS)('operations status [%s]', (target) => {
     const st = await status();
     expect(st.reconciliation).toMatchObject({ state: 'unknown' });
     expect(st.health_probe).toMatchObject({ state: 'unknown' });
-    for (const k of ['approvals', 'xero_queue', 'xero_stuck', 'xero_uncertain', 'xero_stopped', 'xero_retrying']) expect(st[k], k).toMatchObject({ state: 'ok', count: 0 });
-    expect(Object.keys(st).sort()).toEqual(['approvals', 'exceptions', 'health_probe', 'reconciliation', 'xero_queue', 'xero_retrying', 'xero_stopped', 'xero_stuck', 'xero_uncertain']);
+    for (const k of ['approvals', 'xero_queue', 'xero_unsent', 'xero_stuck', 'xero_uncertain', 'xero_stopped', 'xero_retrying']) expect(st[k], k).toMatchObject({ state: 'ok', count: 0 });
+    expect(Object.keys(st).sort()).toEqual(['approvals', 'exceptions', 'health_probe', 'reconciliation', 'xero_queue', 'xero_retrying', 'xero_stopped', 'xero_stuck', 'xero_uncertain', 'xero_unsent']);
   });
 
   it('a recent reconciliation and health check are ok; old ones are stale (never ok)', async () => {
@@ -318,6 +338,62 @@ describe.each(TARGETS)('operations status [%s]', (target) => {
     const st = await status();
     expect(st.xero_stuck).toMatchObject({ state: 'ok', count: 0 });
     expect(st.xero_uncertain).toMatchObject({ state: 'problem', count: 1 });
+  });
+
+  it('a creation that never reported back shows "no answer" to staff and cannot be sent again', async () => {
+    const p = await call('select web_invoice_prepare($1, $2) r', [tok.finance, 'PRJ-2026-0005']);
+    const d = await call('select web_invoice_decide($1, $2, $3, $4, null) r', [tok.admin, p.approval_number, p.payload_hash, 'approve']);
+    expect(d).toMatchObject({ ok: true, outcome: 'APPROVED' });
+    expect(((await asWorkflow(`select wf_xero_dispatch_next('n8n:09:test') r`, [])).writes as R[])[0]).toMatchObject({ xero_key: d.xero_key });
+    expect(await asWorkflow(`select wf_claim_side_effect($1, 'n8n:05', 120) r`, [d.xero_key])).toMatchObject({ claimed: true });
+    const inv = String(d.invoice_number);
+    const progress = async () => (await one(`select xero_draft_progress(id) p from invoices where invoice_number = $1`, [inv])).p as R;
+    expect(await progress()).toMatchObject({ state: 'SENDING' });
+    await db.query(`update outbox set locked_until = now() - interval '1 minute' where idempotency_key = $1`, [d.xero_key]);   // 05 crashed
+    expect(await progress()).toMatchObject({ state: 'STUCK', problem: { code: 'STUCK' } });
+    const sha = String((await progress()).payload_sha256);
+    expect(await call('select web_xero_dispatch_request($1, $2, $3, $4) r', [tok.finance, inv, 1, sha])).toMatchObject({ ok: false, code: 'STUCK' });
+  });
+
+  it('an approved invoice whose send request was refused is flagged; a moving queue is not an outage, a stalled one is', async () => {
+    const p = await call('select web_invoice_prepare($1, $2) r', [tok.finance, 'PRJ-2026-0002']);
+    const d = await call('select web_invoice_decide($1, $2, $3, $4, null) r', [tok.admin, p.approval_number, p.payload_hash, 'approve']);
+    expect(d).toMatchObject({ ok: true, outcome: 'APPROVED' });
+    // The approver leaves before automation picks the request up: the poller refuses it, with an audit row.
+    await db.query(`update employees set is_active = false where employee_code = 'EMP-802'`);
+    try {
+      expect(await asWorkflow(`select wf_xero_dispatch_next('n8n:09:test') r`, [])).toMatchObject({ writes: [], refused: [{ invoice_number: d.invoice_number, code: 'REQUESTER_INACTIVE' }] });
+    } finally { await db.query(`update employees set is_active = true where employee_code = 'EMP-802'`); }
+    expect(await one(`select actor_id, after_state ->> 'code' code from audit_events where action = 'xero.dispatch_refused' and business_reference = $1`, [d.invoice_number]))
+      .toEqual({ actor_id: 'n8n:09:test', code: 'REQUESTER_INACTIVE' });
+    await db.query(`update outbox set created_at = created_at - interval '15 minutes' where idempotency_key = $1`, [d.xero_key]);
+    let st = await status();
+    expect(st.xero_unsent).toMatchObject({ state: 'attention', count: 1 });
+    // Finance asks again; it waits 10 minutes while the poller was busy a moment ago: a backlog, not an outage.
+    const sha = String((await one(`select xero_payload_sha256(payload) s from outbox where idempotency_key = $1`, [d.xero_key])).s);
+    expect(await call('select web_xero_dispatch_request($1, $2, $3, $4) r', [tok.finance, d.invoice_number, 1, sha])).toMatchObject({ ok: true, code: 'QUEUED' });
+    await db.query(`update xero_dispatch_requests set requested_at = now() - interval '10 minutes' where status = 'QUEUED'`);
+    await db.query(`update xero_dispatch_requests set claimed_at = now() - interval '1 minute' where claimed_at is not null`);
+    st = await status();
+    expect(st.xero_unsent).toMatchObject({ state: 'ok', count: 0 });
+    expect(st.xero_queue).toMatchObject({ state: 'info', count: 1 });
+    await db.query(`update xero_dispatch_requests set claimed_at = now() - interval '10 minutes' where claimed_at is not null`);
+    expect((await status()).xero_queue).toMatchObject({ state: 'problem', count: 1 });
+  });
+
+  it('a dead letter of another system (a Drive folder) is not counted as a Xero problem', async () => {
+    const before = await status();
+    const q = await asWorkflow('select wf_quote_accepted($1::jsonb) r', [JSON.stringify({ event_id: 'EVT-OPS-Q31', correlation_id: 'CORR-OPS-Q31', event_type: 'quote.accepted',
+      source: 'airtable', actor_id: 'airtable-automation', occurred_at: new Date().toISOString(),
+      payload: { quote_id: 'Q-2026-0031', accepted_version: 2, accepted_on: '2026-09-29', airtable_record_id: 'recOPSQ3100000001' } })]);
+    expect(q).toMatchObject({ status: 'CREATED' });
+    const key = `drive:project-folder:${String(q.project_id)}`;
+    expect(await asWorkflow(`select wf_claim_side_effect($1, 'n8n:02', 120) r`, [key])).toMatchObject({ claimed: true });
+    expect(await asWorkflow(`select wf_fail_side_effect($1, $2, $3, null, 0) r`, [key, 'AUTH_FAILURE', 'drive.create_folder: 401 invalid credentials'])).toMatchObject({ retry: false });
+    expect(await one(`select status, next_attempt_at = 'infinity' dead from outbox where idempotency_key = $1`, [key])).toEqual({ status: 'FAILED', dead: true });
+    const after = await status();
+    expect(after.xero_stopped).toEqual(before.xero_stopped);
+    expect(after.xero_stuck).toEqual(before.xero_stuck);
   });
 });
 

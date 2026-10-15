@@ -90,6 +90,15 @@ describe('business interpretations', () => {
     expect(describeIssue({ error_class: 'ARITHMETIC_MISMATCH', error_message: 'PRJ-2026-0006 is over-billed: billed 30888.72 (…) against quote 25740.60 …; over by 5148.12.', attempt_count: 1 }))
       .toEqual({ title: 'Project is over-billed', explanation: 'More has been invoiced than the quote and approved variations allow; a person must correct the billing before the job can be closed.' });
     expect(describeIssue({ error_class: 'ARITHMETIC_MISMATCH', error_message: 'Supplier total 1200 != 1100', attempt_count: 1 }).title).toBe("Supplier totals didn't add up");
+    // Actionable, not "Action not allowed yet" / "Required information was missing" (pilot rehearsal, 2026-10-15).
+    const voided = describeIssue({ error_class: 'INVALID_STATE', attempt_count: 1, error_message:
+      'Final invoice INV-2026-0040 was voided (Voided in Xero (verified by reconciliation REI-1)): a replacement final invoice needs a person, because RoofOps allows one final invoice per project' });
+    expect(voided.title).toBe('Final invoice voided in Xero');
+    expect(voided.explanation).toContain('INV-2026-0040 was voided or deleted in Xero. Reissue it on Finance → Invoice reissues');
+    expect(describeIssue({ error_class: 'INVALID_STATE', error_message: 'something else', attempt_count: 1 }).title).toBe('Action not allowed yet');
+    expect(describeIssue({ error_class: 'VALIDATION_ERROR', error_message: 'Invalid quote.accepted event: payload.quote_id: required, format Q-YYYY-NNNN', attempt_count: 1 }).title)
+      .toBe('A quote acceptance arrived incomplete');
+    expect(describeIssue({ error_class: 'VALIDATION_ERROR', error_message: 'missing roof measurement', attempt_count: 1 }).title).toBe('Required information was missing');
   });
   it('technical issue classes are never the headline', () => {
     const d = describeIssue({ error_class: 'SCHEMA_MISMATCH', error_message: 'Supplier payload missing expected field', attempt_count: 1 });

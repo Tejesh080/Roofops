@@ -139,6 +139,18 @@ export const getTimeline = (q: Query, p: string, limit = 60) =>
 export interface ExceptionRow { exception_number: string; project_number: string | null; business_reference: string | null; workflow_key: string | null;
   error_class: string; error_message: string; retryable: boolean; attempt_count: number; resolution_status: string;
   first_failed_at: string; last_attempt_at: string | null; resolution_note: string | null }
+/** Where an exception came from (v_dashboard_exception_sources; no payload). Empty where that view is not installed yet. */
+export interface ExceptionSource { exception_number: string; source: string | null; event_type: string | null; airtable_record_id: string | null; named_record: string | null }
+export async function getExceptionSources(q: Query, numbers: string[]): Promise<Record<string, ExceptionSource>> {
+  if (!numbers.length) return {};
+  try {
+    const rows = await q<ExceptionSource>('select exception_number, source, event_type, airtable_record_id, named_record from v_dashboard_exception_sources where exception_number = any($1)', [numbers]);
+    return Object.fromEntries(rows.map((r) => [r.exception_number, r]));
+  } catch (e) {
+    if ((e as { code?: string }).code === '42P01') return {};
+    throw e;
+  }
+}
 export const getExceptions = (q: Query, opts: { openOnly?: boolean; project?: string } = {}) =>
   q<ExceptionRow>(`select exception_number, project_number, business_reference, workflow_key, error_class, error_message, retryable, attempt_count::int,
                           resolution_status, to_char(first_failed_at at time zone 'Australia/Brisbane', 'YYYY-MM-DD HH24:MI') first_failed_at,

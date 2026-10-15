@@ -461,3 +461,12 @@ revoke execute on function wf_invoice_decide_core(jsonb, text, uuid), xero_dispa
 grant execute on function web_invoice_overview(text), web_invoice_prepare(text, text), web_invoice_decide(text, text, text, text, text),
   web_xero_dispatch_request(text, text, int, text) to roofops_dashboard;
 grant execute on function wf_xero_dispatch_next(text) to roofops_workflow;
+
+-- 8. Where an exception came from, for staff (no payload): the event's source and type, and the Airtable record and the
+--    quote or project it named, when the event carried them. Lets a person find the record to fix without SQL.
+create view v_dashboard_exception_sources as
+select x.exception_number, e.source, e.event_type, e.occurred_at,
+       nullif(coalesce(e.payload -> 'payload' ->> 'airtable_record_id', e.payload ->> 'airtable_record_id'), '') as airtable_record_id,
+       nullif(coalesce(e.payload -> 'payload' ->> 'quote_id', e.payload -> 'payload' ->> 'project_number'), '') as named_record
+  from workflow_exceptions x join automation_events e on e.event_id = x.event_id;
+grant select on v_dashboard_exception_sources to roofops_dashboard;

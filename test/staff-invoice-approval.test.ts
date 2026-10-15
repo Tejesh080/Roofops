@@ -176,6 +176,18 @@ describe.each(TARGETS)('staff invoice approval and Xero dispatch [%s]', (target)
     expect(await one(`select status from approvals where approval_number = $1`, [p.approval_number])).toEqual({ status: 'EXPIRED' });
   });
 
+  it('an exception from a rejected Airtable event says which record it came from (dashboard-readable, no payload)', async () => {
+    const r = await call(`select wf_quote_accepted($1::jsonb) r`, [JSON.stringify({ event_id: 'EVT-SRC-1', event_type: 'quote.accepted', source: 'airtable',
+      actor_id: 'airtable-automation', occurred_at: new Date().toISOString(), payload: { accepted_version: 1, airtable_record_id: 'recSOURCETEST0001' } })]);
+    expect(r).toMatchObject({ status: 'REJECTED' });
+    await db.exec('begin; set local role roofops_dashboard;');
+    try {
+      const src = await one(`select * from v_dashboard_exception_sources where airtable_record_id = 'recSOURCETEST0001'`);
+      expect(src).toMatchObject({ source: 'airtable', event_type: 'quote.accepted', airtable_record_id: 'recSOURCETEST0001', named_record: null });
+      expect(Object.keys(src).sort()).toEqual(['airtable_record_id', 'event_type', 'exception_number', 'named_record', 'occurred_at', 'source']);
+    } finally { await db.exec('rollback'); }
+  });
+
   it('a Copilot preview asked for by a signed-in employee records that employee (run with the dashboard role\'s privileges)', async () => {
     await db.exec('begin; set local role roofops_dashboard;');
     let r: R;

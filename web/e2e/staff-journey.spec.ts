@@ -165,7 +165,7 @@ test('staff journey: Finance requests, the requester cannot approve, a different
   await a39.getByRole('button', { name: `Approve reissue ${apr}` }).click();
   await expect(a39).toContainText('Approved, queued');
   await expect(a39).toContainText(`${apr}: requested by Synthetic Finance Requester, approved by Synthetic Admin Approver.`);
-  await expect(a39).toContainText('The replacement draft is created in Xero at the supervised dispatch');
+  await expect(a39).toContainText('sends the replacement draft to Xero under Xero drafts');
   expect(await approvals('INV-2026-0039')).toEqual([{ approval_number: apr, status: 'EXECUTED', requested_by: 'EMP-801', decided_by: 'EMP-802' }]);
   expect(await gen2('INV-2026-0039')).toEqual({ ledger: '1', writes: '1', pending: '1' });
 

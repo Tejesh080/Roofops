@@ -465,3 +465,5 @@ details.tech summary svg { transition: transform .15s; }
 .issue > .reissue-step, .issue > .reissue-wait, .issue > .resolve-form, .issue > .resolve-done { grid-column: 1 / -1; }
 .reissue-wait { margin: 8px 0 0; }
 .check-line { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.inline-form { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.form-buttons { display: flex; gap: 8px; flex-wrap: wrap; }

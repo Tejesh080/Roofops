@@ -40,7 +40,7 @@ function XeroDocuments({ gens }: { gens: XeroGeneration[] }) {
           <Badge l={{ text: 'Replacement queued', tone: 'info' }} />
           <div>
             <span className="strong num">{current.xero_invoice_number}</span>
-            <div className="t-meta">Approved, not in Xero yet: the replacement draft is created at the supervised dispatch.{who(current)}</div>
+            <div className="t-meta">Approved, not in Xero yet: a Finance or Admin person sends it from Finance → Xero drafts.{who(current)}</div>
           </div>
         </div>
       ))}

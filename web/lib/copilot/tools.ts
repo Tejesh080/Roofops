@@ -10,7 +10,7 @@
  */
 import {
   PROJECT_FILTERS, PROJECT_NUMBER, getChecklist, getConsistency, getDrift, getExceptions, getInvoices, getKpis, getLatestReconciliation, getProject,
-  getPurchaseOrders, getServiceChecks, getTimeline, listProjects, prepareInvoice, type PreparedInvoice, type ProjectFilter, type ProjectRow, type Query,
+  getPurchaseOrders, getServiceChecks, getTimeline, listProjects, prepareInvoice, prepareInvoiceAsStaff, type PreparedInvoice, type ProjectFilter, type ProjectRow, type Query,
 } from '../queries.ts';
 import { SERVICES, consistencyLine, serviceState } from '../health.ts';
 import {
@@ -20,7 +20,8 @@ import {
 
 export type Tier = 'GREEN' | 'AMBER';
 /** actor: who asked, for the audit trail: dashboard:copilot:<employee code> for a database-verified staff session. */
-export interface ToolContext { query: Query; requestId: string; lastUserMessage: string; actor?: string }
+/** token: the database session token of a signed-in employee (absent for the shared demo viewer); prepare records that employee. */
+export interface ToolContext { query: Query; requestId: string; lastUserMessage: string; actor?: string; token?: string }
 export interface ToolCard { kind: 'invoice_preview'; data: PreparedInvoiceCard }
 export interface ToolResult { data: unknown; card?: ToolCard }
 export interface PreparedInvoiceCard extends PreparedInvoice { project: string; airtable_record_id: string | null; status_text: string }
@@ -183,7 +184,7 @@ export const TOOLS: Record<string, ToolDef> = {
     description: 'Prepare (preview only) the final invoice for a completed project. Use ONLY when the user explicitly asks to prepare/create/raise an invoice. '
       + 'It never creates the invoice: it returns the amount and details and waits for a finance approver.',
     parameters: projectArg,
-    run: async (a, { query, requestId, lastUserMessage, actor }) => {
+    run: async (a, { query, requestId, lastUserMessage, actor, token }) => {
       if (!/invoice/i.test(lastUserMessage) || !/\b(prepare|create|raise|draft|make|generate|bill)\b/i.test(lastUserMessage)) {
         return { data: { refused: 'Invoices are only prepared when you explicitly ask, e.g. "Prepare invoice for PRJ-2026-0005".' } };
       }
@@ -196,7 +197,8 @@ export const TOOLS: Record<string, ToolDef> = {
                          reason: p.status === 'CANCELLED' ? `${n} is cancelled; a cancelled job is never final-invoiced (earlier invoices stay as they are)`
                            : p.invoice_blocker ?? (p.is_active ? `${n} is still ${label(PROJECT_STAGE, p.status).text.toLowerCase()}; only completed jobs get a final invoice` : 'Nothing left to invoice') } };
       }
-      const r = await prepareInvoice(query, n, requestId, actor ?? 'dashboard:copilot');
+      // A signed-in employee prepares as themselves (recorded as the requester); the demo viewer's preview names nobody.
+      const r = token ? await prepareInvoiceAsStaff(query, n, token) : await prepareInvoice(query, n, requestId, actor ?? 'dashboard:copilot');
       const status_text = r.outcome === 'PREVIEW_READY' ? 'Prepared: awaiting approval'
         : r.outcome === 'ALREADY_PENDING' ? 'Already prepared: awaiting approval'
         : r.outcome === 'ALREADY_INVOICED' ? 'Already invoiced: nothing new prepared' : 'Not prepared';
@@ -205,7 +207,9 @@ export const TOOLS: Record<string, ToolDef> = {
       return { card, data: {
         project: n, outcome: status_text, approval_reference: r.approval_number ?? null, reason: r.message ?? null,
         requires_human_approval: r.outcome === 'PREVIEW_READY' || r.outcome === 'ALREADY_PENDING',
-        how_it_gets_approved: 'A finance approver approves it in Airtable: on the project row, set Invoice Action → "Prepare Xero draft invoice" to show this same preview there (no new approval), check it, then set Invoice Action → "Approve Xero draft invoice". An Approve only ever approves the preview shown on that row. RoofOps then creates ONE draft invoice in the Xero Demo Company and checks it. Nothing has been sent to Xero yet.',
+        how_it_gets_approved: token
+          ? 'A second person (finance, admin or operations manager, not the one who prepared it) approves or rejects it in the dashboard on Finance → Invoice approvals, after checking the figures. RoofOps then creates ONE draft invoice in the Xero Demo Company and checks it. Nothing has been sent to Xero yet.'
+          : 'A finance approver approves it in Airtable: on the project row, set Invoice Action → "Prepare Xero draft invoice" to show this same preview there (no new approval), check it, then set Invoice Action → "Approve Xero draft invoice". An Approve only ever approves the preview shown on that row. RoofOps then creates ONE draft invoice in the Xero Demo Company and checks it. Nothing has been sent to Xero yet.',
         preview: pv ? { customer: pv.customer_name, amount_inc_gst: pv.amount_inc_gst, gst: pv.gst_amount, amount_ex_gst: pv.amount_ex_gst,
                         basis: `quote ${pv.quote_number} v${pv.quote_version} ${pv.quote_total_inc_gst} + variations ${pv.approved_variations_inc_gst} - already invoiced ${pv.billed_to_date_inc_gst}`,
                         reference: pv.reference, due_date: pv.due_date, xero_organisation: pv.xero_tenant_name } : null,

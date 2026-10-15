@@ -23,7 +23,7 @@ export async function POST(req: Request) {
   }
   if (!history.some((t) => t.role === 'user' && t.content?.trim())) return Response.json({ error: 'Ask a question first' }, { status: 400 });
   try {
-    return Response.json(await runCopilot(query, history, randomUUID(), actor));
+    return Response.json(await runCopilot(query, history, randomUUID(), actor, undefined, me ? session.t : undefined));
   } catch (e) {
     console.error('copilot failed:', (e as Error).message);
     return Response.json({ error: 'The copilot is unavailable right now. The dashboard data is still accurate.' }, { status: 502 });

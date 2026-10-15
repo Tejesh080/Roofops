@@ -32,7 +32,7 @@ function Step({ it, me, roles }: { it: ReissueItem; me: NonNullable<ReissueOverv
   const d = it.latest_decided;
   if (d && it.status !== 'VOIDED') {
     const text = created(it) ? `Replacement draft created in Xero (InvoiceID ${d.xero_invoice_id}). Airtable shows it after the next sync.`
-      : d.write_status === 'PENDING' ? 'Approved and queued. The replacement draft is created in Xero at the supervised dispatch (an operator step).'
+      : d.write_status === 'PENDING' ? 'Approved and queued. A Finance or Admin person sends the replacement draft to Xero under Xero drafts on this page.'
       : d.write_status ? `The replacement draft is ${d.write_status.toLowerCase()}; see Automation if it needs a person.` : 'Decided.';
     return <p className="t-meta reissue-wait">{d.approval_number}: requested by {d.requested_by}, approved by {d.decided_by}. {text}</p>;
   }

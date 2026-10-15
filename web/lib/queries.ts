@@ -164,6 +164,13 @@ export interface PreparedInvoice {
  * the project, and stores a hashed preview awaiting a finance approver. Creating the invoice in Xero happens only after
  * that approval, through the existing n8n workflow.
  */
+/** As a signed-in employee (web_invoice_prepare): the database checks the session and role and records the requester. */
+export async function prepareInvoiceAsStaff(q: Query, projectNumber: string, token: string): Promise<PreparedInvoice> {
+  if (!PROJECT_NUMBER.test(projectNumber)) return { outcome: 'INVALID_EVENT', message: `${projectNumber} is not a project number (PRJ-YYYY-NNNN)` };
+  const [r] = await q<{ r: PreparedInvoice & { ok?: boolean; code?: string; detail?: string } }>('select web_invoice_prepare($1, $2) as r', [token, projectNumber]);
+  const res = r!.r;
+  return res.outcome ? res : { outcome: res.code === 'SIGNED_OUT' ? 'SIGNED_OUT' : 'PERMISSION_DENIED', message: res.detail ?? 'Your role cannot prepare invoices.' };
+}
 export async function prepareInvoice(q: Query, projectNumber: string, requestId: string, actor: string): Promise<PreparedInvoice> {
   if (!PROJECT_NUMBER.test(projectNumber)) return { outcome: 'INVALID_EVENT', message: `${projectNumber} is not a project number (PRJ-YYYY-NNNN)` };
   const event = { event_id: `dashboard:copilot:${requestId}`, event_type: 'invoice.prepare_requested', source: 'roofops-dashboard',

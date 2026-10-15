@@ -99,13 +99,13 @@ export async function chat(messages: Msg[], deps: ChatDeps = realDeps()): Promis
   throw last;
 }
 
-export async function runCopilot(query: Query, history: ChatTurn[], requestId: string, actor?: string, deps?: ChatDeps): Promise<CopilotReply> {
+export async function runCopilot(query: Query, history: ChatTurn[], requestId: string, actor?: string, deps?: ChatDeps, token?: string): Promise<CopilotReply> {
   const turns = history.filter((t) => (t.role === 'user' || t.role === 'assistant') && typeof t.content === 'string').slice(-10)
     .map((t) => ({ role: t.role, content: t.content.slice(0, 2000) }));
   const lastUser = [...turns].reverse().find((t) => t.role === 'user')?.content ?? '';
   const [{ today } = { today: '' }] = await query<{ today: string }>('select as_of::text as today from v_dashboard_kpis');
   const messages: Msg[] = [{ role: 'system', content: systemPrompt(today) }, ...turns];
-  const ctx: ToolContext = { query, requestId, lastUserMessage: lastUser, ...(actor ? { actor } : {}) };
+  const ctx: ToolContext = { query, requestId, lastUserMessage: lastUser, ...(actor ? { actor } : {}), ...(token ? { token } : {}) };
   const steps: ToolStep[] = [];
   const cards: ToolCard[] = [];
   let model = '';

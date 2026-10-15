@@ -8,6 +8,7 @@ import type { Db } from '../src/db/db.js';
 import { importBundle } from '../src/import/importer.js';
 import { TARGETS, migratedDb } from './helpers/db.js';
 import { deletedReissueScenario } from './helpers/reissue-scenario.js';
+import { TOOLS } from '../web/lib/copilot/tools.ts';
 
 type R = Record<string, unknown>;
 const PW = 'pilot test password 1';
@@ -84,7 +85,9 @@ describe.each(TARGETS)('staff invoice approval and Xero dispatch [%s]', (target)
       .toEqual({ employee_code: 'EMP-801', status: 'PENDING' });
     const pending = ((await overview(tok.admin!)).pending as R[]).find((x) => x.approval_number === p.approval_number)!;
     expect(pending).toMatchObject({ project_number: 'PRJ-2026-0004', requested_by: 'Synthetic Finance Requester', i_requested_it: false, requested_via: 'dashboard', payload_hash: p.payload_hash });
-    expect(pending.preview).toMatchObject({ customer_name: expect.any(String), amount_inc_gst: 14664.49, gst_amount: 1333.14, lines: [expect.objectContaining({ line_no: 1 })] });
+    expect(pending.preview).toMatchObject({ amount_inc_gst: 14664.49, gst_amount: 1333.14 });
+    expect(String((pending.preview as R).customer_name)).not.toBe('');
+    expect(((pending.preview as R).lines as R[])[0]).toMatchObject({ line_no: 1 });
     expect(await decide(tok.finance!, String(p.approval_number), String(p.payload_hash), 'approve')).toMatchObject({ ok: false, code: 'SAME_PERSON' });
     expect(await decide(tok.estimator!, String(p.approval_number), String(p.payload_hash), 'approve')).toMatchObject({ ok: false, code: 'ACTOR_UNAUTHORIZED' });
     expect(await decide(tok.admin!, String(p.approval_number), 'not-the-hash', 'approve')).toMatchObject({ ok: false, code: 'PREVIEW_CHANGED' });
@@ -173,6 +176,23 @@ describe.each(TARGETS)('staff invoice approval and Xero dispatch [%s]', (target)
     expect(await one(`select status from approvals where approval_number = $1`, [p.approval_number])).toEqual({ status: 'EXPIRED' });
   });
 
+  it('a Copilot preview asked for by a signed-in employee records that employee (run with the dashboard role\'s privileges)', async () => {
+    await db.exec('begin; set local role roofops_dashboard;');
+    let r: R;
+    try {
+      const asDashboard = ((sql: string, params: unknown[] = []) => db.query(sql, params)) as never;
+      r = (await TOOLS.prepare_invoice!.run({ project_number: 'PRJ-2026-0002' },
+        { query: asDashboard, requestId: 'copilot-staff-test', lastUserMessage: 'Prepare invoice for PRJ-2026-0002', token: tok.finance! })).data as R;
+    } finally { await db.exec('commit'); }
+    expect(r).toMatchObject({ outcome: 'Prepared: awaiting approval', requires_human_approval: true });
+    expect(String(r.how_it_gets_approved)).toContain('Finance → Invoice approvals');
+    expect(await one(`select e.employee_code from approvals a join employees e on e.id = a.requested_by_employee_id where a.approval_number = $1`, [r.approval_reference]))
+      .toEqual({ employee_code: 'EMP-801' });
+    const p = ((await overview(tok.admin!)).pending as R[]).find((x) => x.approval_number === r.approval_reference)!;
+    expect(p).toMatchObject({ requested_by: 'Synthetic Finance Requester', requested_via: 'dashboard' });
+    expect(await decide(tok.admin!, String(r.approval_reference), String(p.payload_hash), 'approve')).toMatchObject({ ok: true, outcome: 'APPROVED' });
+  });
+
   it('a reissue\'s replacement (generation 2) is sent on a Finance/Admin request with the exact generation', async () => {
     const s = await deletedReissueScenario(db, { project: 'PRJ-2026-0001', xid: 'aaaaaaaa-bbbb-cccc-dddd-00000000e001' });
     const r = await call('select web_reissue_request($1, $2, $3) r', [tok.finance, s.invoice.number, 'Deleted in Xero by mistake; reissue the same invoice']);
@@ -181,6 +201,13 @@ describe.each(TARGETS)('staff invoice approval and Xero dispatch [%s]', (target)
     expect(d).toMatchObject({ state: 'READY_TO_SEND', generation: 2 });
     expect(await request(tok.finance!, s.invoice.number, 1, String(d.payload_sha256))).toMatchObject({ ok: false, code: 'NOT_CURRENT_GENERATION' });
     expect(await request(tok.finance!, s.invoice.number, 2, String(d.payload_sha256))).toMatchObject({ ok: true, code: 'QUEUED' });
-    expect(((await next()).writes as R[])[0]).toMatchObject({ invoice_number: s.invoice.number, generation: 2 });
+    // The poller hands over one write per run, oldest request first: earlier approvals in this file go first.
+    let mine: R | undefined;
+    for (let i = 0; i < 5 && !mine; i++) {
+      const w = (await next()).writes as R[];
+      if (!w.length) break;
+      mine = w.find((x) => x.invoice_number === s.invoice.number);
+    }
+    expect(mine).toMatchObject({ invoice_number: s.invoice.number, generation: 2 });
   });
 });

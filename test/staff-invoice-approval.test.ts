@@ -4,7 +4,7 @@
  * EMP-801 (FINANCE) prepares, EMP-802 (ADMIN) approves; EMP-002 (ESTIMATOR) may do neither.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { Db } from '../src/db/db.js';
+import { openPostgres, type Db } from '../src/db/db.js';
 import { importBundle } from '../src/import/importer.js';
 import { TARGETS, migratedDb } from './helpers/db.js';
 import { deletedReissueScenario } from './helpers/reissue-scenario.js';
@@ -315,5 +315,78 @@ describe.each(TARGETS)('operations status [%s]', (target) => {
     const st = await status();
     expect(st.xero_stuck).toMatchObject({ state: 'ok', count: 0 });
     expect(st.xero_uncertain).toMatchObject({ state: 'problem', count: 1 });
+  });
+});
+
+/** Real concurrency on Postgres: separate connections act at the same instant; every financial effect happens once. */
+describe.runIf(TARGETS.includes('postgres'))('staff invoice and dispatch under real concurrency [postgres]', () => {
+  let db: Db & { url?: string };
+  const tok: Record<string, string> = {};
+  const one = async (c: Db, sql: string, p: unknown[] = []) => (await c.query<R>(sql, p))[0]!;
+  const call = async (c: Db, sql: string, p: unknown[]) => (await one(c, sql, p)).r as R;
+  const asWorkflow = async (c: Db, sql: string, p: unknown[]) => {
+    await c.exec('set role roofops_workflow');
+    try { return await call(c, sql, p); } finally { await c.exec('reset role'); }
+  };
+  const twoConnections = async <T>(fn: (a: Db, b: Db) => Promise<T>) => {
+    const [a, b] = [await openPostgres(db.url!), await openPostgres(db.url!)];
+    try { return await fn(a, b); } finally { await a.close(); await b.close(); }
+  };
+
+  beforeAll(async () => {
+    db = await migratedDb('postgres');
+    await importBundle(db);
+    await db.query(`update app_settings set value = $1 where key = 'xero.demo_tenant_id'`, [TENANT]);
+    await db.query(`insert into employees (employee_code, full_name, email, role, is_active) values
+      ('EMP-801', 'Synthetic Finance Requester', 'f@example.test', 'FINANCE', true), ('EMP-802', 'Synthetic Admin Approver', 'a@example.test', 'ADMIN', true),
+      ('EMP-804', 'Synthetic Second Approver', 's@example.test', 'FINANCE', true)`);
+    for (const [emp, login] of [['EMP-801', 'finance'], ['EMP-802', 'admin'], ['EMP-804', 'second']] as const) {
+      expect(await call(db, 'select ops_staff_set_password($1, $2, $3) r', [emp, login, PW])).toMatchObject({ ok: true });
+      tok[login] = String((await call(db, 'select web_staff_sign_in($1, $2) r', [login, PW])).token);
+    }
+  }, 180_000);
+  afterAll(async () => { await db.close(); });
+
+  it('two people preparing the same project at once: one preview', async () => {
+    const rs = await twoConnections((a, b) => Promise.all([
+      call(a, 'select web_invoice_prepare($1, $2) r', [tok.finance, 'PRJ-2026-0004']),
+      call(b, 'select web_invoice_prepare($1, $2) r', [tok.finance, 'PRJ-2026-0004'])]));
+    expect(rs.map((r) => r.outcome).sort()).toEqual(['ALREADY_PENDING', 'PREVIEW_READY']);
+    expect(rs[0].approval_number).toBe(rs[1].approval_number);
+    expect(await one(db, `select count(*)::int n from approvals where business_reference = 'PRJ-2026-0004' and action_type = 'CREATE_INVOICE'`)).toEqual({ n: 1 });
+  });
+
+  it('two different approvers deciding the same preview at once: one approval, one invoice, one Xero write, one request', async () => {
+    const p = (await one(db, `select approval_number, payload_hash from approvals where business_reference = 'PRJ-2026-0004' and status = 'PENDING'`)) as { approval_number: string; payload_hash: string };
+    const rs = await twoConnections((a, b) => Promise.all([
+      call(a, 'select web_invoice_decide($1, $2, $3, $4, null) r', [tok.admin, p.approval_number, p.payload_hash, 'approve']),
+      call(b, 'select web_invoice_decide($1, $2, $3, $4, null) r', [tok.second, p.approval_number, p.payload_hash, 'approve'])]));
+    expect(rs.filter((r) => r.outcome === 'APPROVED')).toHaveLength(1);
+    expect(rs.filter((r) => r.outcome !== 'APPROVED')[0]).toMatchObject({ ok: false, code: 'ALREADY_PROCESSED' });
+    expect(await one(db, `select (select count(*)::int from invoices i join projects p on p.id = i.project_id where p.project_number = 'PRJ-2026-0004' and i.invoice_type = 'FINAL') finals,
+        (select count(*)::int from outbox o join invoices i on i.id = o.aggregate_id join projects p on p.id = i.project_id where p.project_number = 'PRJ-2026-0004' and o.topic = 'xero.create_draft_invoice') writes,
+        (select count(*)::int from xero_dispatch_requests r join invoices i on i.id = r.invoice_id join projects p on p.id = i.project_id where p.project_number = 'PRJ-2026-0004') requests`))
+      .toEqual({ finals: 1, writes: 1, requests: 1 });
+  });
+
+  it('two pollers at once: exactly one hands the write to 05', async () => {
+    const rs = await twoConnections((a, b) => Promise.all([
+      asWorkflow(a, `select wf_xero_dispatch_next('n8n:09:a') r`, []), asWorkflow(b, `select wf_xero_dispatch_next('n8n:09:b') r`, [])]));
+    expect(rs.map((r) => (r.writes as R[]).length).sort()).toEqual([0, 1]);
+    expect(await one(db, `select count(*)::int n from xero_dispatch_requests where status = 'CLAIMED'`)).toEqual({ n: 1 });
+  });
+
+  it('two "send again" requests at once after a failure: one queued, one told it is already waiting', async () => {
+    const key = String((await one(db, `select xero_key from xero_dispatch_requests where status = 'CLAIMED'`)).xero_key);
+    expect(await call(db, `select wf_claim_side_effect($1, 'n8n:05', 120) r`, [key])).toMatchObject({ claimed: true });
+    expect(await call(db, `select wf_fail_side_effect($1, $2, $3, $4, 0) r`, [key, 'NETWORK', 'search by invoice number: ECONNRESET', null])).toMatchObject({ retry: true });
+    await db.query(`update outbox set next_attempt_at = now() - interval '1 second' where idempotency_key = $1`, [key]);
+    const inv = String((await one(db, `select i.invoice_number from invoices i join outbox o on o.aggregate_id = i.id where o.idempotency_key = $1`, [key])).invoice_number);
+    const sha = String((await one(db, `select xero_payload_sha256(payload) s from outbox where idempotency_key = $1`, [key])).s);
+    const rs = await twoConnections((a, b) => Promise.all([
+      call(a, 'select web_xero_dispatch_request($1, $2, $3, $4) r', [tok.finance, inv, 1, sha]),
+      call(b, 'select web_xero_dispatch_request($1, $2, $3, $4) r', [tok.admin, inv, 1, sha])]));
+    expect(rs.map((r) => r.code).sort()).toEqual(['ALREADY_QUEUED', 'QUEUED']);
+    expect(await one(db, `select count(*)::int n from xero_dispatch_requests where xero_key = $1 and status = 'QUEUED'`, [key])).toEqual({ n: 1 });
   });
 });

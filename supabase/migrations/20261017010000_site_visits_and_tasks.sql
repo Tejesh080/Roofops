@@ -101,7 +101,10 @@ begin
   if v_problem is not null then return jsonb_build_object('ok', false) || v_problem; end if;
   if length(coalesce(v_note, '')) > 2000 then return jsonb_build_object('ok', false, 'code', 'INVALID', 'detail', 'the note is too long'); end if;
 
-  select array_agg(distinct upper(btrim(c))) into v_codes from unnest(coalesce(p_crew, '{}')) c where btrim(coalesce(c, '')) <> '';
+  -- In the order given (the first is the leading hand unless one is named), each person once.
+  select array_agg(c order by ord) into v_codes from (
+    select distinct on (upper(btrim(c))) upper(btrim(c)) c, ord from unnest(coalesce(p_crew, '{}')) with ordinality u(c, ord)
+     where btrim(coalesce(c, '')) <> '' order by upper(btrim(c)), ord) x;
   if coalesce(cardinality(v_codes), 0) = 0 then return jsonb_build_object('ok', false, 'code', 'NO_CREW', 'detail', 'pick at least one person'); end if;
   if cardinality(v_codes) > 8 then return jsonb_build_object('ok', false, 'code', 'INVALID', 'detail', 'at most 8 people on one visit'); end if;
   select string_agg(c, ', ') into v_bad from unnest(v_codes) c
@@ -332,6 +335,11 @@ from tasks t left join projects p on p.id = t.project_id
 left join employees ae on ae.id = t.assignee_id left join employees ce on ce.id = t.created_by
 where t.task_number is not null;
 
+-- Which roles may plan visits and manage tasks (so the dashboard offers the forms to exactly the people the database allows).
+create or replace view v_dashboard_ops_roles as
+select (select value from app_settings where key = 'schedule.planner_roles') as planner_roles,
+       (select value from app_settings where key = 'task.manager_roles') as task_manager_roles;
+
 revoke execute on all functions in schema public from public;
 revoke execute on function staff_role_allowed(employees, text), visit_crew_conflict(uuid[], timestamptz, timestamptz, uuid),
   visit_times_problem(timestamptz, timestamptz) from roofops_workflow, roofops_dashboard;
@@ -339,7 +347,7 @@ grant execute on function web_visit_schedule(text, text, text, timestamptz, time
   web_visit_update(text, text, text, int, text, timestamptz, timestamptz),
   web_task_create(text, text, text, text, text, date, text, text),
   web_task_update(text, text, text, int, text, date, text) to roofops_dashboard;
-grant select on v_dashboard_staff, v_dashboard_site_visits, v_dashboard_tasks to roofops_dashboard;
+grant select on v_dashboard_staff, v_dashboard_site_visits, v_dashboard_tasks, v_dashboard_ops_roles to roofops_dashboard;
 
 update field_contract set editable_in = 'RoofOps dashboard (project Tasks card, My work): the assignee or a task manager',
        change_path = 'web_task_create / web_task_update (state_transitions(task))'

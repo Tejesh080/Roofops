@@ -467,3 +467,25 @@ details.tech summary svg { transition: transform .15s; }
 .check-line { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
 .inline-form { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .form-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* OPS-01: site visits, tasks, next steps */
+.ops-details { margin-top: 12px; }
+.ops-details > summary { list-style: none; cursor: pointer; width: fit-content; }
+.ops-details > summary::-webkit-details-marker { display: none; }
+.ops-details[open] > summary { background: var(--surface-2); }
+.ops-form { margin-top: 10px; display: grid; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface); }
+.ops-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; width: 100%; }
+.field select, .field textarea, .ops-form .field input { width: 100%; min-height: 40px; border: 1px solid var(--border-strong); border-radius: 9px; padding: 0 12px; font: inherit; font-size: 14px; background: var(--surface); }
+.field textarea { padding: 8px 12px; resize: vertical; }
+.field select:focus, .field textarea:focus { outline: none; box-shadow: var(--focus); border-color: var(--info); }
+.crew-pick { border: 1px solid var(--border); border-radius: 9px; padding: 8px 12px; margin: 0; display: grid; gap: 6px; max-height: 220px; overflow: auto; }
+.crew-pick legend { font-size: 13px; font-weight: 550; padding: 0 4px; }
+.crew-pick .check-line { min-height: 32px; }
+.next-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.next-steps li { display: grid; gap: 2px; padding-left: 2px; }
+.next-steps li.first strong { font-size: 15px; }
+.next-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+@media (max-width: 720px) {
+  .ops-row { grid-template-columns: minmax(0, 1fr); }
+  .issue .form-buttons .btn { min-height: 40px; }
+}

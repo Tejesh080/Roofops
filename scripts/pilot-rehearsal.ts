@@ -7,7 +7,7 @@
  * 1. Drops and recreates the local database roofops_pilot, then migrates and imports it (npm run db:load).
  * 2. Adds two voided final invoices (synthetic: INV-2026-0039 deleted in Xero, INV-2026-0040 voided in Xero).
  * 3. Adds three clearly labelled synthetic staff through the owner CLI (--local), exactly as the owner does on hosted:
- *    EMP-801 FINANCE (requests), EMP-802 ADMIN (approves), EMP-803 ESTIMATOR (no reissue role).
+ *    EMP-801 FINANCE (requests), EMP-802 ADMIN (approves), EMP-803 ESTIMATOR (no reissue role), EMP-804 FIELD_CREW (site visits).
  * 4. Creates or rotates the local web login role roofops_web_pilot (a member of roofops_dashboard, like roofops_web).
  * 5. Writes web/e2e/.auth/pilot.env (gitignored): the dashboard's server settings for this database plus the random
  *    test logins. Nothing secret is printed.
@@ -56,6 +56,7 @@ const staff = [
   { code: 'EMP-801', name: 'Synthetic Finance Requester', role: 'FINANCE', login: 'synthetic.finance', key: 'FIN' },
   { code: 'EMP-802', name: 'Synthetic Admin Approver', role: 'ADMIN', login: 'synthetic.admin', key: 'ADMIN' },
   { code: 'EMP-803', name: 'Synthetic Estimator', role: 'ESTIMATOR', login: 'synthetic.estimator', key: 'EST' },
+  { code: 'EMP-804', name: 'Synthetic Roofer', role: 'FIELD_CREW', login: 'synthetic.roofer', key: 'CREW' },
 ];
 const env: string[] = [
   '# LOCAL ONLY: roofops_pilot rehearsal (scripts/pilot-rehearsal.ts). Synthetic logins. Gitignored; never copy to hosted.',

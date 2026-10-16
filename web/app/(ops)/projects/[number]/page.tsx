@@ -1,15 +1,18 @@
 import { notFound } from 'next/navigation';
 import { query } from '@/lib/db';
-import { requireSession } from '@/lib/auth';
+import { requireSession, staffIdentity } from '@/lib/auth';
 import { getChecklist, getExceptions, getInvoices, getProject, getPurchaseOrders, getTimeline, getXeroHistory } from '@/lib/queries';
 import { date } from '@/lib/labels';
 import { healthStrip, materialsAction } from '@/lib/insights';
 import { groupTimeline } from '@/lib/timeline';
+import { loadOps } from '@/lib/ops-load';
+import { nextSteps } from '@/lib/next-step';
 import { HealthStrip, ProjectHeader } from '@/components/project/Header';
 import { ChecklistCard, InfoCards, IssuesCard, NeedsAttention } from '@/components/project/Panels';
 import { MaterialsCard } from '@/components/project/MaterialsCard';
 import { FinanceCard } from '@/components/project/FinanceCard';
 import { Timeline } from '@/components/project/Timeline';
+import { NextStepsCard, TasksCard, VisitsCard } from '@/components/ops/OpsCards';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,24 +21,32 @@ export async function generateMetadata({ params }: { params: Promise<{ number: s
 }
 
 export default async function ProjectPage({ params }: { params: Promise<{ number: string }> }) {
-  await requireSession();
+  const session = await requireSession();
   const p = await getProject(query, decodeURIComponent((await params).number).toUpperCase());
   if (!p) notFound();
   const n = p.project_number;
-  const [checklist, pos, invoices, history, issues, xero] = await Promise.all([
+  const [checklist, pos, invoices, history, issues, xero, ops, me] = await Promise.all([
     getChecklist(query, n), getPurchaseOrders(query, n), getInvoices(query, n), getTimeline(query, n, 200), getExceptions(query, { project: n }),
-    getXeroHistory(query, n),
+    getXeroHistory(query, n), loadOps({ project: n }), staffIdentity(session.t),
   ]);
   const openIssues = issues.filter((e) => e.resolution_status === 'OPEN' || e.resolution_status === 'RETRY_QUEUED');
   const atRisk = p.is_active && p.risk_level === 'HIGH';
   const review = checklist.find((c) => c.kind === 'TASK' && c.stage === 'MATERIAL_REVIEW');
+  const open = p.status !== 'CLOSED' && p.status !== 'CANCELLED';
 
   return (
     <div className="stack" style={{ gap: 18 }}>
       <ProjectHeader p={p} />
       <HealthStrip items={healthStrip(p, issues)} />
       {(atRisk || openIssues.length > 0) && <NeedsAttention p={p} openIssues={openIssues} action={atRisk ? materialsAction(p, pos, date) : null} />}
+      {ops.installed && <NextStepsCard steps={nextSteps(p, checklist, ops.visits, ops.tasks, ops.today)} airtableRecord={p.airtable_record_id} />}
       <InfoCards p={p} />
+      {ops.installed && (
+        <div className="grid g-2">
+          <VisitsCard project={n} visits={ops.visits} me={me} roles={ops.roles} staff={ops.staff} today={ops.today} open={open} />
+          <TasksCard project={n} tasks={ops.tasks} me={me} roles={ops.roles} staff={ops.staff} today={ops.today} open={open} />
+        </div>
+      )}
       <div className="grid g-2">
         <MaterialsCard p={p} pos={pos} review={review} />
         <FinanceCard p={p} invoices={invoices} xero={xero} />
@@ -44,7 +55,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ number
         <Timeline groups={groupTimeline(history, n)} />
         <div className="stack">
           <IssuesCard issues={issues} />
-          <ChecklistCard items={checklist.filter((c) => c !== review)} />
+          <ChecklistCard items={checklist.filter((c) => c !== review && (!ops.installed || c.kind === 'CHECKLIST'))} />
         </div>
       </div>
     </div>

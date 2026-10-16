@@ -29,5 +29,6 @@ export default defineConfig({
     { name: 'operations', testMatch: /operations\.spec\.ts/ },
     { name: 'invoice-approval', testMatch: /invoice-approval\.spec\.ts/ },
     { name: 'dispatch-gate', testMatch: /dispatch-gate\.spec\.ts/ },
+    { name: 'site-work', testMatch: /site-work\.spec\.ts/ },
   ],
 });

@@ -111,6 +111,9 @@ describe.each(TARGETS)('site visits and tasks [%s]', (target) => {
     expect(clash).toMatchObject({ ok: false, code: 'CREW_CONFLICT', conflict: { employee: 'EMP-811', job_number: first.job_number } });
     expect(String(clash.detail)).toContain('Synthetic Leading Hand is already on');
     expect(await schedule(tok.planner!, prj, at(4, 12), at(4, 15), ['EMP-811'], 'visit-key-c003')).toMatchObject({ ok: true });   // starts when the other ends
+    // Without a named leading hand, the first person given leads (the form sends them in list order).
+    const order = await schedule(tok.planner!, prj, at(10, 7), at(10, 9), ['emp-812', 'EMP-811', 'EMP-812'], 'visit-key-c004');
+    expect(((await row(String(order.job_number))).crew as R[]).map((c) => [c.code, c.crew_role])).toEqual([['EMP-812', 'LEADING_HAND'], ['EMP-811', 'CREW']]);
   });
 
   it('the crew moves a visit on (start, weather delay, complete); a planner reschedules or cancels; stale screens and wrong people are refused', async () => {

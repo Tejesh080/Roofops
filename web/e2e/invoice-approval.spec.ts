@@ -119,6 +119,8 @@ test('final invoice: Finance prepares, a different Admin approves, RoofOps autom
   await expect(card.getByRole('table', { name: `Lines of ${apr}` })).toBeVisible();
   await expect(card).toContainText('You prepared this. A second person');
   await expect(card.getByRole('button', { name: `Approve ${apr}` })).toHaveCount(0);
+  await expect(card.getByRole('checkbox')).toHaveCount(0);
+  await expect(card.getByRole('button', { name: 'Reject' })).toBeVisible();   // the requester may withdraw it (test 2)
 
   // 2. A role that cannot approve, and the demo viewer, get no controls.
   const est = await signIn(browser, 'EST', baseURL!);
@@ -199,6 +201,10 @@ test('final invoice: Finance prepares, a different Admin approves, RoofOps autom
   await fin.page.reload();
   await expect(fCard).toContainText('Draft in Xero');
   await expect(fCard).toContainText(`InvoiceID ${xid}`);
+  // The request is still CLAIMED until the next 09 run settles it; staff read it as handed over, not "claimed".
+  expect(await one('select status from xero_dispatch_requests where xero_key = $1 order by requested_at desc limit 1', [w.key])).toEqual({ status: 'CLAIMED' });
+  await expect(fCard).toContainText('(handed over to the automation)');
+  await expect(fCard).not.toContainText('claimed');
   await fin.page.goto(`/projects/${P}`);
   await expect(fin.page.getByRole('link', { name: 'Open in Xero' })).toHaveAttribute('href', new RegExp(xid));
   expect(await (await replay(fin.ctx, send)).text()).toContain('The Xero draft already exists.');
@@ -216,6 +222,17 @@ test('final invoice: Finance prepares, a different Admin approves, RoofOps autom
 test('an ambiguous Xero answer is shown as unclear, cannot be re-sent, and System health flags it', async ({ browser, baseURL }) => {
   const P = 'PRJ-2026-0004';
   const fin = await signIn(browser, 'FIN', baseURL!);
+  await fin.page.goto('/finance');
+  // The requester withdraws a first preview (reject with a reason; never approve), then prepares it again.
+  await fin.page.getByRole('button', { name: `Prepare invoice for ${P}` }).click();
+  const mine = approvalsCard(fin.page).locator('.issue', { hasText: P });
+  await expect(mine).toContainText('you can still withdraw it');
+  await mine.locator('textarea[name=note]').fill('Wrong date: preparing it again');
+  await mine.getByRole('button', { name: 'Reject' }).click();
+  await expect(mine).toHaveCount(0);
+  expect((await approvalsFor(P)).filter((a) => String(a.idempotency_key).startsWith('approval:dashboard:prepare:'))
+    .map((a) => [a.status, a.requested_by, a.decided_by])).toEqual([['REJECTED', 'EMP-801', 'EMP-801']]);
+  expect(await effects(P)).toEqual({ finals: '0', writes: '0', requests: '0' });
   await fin.page.goto('/finance');
   await fin.page.getByRole('button', { name: `Prepare invoice for ${P}` }).click();
   await expect(approvalsCard(fin.page).locator('.issue', { hasText: P })).toContainText('Awaiting approval');

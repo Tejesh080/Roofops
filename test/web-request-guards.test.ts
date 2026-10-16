@@ -37,5 +37,21 @@ describe('staff Xero dispatch switch', () => {
     expect(staffDispatchEnabled({ STAFF_XERO_DISPATCH: 'true' })).toBe(false);
     expect(staffDispatchEnabled({ STAFF_XERO_DISPATCH: 'off' })).toBe(false);
     expect(staffDispatchEnabled({ STAFF_XERO_DISPATCH: 'on' })).toBe(true);
+    expect(staffDispatchEnabled({ STAFF_XERO_DISPATCH: 'on\r' })).toBe(false);   // a stray carriage return stays off (seen on staging)
+  });
+});
+
+describe('Xero drafts: staff request wording', () => {
+  it('a claim 05 has already taken reads as handed over, never "claimed"', async () => {
+    const { requestStatus } = await import('../web/lib/xero-request.ts');
+    const req = (status: string) => ({ status, requested_by: 'A', requested_at: '2026-10-16T00:00:00Z', reason: 'r', closed_reason: null });
+    expect(requestStatus({ state: 'QUEUED', request: req('QUEUED') })).toBe('waiting for the automation');
+    expect(requestStatus({ state: 'STARTING', request: req('CLAIMED') })).toBe('picked up by the automation');
+    for (const state of ['SENDING', 'CREATED', 'RETRY_LATER', 'FAILED', 'UNCERTAIN', 'STUCK'] as const) {
+      expect(requestStatus({ state, request: req('CLAIMED') })).toBe('handed over to the automation');
+    }
+    expect(requestStatus({ state: 'CREATED', request: req('HANDED_OVER') })).toBe('handed over to the automation');
+    expect(requestStatus({ state: 'READY_TO_SEND', request: req('REFUSED') })).toBe('refused');
+    expect(requestStatus({ state: 'READY_TO_SEND', request: req('EXPIRED') })).toBe('expired');
   });
 });

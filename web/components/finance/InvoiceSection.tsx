@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { CloudUpload, FileCheck2 } from 'lucide-react';
 import type { DraftProgress, InvoiceOverview, PendingInvoice } from '@/lib/invoices';
 import { DRAFT_STATE } from '@/lib/invoices';
+import { requestStatus } from '@/lib/xero-request';
 import { date, money } from '@/lib/labels';
 import { Badge } from '@/components/ui/Badge';
 import { CardHead, Empty } from '@/components/ui/Empty';
@@ -36,7 +37,9 @@ function Preview({ p }: { p: PendingInvoice }) {
 
 function Decision({ p, me, roles, dispatchOn }: { p: PendingInvoice; me: NonNullable<InvoiceOverview['me']>; roles: string; dispatchOn: boolean }) {
   if (!me.may_approve) return <p className="t-meta reissue-wait">Waiting for an approver ({roles}).</p>;
-  if (p.i_requested_it) return <p className="t-meta reissue-wait">You prepared this. A second person ({roles}) must approve it; you can still reject (withdraw) it.</p>;
+  // The requester may withdraw (reject) their own preview, never approve it (Postgres refuses SAME_PERSON either way).
+  if (p.i_requested_it) return <><p className="t-meta reissue-wait">You prepared this. A second person ({roles}) must approve it; you can still withdraw it by rejecting it with a reason.</p>
+    <DecideInvoiceForm approval={p.approval_number} hash={p.payload_hash} approveEnabled={false} /></>;
   return <>{!dispatchOn && <p className="t-meta reissue-wait" role="note">{DISPATCH_PENDING}</p>}<DecideInvoiceForm approval={p.approval_number} hash={p.payload_hash} approveEnabled={dispatchOn} /></>;
 }
 
@@ -58,7 +61,7 @@ function Draft({ d, me, dispatchOn }: { d: DraftProgress; me: NonNullable<Invoic
       {(d.last_error && d.state !== 'CREATED') || d.request ? (
         <p className="t-meta reissue-wait">
           {d.last_error && d.state !== 'CREATED' ? <>Last answer: {d.last_error}. </> : null}
-          {d.request ? <>Last request: {d.request.requested_by ?? 'someone'}, {date(d.request.requested_at)} ({d.request.status.toLowerCase().replace('_', ' ')}{d.request.closed_reason ? `: ${d.request.closed_reason}` : ''}).</> : null}
+          {d.request ? <>Last request: {d.request.requested_by ?? 'someone'}, {date(d.request.requested_at)} ({requestStatus(d)}{d.request.closed_reason ? `: ${d.request.closed_reason}` : ''}).</> : null}
         </p>
       ) : null}
       {canSend && !dispatchOn ? <p className="t-meta reissue-wait" role="note">Sending to Xero from the dashboard is not switched on yet (pending the owner&apos;s activation).</p>

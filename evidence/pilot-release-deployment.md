@@ -105,3 +105,42 @@ accurate history.
   - PRJ-2026-0002 shows Current `61e09cad…` and Replaced `21545f60…` (deleted in Xero).
   - The demo viewer has no reissue or resolve controls.
 - **No financial mutation:** invoices, approvals, outbox, payments and the generation ledger are byte-identical to just after the migration; every other change came from the nightly reconciliation.
+
+## Staging release STAFF-OPS-01 (approved; 2026-10-16)
+
+**Stage 1: hosted migration `20261016000000`**
+- Before:
+  - `5516f88`, equal to origin; TLS verified.
+  - Backup `pre-20261016-20261016-115355.dump` (SHA-256 `33337383…77ec`; owner and SYSTEM only).
+  - Nothing in flight; integrity 28/4/0.
+  - The file is byte-identical to the version tested on the restored hosted copy (`f5403089…`).
+  - The hosted decision core was the exact base it was built from (`9213db08…`).
+- Applied with `npm run db:load -- --hosted`. After:
+  - 49/49 checksums equal; integrity 28/4/0; all privilege checks pass (dashboard SECURITY DEFINER functions 19, workflow functions 23, Demo tenant pinned).
+  - The decision core equals the tested copy (`7a210ea5…`).
+  - Data changes: `app_settings` +3, `schema_migrations` +1, new empty `xero_dispatch_requests`; every other table byte-identical.
+  - A probe in a transaction that was always rolled back showed `wf_invoice_decide` (04's path) still answers through the new core, and `wf_xero_dispatch_next` returns no writes. No persistent change.
+
+**Stage 2: n8n 09.**
+- `[RoofOps] 09 Staff Xero Dispatch`, id `YLdvY49T3RKCt3K4`, version `2e34b2ce`, team project Roofops.
+- **Inactive**; its schedule trigger node is **disabled**.
+- Nodes: Next Staff Request (credential RoofOps Postgres `kWqjtv0gz7ref2EN`, the one 04 and 08 use), Write To Dispatch (at most one), Any Write?, Run Xero Draft Invoice (05 `Y2deCFTZzpv1uo8C`, unchanged `feab88d9`).
+- Settings: MCP off, no saved executions (success, error, manual, progress), caller policy same owner.
+- Never executed. Pending staff requests on hosted: 0.
+
+**Stage 3: protected preview** `roofops-dashboard-qsf0c8m66-tejesh1.vercel.app` (`dpl_Eiks9fSTXaeDqCaN56b8dRUqJz4m`, code `3ec2cb8`, target preview).
+- Vercel Authentication covers all deployments (checked before deploying).
+- The previous preview `roofops-dashboard-du3h1zvdr-tejesh1.vercel.app` is kept for rollback; there is no production deployment.
+- `STAFF_XERO_DISPATCH` is not set, so dashboard approve and Send to Xero are **off** (server-side). Preparing and rejecting stay available; nothing can be queued for the inactive 09.
+- Read-only hosted browser tests through a temporary bypass, revoked afterwards (0 left): smoke, state-sync and interactions 29/29.
+- Demo viewer: no staff controls. Operations shows reconciliation and health OK and 4 issues to look at. PRJ-2026-0002 shows current and replaced Xero documents.
+
+**Stage 4.**
+- Invoices, invoice lines, approvals, outbox, payments, the generation ledger, external links, requests, staff and settings are unchanged since the migration.
+- 04 `fee94016`, 05 `feab88d9`, 07 `a0ca9e60`, 08 `facd57c8` and 08-health `c6f531fd` are active; 09 is inactive.
+- Scheduled reconciliation `RECON-20261016-023041-9ca7` COMPLETED.
+
+**Rollback (any order):**
+- point staff back at the previous preview;
+- delete 09 or leave it inactive;
+- `npx tsx scripts/sql.ts -f ops/rollback/20261016000000_staff_invoice_approval_and_xero_dispatch.down.sql` (rehearsed: the decision core returns byte-identical).

@@ -162,3 +162,25 @@ accurate history.
   employees +2, staff_accounts +2, staff_sessions +2, id_counters (APR counter), integration_health (scheduled 08 health).
   Outbox 9 (all DONE), xero_dispatch_requests 0, invoices 40, external_links 253, payments 27: unchanged. Integrity 28/4/0.
 - n8n 09 inactive (unchanged since creation, never triggered); `STAFF_XERO_DISPATCH` unset; no Xero document created.
+
+## First supervised Xero Demo invoice via the staff path (2026-10-16, owner-authorised steps 1-4)
+
+- Preview switch: `STAFF_XERO_DISPATCH` added for Preview only. The first save (piped from PowerShell) did not read as `on`
+  (preview `i9plwxmgr` stayed gated, harmless); re-added as a Config value, bytes verified as exactly `on`, redeployed:
+  `https://roofops-dashboard-lc1bw3xd9-tejesh1.vercel.app` (dpl_HqNDDL1fYyP3dSXBRSyo1jWDR77V, Vercel Authentication).
+  Switched-off rollback preview `qsf0c8m66` kept. Production untouched.
+- Finance EMP-801 prepared PRJ-2026-0005 once: APR-2026-0015 (same payload hash as APR-2026-0014). Owner confirmed the figures;
+  Admin EMP-802 approved: INV-2026-0041 FINAL, $17,831.91 inc GST, GST $1,621.08, issue 2026-09-29, due 2026-10-13, one line,
+  account 200. Exactly one QUEUED request (payload hash matched, xero_dispatch_problem none) before 09 ran.
+- n8n 09: only the "Every Minute" node enabled (plus MCP access and saving of manual runs, temporarily), workflow kept INACTIVE;
+  one manual execution 2832 -> 05 execution 2833, both success; then node disabled and the restrictive settings restored
+  (availableInMCP false, saveManualExecutions false). Still inactive, never activated.
+- Xero Demo Company (AU), Class DEMO (read back independently by read-only 96, execution 2834): one new contact
+  RO-CUST-0005 "Jack Walker [CUST-0005]" (e59e6773-7dcc-47f3-b49a-6f2c78d50fa9) and one DRAFT RO-INV-2026-0041
+  (f062fa4d-fa78-4cdf-9470-6352cd51daa8), reference PRJ-2026-0005, total 17831.91, tax 1621.08, subtotal 16210.83, account 200,
+  OUTPUT. Other RoofOps Xero invoices unchanged.
+- Hosted: APR-2026-0015 EXECUTED, INV-2026-0041 APPROVED/SYNCED, outbox 10 all DONE, 2 new Xero links, payments 27 unchanged.
+  Audit: approval.approve (EMP-802), invoice.create, xero.dispatch_requested (EMP-802), xero.dispatch_started (n8n:09:2832),
+  xero.invoice.draft_created. Ops status all ok (4 pre-existing exceptions). Integrity 26 pass / 6 warning / 0 fail: the two new
+  warnings (Airtable invoice fields not yet written for PRJ-2026-0005; INV-2026-0041 not yet read back by reconciliation) are
+  expected on the staff path and are repaired by the nightly 07 reconciliation.

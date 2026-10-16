@@ -184,3 +184,21 @@ accurate history.
   xero.invoice.draft_created. Ops status all ok (4 pre-existing exceptions). Integrity 26 pass / 6 warning / 0 fail: the two new
   warnings (Airtable invoice fields not yet written for PRJ-2026-0005; INV-2026-0041 not yet read back by reconciliation) are
   expected on the staff path and are repaired by the nightly 07 reconciliation.
+
+## Post-test cleanup (2026-10-16)
+
+- Queue: 0 unsent Xero writes, 0 uncertain, 0 open approvals; the one staff request (INV-2026-0041) is CLAIMED with its write
+  DONE; it settles to HANDED_OVER at the start of the next 09 run (no data change made by hand).
+- n8n 09 re-read via the public API: inactive, "Every Minute" disabled, availableInMCP false, saveManualExecutions false,
+  saveDataSuccess/Error none, callerPolicy workflowsFromSameOwner. Saved runs from the test (09 #2832, 05 #2833, 96 #2830/2834/2836)
+  scanned: no tokens, keys, passwords or connection strings (only synthetic example.com addresses, Xero ids and the Demo
+  Company's sample data).
+- Fixes (3033685): the requester can withdraw (Reject with a reason) but never approve; a CLAIMED request whose write 05 has
+  taken reads "handed over to the automation". Tests: vitest dual PGlite+Postgres 899 passed / 0 failed; lint, both
+  typechecks; browser invoice-approval 3/3 (new withdraw + wording checks), staff-journey 2/2, dispatch-gate 1/1.
+- `STAFF_XERO_DISPATCH` removed from Preview (not set in any environment); new protected preview
+  `https://roofops-dashboard-lgrp0ep2k-tejesh1.vercel.app` (dpl_GohKgHcjqud2By6gGWCbD6XMnfkt, code 4b23915).
+  Kept for rollback: `lc1bw3xd9` (switch on, used for the supervised test) and `qsf0c8m66` (switch off).
+- Xero re-read (96 #2836): RO-INV-2026-0041 exactly once (DRAFT, PRJ-2026-0005, 17831.91, tax 1621.08, Jack Walker [CUST-0005]);
+  one RO-CUST-0005 contact. Integrity 26/6/0: the two new warnings (Airtable invoice fields for PRJ-2026-0005; INV-2026-0041 not
+  yet read from Xero) are both covered by the nightly repair-mode reconciliation (16:30 UTC); no manual repair made.

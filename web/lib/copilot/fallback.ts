@@ -17,7 +17,7 @@ const WHY: Record<Unavailable, string> = {
 };
 
 /** The normal path that needs no assistant (INVOICE_NEXT_STEP.prepare also offers the Copilot, which is the thing that is down). */
-const PREPARE_WITHOUT_AI = 'Prepare it the normal way: in Airtable, set the project’s Invoice Action to “Prepare Xero draft invoice”. A finance approver then checks and approves it.';
+const PREPARE_WITHOUT_AI = 'Prepare it the normal way: on the Finance page, Prepare invoice (or in Airtable, set the project’s Invoice Action to “Prepare Xero draft invoice”). A second person then checks and approves it.';
 
 type R = Record<string, unknown>;
 const list = (v: unknown) => (Array.isArray(v) ? (v as R[]) : []);

@@ -1,6 +1,7 @@
 'use client';
 
-import { startTransition, useActionState, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useActionState, useEffect, useRef, useState } from 'react';
+import { useSubmit } from '@/components/ui/useSubmit';
 import { CheckCircle2, Loader2 } from 'lucide-react';
 import { createTask, scheduleVisit, updateTask, updateVisit, type OpsActionState } from '@/app/(ops)/work/actions';
 import type { StaffMember } from '@/lib/ops';
@@ -11,22 +12,6 @@ function useRequestKey(state: OpsActionState) {
   const [key, setKey] = useState(() => crypto.randomUUID());
   useEffect(() => { if (state.ok) setKey(crypto.randomUUID()); }, [state.ok, state.at]);
   return key;
-}
-/**
- * Submit without React's automatic form reset: React clears an action form after every submission, so a refused one
- * (a crew clash, a duplicate title, a database that did not answer) would wipe what the person typed. We reset only after
- * a success. The clicked button's name/value (e.g. action=start) travels as the submitter.
- */
-function useSubmit(action: (f: FormData) => void, pending: boolean) {
-  const busy = useRef(false);   // a second click before the button disables is ignored (the request key would make it harmless anyway)
-  useEffect(() => { if (!pending) busy.current = false; }, [pending]);
-  return (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (busy.current) return;
-    busy.current = true;
-    const data = new FormData(e.currentTarget, (e.nativeEvent as SubmitEvent).submitter);
-    startTransition(() => action(data));
-  };
 }
 const Result = ({ s }: { s: OpsActionState }) => (s.message
   ? s.ok ? <p className="resolve-done" role="status"><CheckCircle2 size={15} aria-hidden /> {s.message}</p> : <p className="form-error" role="alert">{s.message}</p>

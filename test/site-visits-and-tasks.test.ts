@@ -62,6 +62,8 @@ describe.each(TARGETS)('site visits and tasks [%s]', (target) => {
     }
     expect(await one(`select has_table_privilege('roofops_dashboard', 'jobs', 'select') t, has_table_privilege('roofops_dashboard', 'v_dashboard_site_visits', 'select') v`)).toEqual({ t: false, v: true });
     expect((await db.query(`select * from v_dashboard_staff where employee_code = 'EMP-813'`)).length).toBe(0);   // a viewer is never offered as crew
+    // A task a workflow creates (wf_quote_accepted's material review) is numbered too, so staff see it.
+    expect(String((await one(`insert into tasks (task_type, title) values ('MATERIAL_REVIEW', 'Review materials (workflow)') returning task_number`)).task_number)).toMatch(/^TASK-\d{4}$/);
   });
 
   it('a planner schedules a visit with its crew: one job, the leading hand first, audited on the project; a repeat submit returns the same visit', async () => {

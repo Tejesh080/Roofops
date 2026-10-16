@@ -187,8 +187,8 @@ export const airtableProjectUrl = (rec: string | null) =>
  * first shown on the row with Prepare; Prepare again returns the same pending preview, so the step is always safe.
  */
 export const INVOICE_NEXT_STEP = {
-  prepare: 'Next: in Airtable, set this project’s Invoice Action to “Prepare Xero draft invoice”, or use Prepare with Copilot on the Finance page.',
-  approve: 'Next, for a finance approver in Airtable: set Invoice Action to “Prepare Xero draft invoice” so the preview shows on the row, check it, then set “Approve Xero draft invoice”.',
+  prepare: 'Next: on the Finance page, Prepare invoice (Ready to invoice); a second person then approves it. Setting Invoice Action to “Prepare Xero draft invoice” in Airtable does the same.',
+  approve: 'Next, for a second person: review it on the Finance page (Invoice approvals). To approve in Airtable instead: set Invoice Action to “Prepare Xero draft invoice” so the preview shows on the row, check it, then set “Approve Xero draft invoice”.',
   approveShort: 'in Airtable: Prepare, check, then Approve',
 } as const;
 

@@ -103,7 +103,7 @@ test('ordinary final invoice: prepare → staff see it awaiting approval → app
   await asWorkflow('wf_invoice_preview_verified', 'airtable:PILOT:prep1', row.rec, shown);
   await page.reload();
   await expect(financeCard(page)).toContainText('Prepared, awaiting approval');
-  await expect(financeCard(page)).toContainText('Next, for a finance approver in Airtable');
+  await expect(financeCard(page)).toContainText('Next, for a second person: review it on the Finance page (Invoice approvals)');
   await expect(financeCard(page)).toContainText(String(prep.approval_number));
   await page.goto('/finance');
   await expect(page.locator('main')).toContainText(p);

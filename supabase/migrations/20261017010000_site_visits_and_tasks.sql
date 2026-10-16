@@ -24,6 +24,9 @@ create index if not exists job_assignments_employee on job_assignments (employee
 create index if not exists jobs_project on jobs (project_id, scheduled_start);
 
 alter table tasks add column if not exists task_number text unique;
+-- Every task gets a number, including the ones workflows create (wf_quote_accepted's material review), so staff can see
+-- and act on them; existing tasks are numbered below.
+alter table tasks alter column task_number set default next_friendly_id('TASK');
 alter table tasks add column if not exists created_by uuid references employees (id);
 alter table tasks add column if not exists completed_at timestamptz;
 alter table tasks add column if not exists completed_by uuid references employees (id);
@@ -352,3 +355,28 @@ grant select on v_dashboard_staff, v_dashboard_site_visits, v_dashboard_tasks, v
 update field_contract set editable_in = 'RoofOps dashboard (project Tasks card, My work): the assignee or a task manager',
        change_path = 'web_task_create / web_task_update (state_transitions(task))'
  where entity = 'task' and field_key = 'material_review';
+
+-- The project checklist as staff see it. Two items quote acceptance creates were never updated by anything, so a finished,
+-- invoiced job still showed them as "To do": "Materials reviewed and approved" now follows its material-review task, and
+-- "Final invoice approved" follows the final invoice's approval. (Safe Work Method Statement still has no recording path:
+-- it stays as recorded.) Same columns as before (20260929001000), tasks unchanged.
+create or replace view v_dashboard_project_checklist as
+select p.project_number, 'CHECKLIST' as kind, ci.stage, ci.label as title,
+       case
+         when ci.status <> 'OPEN' then ci.status
+         when ci.item_code = 'MATERIALS_REVIEWED' and mr.completed_on is not null then 'DONE'
+         when ci.item_code = 'FINAL_INVOICE_APPROVED' and fa.decided_on is not null then 'DONE'
+         else ci.status end as status,
+       ci.is_required,
+       coalesce(ci.completed_on, case ci.item_code when 'MATERIALS_REVIEWED' then mr.completed_on when 'FINAL_INVOICE_APPROVED' then fa.decided_on end) as done_on,
+       null::date as due_on, null::text as assignee, ci.sort_order
+from project_checklist_items ci join projects p on p.id = ci.project_id
+left join lateral (select max(coalesce(t.completed_at, t.updated_at))::date as completed_on from tasks t
+                    where t.project_id = p.id and t.task_type = 'MATERIAL_REVIEW' and t.status = 'DONE'
+                      and not exists (select 1 from tasks o where o.project_id = p.id and o.task_type = 'MATERIAL_REVIEW' and o.status in ('OPEN', 'IN_PROGRESS'))) mr on true
+left join lateral (select max(a.decided_at)::date as decided_on from invoices i join approvals a on a.id = i.approval_id
+                    where i.project_id = p.id and i.invoice_type = 'FINAL' and i.status <> 'VOIDED' and a.status in ('EXECUTING', 'EXECUTED')) fa on true
+union all
+select p.project_number, 'TASK', t.task_type, t.title, t.status, true, null, t.due_on, e.full_name, 0
+from tasks t join projects p on p.id = t.project_id left join employees e on e.id = t.assignee_id;
+grant select on v_dashboard_project_checklist to roofops_dashboard;

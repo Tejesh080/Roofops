@@ -227,6 +227,10 @@ test('an ambiguous Xero answer is shown as unclear, cannot be re-sent, and Syste
   await fin.page.getByRole('button', { name: `Prepare invoice for ${P}` }).click();
   const mine = approvalsCard(fin.page).locator('.issue', { hasText: P });
   await expect(mine).toContainText('you can still withdraw it');
+  await mine.locator('textarea[name=note]').fill('no');
+  await mine.getByRole('button', { name: 'Reject' }).click();
+  await expect(mine.locator('[role=alert]')).toContainText('Say why it is rejected');
+  await expect(mine.locator('textarea[name=note]')).toHaveValue('no');   // a refusal keeps what was typed
   await mine.locator('textarea[name=note]').fill('Wrong date: preparing it again');
   await mine.getByRole('button', { name: 'Reject' }).click();
   await expect(mine).toHaveCount(0);

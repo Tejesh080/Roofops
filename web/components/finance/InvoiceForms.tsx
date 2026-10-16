@@ -1,6 +1,7 @@
 'use client';
 
 import { useActionState } from 'react';
+import { useSubmit } from '@/components/ui/useSubmit';
 import { CheckCircle2, Loader2 } from 'lucide-react';
 import { decideFinalInvoice, prepareFinalInvoice, requestXeroDraft, type ReissueActionState } from '@/app/(ops)/finance/actions';
 
@@ -22,9 +23,10 @@ export function PrepareInvoiceForm({ project }: { project: string }) {
 /** Approve (after ticking the check) or reject (with a reason) the exact preview shown; bound to its hash. */
 export function DecideInvoiceForm({ approval, hash, approveEnabled = true }: { approval: string; hash: string; approveEnabled?: boolean }) {
   const [state, action, pending] = useActionState<ReissueActionState, FormData>(decideFinalInvoice, {});
+  const submit = useSubmit(action, pending);   // a refused decision keeps the note and the tick
   if (state.ok) return <p className="resolve-done" role="status"><CheckCircle2 size={15} aria-hidden /> {state.message}</p>;
   return (
-    <form action={action} className="resolve-form">
+    <form onSubmit={submit} className="resolve-form">
       <input type="hidden" name="approval" value={approval} />
       <input type="hidden" name="hash" value={hash} />
       {approveEnabled && <label className="check-line"><input type="checkbox" name="checked" /> I checked the customer, amount, GST and lines above</label>}

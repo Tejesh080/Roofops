@@ -234,3 +234,29 @@ accurate history.
 - Follow-up observe RECON-20261016-134530-8cb2: no drift (Airtable 231, Drive 3, Xero 3). Integrity 28/4/0 (baseline warnings
   only). Xero (96 #2843): RO-INV-2026-0041 exactly once, DRAFT, 17831.91. n8n 09 inactive, trigger disabled; previews
   lgrp0ep2k, i9plwxmgr, qsf0c8m66, du3h1zvdr all dispatch-off.
+
+## First controlled unattended (scheduled) Xero Demo dispatch: PRJ-2026-0007 (2026-10-16, owner-authorised A-G)
+
+- Eligibility: owner set Airtable Completion Photos = Waived with a note (no synthetic photo evidence exists); audited as
+  project.checklist.changed by EMP-900 (Airtable user usr7uCnNO15fCefbH); project READY_TO_INVOICE, $25,587.26.
+- A: `STAFF_XERO_DISPATCH=on` (Config, bytes verified) -> preview `rhs3lu5g3` (dpl_H18yjrQN1DrrELJ9maWQ4DJkkeEf); variable removed
+  from Preview immediately after the build.
+- B: Finance EMP-801 prepared APR-2026-0016 (Henry Hughes, $25,587.26 inc GST, GST $2,326.11, 1 line, account 200, OUTPUT,
+  29 Sep / 13 Oct); owner confirmed the figures; Admin EMP-802 approved -> INV-2026-0042. Exactly one QUEUED request
+  (INV-2026-0042 gen 1, payload hash matched, no problem); old INV-2026-0041 request CLAIMED, new request refused ALREADY_CREATED.
+- C: `rhs3lu5g3` removed (404, no aliases); 4 remaining previews dispatch-off; `xero.dispatch_roles` set blank.
+- D/E: 09 trigger enabled and activated (scheduled, not manual); its first scheduled run (n8n:09:2850, ~30 s) settled the old
+  request to HANDED_OVER and claimed INV-2026-0042; 09 deactivated and trigger disabled 2 s later. 05 execution 2851 (integrated)
+  finished: outbox DONE (1 attempt), invoice SYNCED, approval EXECUTED. One xero.dispatch_started audit row only.
+- F: Xero (96 #2852): one new DRAFT RO-INV-2026-0042 (4befb014-1cba-43ed-8432-ac649d4ed373, PRJ-2026-0007, 25587.26, tax 2326.11,
+  subtotal 23261.15) and one new contact RO-CUST-0007 "Henry Hughes [CUST-0007]" (1d8f2678-b7c0-421c-90cf-68361ee22fb7);
+  05 read-back: matching_invoices 1, adopted_existing_draft false, Class DEMO. Earlier RoofOps Xero documents unchanged.
+  Table diff: only approvals, audit, automation/processed events, invoices/lines, draft generations, outbox, external_links
+  (+2), staff_sessions, workflow runs/steps and xero_dispatch_requests changed; payments 27 unchanged.
+- G: `xero.dispatch_roles` restored to FINANCE,ADMIN. Observe RECON-20261016-144609-f81f: only PRJ-2026-0007's four Airtable invoice
+  fields (incl. Invoice Status "Not eligible" -> "Xero draft created"); repair RECON-20261016-144856-a278 wrote exactly those 4
+  (verified in Airtable); follow-up observe RECON-20261016-145138-d5be: zero drift (Airtable 231, Drive 3, Xero 4).
+  Integrity 29/3/0. n8n 09: inactive, trigger disabled, MCP off, run saving off (version 7e124e9e).
+- Outstanding (reported, not changed): EXC-0016 still OPEN (cause resolved by the waiver; a person should mark it resolved with a
+  note); PRJ-2026-0007's Airtable "Invoice Result" text still shows the old "missing completion documents" message (not a
+  reconciled field). Pilot passwords not yet rotated.

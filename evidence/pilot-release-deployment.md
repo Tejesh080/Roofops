@@ -219,3 +219,18 @@ accurate history.
 - n8n 09: inactive, "Every Minute" disabled, MCP off, run saving off. Integrity 26/6/0; the next scheduled reconciliation
   (16:30 UTC 16 Oct) has not run yet. Remaining check: after it, integrity should return to 28/4/0 with only PRJ-2026-0005's
   four Airtable invoice fields written and INV-2026-0041 read back from Xero.
+
+## Operator reconciliation for PRJ-2026-0005 / INV-2026-0041 (2026-10-16 ~03:40-03:46 UTC)
+
+- Preflight: 07 active (version a0ca9e60, schedule Daily 02:30 unchanged), no run in progress, 0 dead letters, 0 uncertain;
+  Xero (96) one RO-INV-2026-0041 DRAFT in Demo Company (AU), Class DEMO. The 07 scope option (invoice_projection_reset) refuses a
+  project with a final invoice, so a normal run was used.
+- Observe RECON-20261016-134023-35ec: Airtable 4 findings, all PRJ-2026-0005 (Invoice Amount, Invoice Status, Xero Invoice ID,
+  Xero Invoice Number), SAFE_AUTO_REPAIR; Drive and Xero 0 drift; webhooks OK. It recorded the Xero read-back of INV-2026-0041
+  (xero_invoice_observations; integrity 27/5/0). Database changes: run, findings and observation rows and link sync timestamps only.
+- Repair RECON-20261016-134246-587a (one start refused first by the 2-minute quota guard): exactly 4 airtable_writes on
+  recyDSiQ5Ot1tdbVu, each verified; no invoice, payment, outbox, approval or Xero change. Airtable read directly afterwards:
+  RO-INV-2026-0041, "Xero draft created", 17831.91, f062fa4d-fa78-4cdf-9470-6352cd51daa8.
+- Follow-up observe RECON-20261016-134530-8cb2: no drift (Airtable 231, Drive 3, Xero 3). Integrity 28/4/0 (baseline warnings
+  only). Xero (96 #2843): RO-INV-2026-0041 exactly once, DRAFT, 17831.91. n8n 09 inactive, trigger disabled; previews
+  lgrp0ep2k, i9plwxmgr, qsf0c8m66, du3h1zvdr all dispatch-off.

@@ -71,7 +71,7 @@ describe.each(TARGETS)('enquiry to quote [%s]', (target) => {
     expect(await lead('not-a-token')).toMatchObject({ ok: false, code: 'SIGNED_OUT' });
     expect(await lead(tok.crew!, { key: 'lead-key-x001' })).toMatchObject({ ok: false, code: 'ACTOR_UNAUTHORIZED' });
     expect(await lead(tok.est!, { name: 'A', key: 'lead-key-x002' })).toMatchObject({ ok: false, code: 'INVALID' });
-    expect(await lead(tok.est!, { phone: null, email: null, key: 'lead-key-x003' })).toMatchObject({ ok: false, code: 'INVALID', detail: expect.stringContaining('phone number or an email') });
+    expect(await lead(tok.est!, { phone: null, email: null, key: 'lead-key-x003' })).toMatchObject({ ok: false, code: 'INVALID', detail: expect.stringContaining('phone number or an email') as unknown });
     expect(await lead(tok.est!, { email: 'not-an-email', key: 'lead-key-x004' })).toMatchObject({ ok: false, code: 'INVALID' });
     expect(await lead(tok.est!, { phone: '12', key: 'lead-key-x005' })).toMatchObject({ ok: false, code: 'INVALID' });
     expect(await lead(tok.est!, { source: 'CARRIER_PIGEON', key: 'lead-key-x006' })).toMatchObject({ ok: false, code: 'INVALID' });
@@ -146,7 +146,7 @@ describe.each(TARGETS)('enquiry to quote [%s]', (target) => {
     expect(await leadRow(L)).toMatchObject({ status: 'INSPECTION_BOOKED' });
 
     const record = (v: number, f: R, action = 'complete') => call('select web_inspection_record($1, $2, $3, $4, $5::jsonb) r', [tok.est, b.inspection_number, v, action, JSON.stringify(f)]);
-    expect(await record(1, { roof_type: 'TILE', roof_area_sqm: '180', findings: 'Cracked tiles over kitchen' })).toMatchObject({ ok: false, code: 'INVALID', detail: expect.stringContaining('measured') });
+    expect(await record(1, { roof_type: 'TILE', roof_area_sqm: '180', findings: 'Cracked tiles over kitchen' })).toMatchObject({ ok: false, code: 'INVALID', detail: expect.stringContaining('measured') as unknown });
     expect(await record(1, { roof_type: 'TILE', roof_area_sqm: '-3', measurement_method: 'TAPE', findings: 'Cracked tiles' })).toMatchObject({ ok: false, code: 'INVALID' });
     expect(await record(2, { roof_type: 'TILE', findings: 'x' })).toMatchObject({ ok: false, code: 'STALE' });
     const done = await record(1, { roof_type: 'TERRACOTTA_TILE', roof_area_sqm: '182.46', pitch_degrees: '22.5', measurement_method: 'TAPE', findings: 'Six cracked tiles above the kitchen; ridge mortar failing' });
@@ -157,9 +157,9 @@ describe.each(TARGETS)('enquiry to quote [%s]', (target) => {
     // Draft: lines validated; totals derived (prices include GST: GST is 1/11 of the total).
     expect(await save(tok.est!, { lead: L, lines: [], key: 'quote-key-x1' })).toMatchObject({ ok: false, code: 'INVALID' });
     expect(await save(tok.est!, { lead: L, lines: [{ line_kind: 'MATERIAL', description: 'Tiles', quantity: '10', unit: 'EA', unit_price: '5' }], key: 'quote-key-x2' }))
-      .toMatchObject({ ok: false, code: 'INVALID', detail: expect.stringContaining('product') });
+      .toMatchObject({ ok: false, code: 'INVALID', detail: expect.stringContaining('product') as unknown });
     expect(await save(tok.est!, { lead: L, lines: [{ line_kind: 'LABOUR', description: 'Work', quantity: '0', unit: 'hrs', unit_price: '5' }], key: 'quote-key-x3' }))
-      .toMatchObject({ ok: false, code: 'INVALID', detail: expect.stringContaining('more than 0') });
+      .toMatchObject({ ok: false, code: 'INVALID', detail: expect.stringContaining('more than 0') as unknown });
     expect(await save(tok.crew!, { lead: L, key: 'quote-key-x4' })).toMatchObject({ ok: false, code: 'ACTOR_UNAUTHORIZED' });
     const d = await save(tok.est!, { lead: L, key: 'quote-key-0001' });
     expect(d, JSON.stringify(d)).toMatchObject({ ok: true, version: 1, status: 'DRAFT', total_inc_gst: 1870, gst_amount: 170 });   // 1140 + 250 + 480 inc GST
@@ -182,7 +182,7 @@ describe.each(TARGETS)('enquiry to quote [%s]', (target) => {
     const send = (v: number) => call('select web_quote_send($1, $2, $3) r', [tok.est, Q, v]);
     expect(await send(1)).toMatchObject({ ok: false, code: 'STALE' });
     const s = await send(2);
-    expect(s).toMatchObject({ ok: true, status: 'SENT', airtable_key: expect.stringMatching(/^airtable:quote-publish:/) });
+    expect(s).toMatchObject({ ok: true, status: 'SENT', airtable_key: expect.stringMatching(/^airtable:quote-publish:/) as unknown });
     expect(await send(3)).toMatchObject({ ok: true, duplicate: true });
     expect(await one(`select sent_on::text s, (valid_until - sent_on) days from quotes where quote_number = $1`, [Q])).toEqual({ s: today, days: 30 });
     expect(await one(`select count(*)::int n, min(status) st from outbox where topic = 'airtable.quote_publish' and aggregate_id = (select id from quotes where quote_number = $1)`, [Q])).toEqual({ n: 1, st: 'PENDING' });
@@ -197,7 +197,7 @@ describe.each(TARGETS)('enquiry to quote [%s]', (target) => {
 
   it('the Airtable hand-off (n8n 10, simulated): one write; incomplete proof refused; verified proof links quote, customer and property; then acceptance makes one project', async () => {
     const next = await asWorkflow(`select wf_quote_publish_next('n8n:10:test') r`, []);
-    expect(next.writes).toEqual([{ key: expect.stringMatching(/^airtable:quote-publish:/), quote_number: Q }]);
+    expect(next.writes).toEqual([{ key: expect.stringMatching(/^airtable:quote-publish:/) as unknown, quote_number: Q }]);
     const key = String((next.writes as R[])[0]!.key);
     expect(await asWorkflow(`select wf_claim_side_effect($1, 'n8n:10', 120) r`, [key])).toMatchObject({ claimed: true });
     expect((await asWorkflow(`select wf_quote_publish_next('n8n:10:test') r`, [])).writes).toEqual([]);   // never handed out twice
@@ -231,7 +231,7 @@ describe.each(TARGETS)('enquiry to quote [%s]', (target) => {
       .toEqual({ display_name: 'Iris Journey', property_number: p.property_number, status: 'PLANNING' });
     expect(await one(`select payload ->> 'quote_airtable_record_id' rec from outbox where topic = 'airtable.project_writeback' and aggregate_id = (select id from projects where project_number = $1)`, [acc.project_number]))
       .toEqual({ rec: 'recQUOTESALES0001' });   // n8n 03 links the new project to this quote's Airtable record
-    expect(await leadRow(L)).toMatchObject({ project_number: acc.project_number });
+    expect(await leadRow(L)).toMatchObject({ project_number: acc.project_number, status: 'WON' });
   });
 });
 

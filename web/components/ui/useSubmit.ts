@@ -1,6 +1,6 @@
 'use client';
 
-import { startTransition, useEffect, useRef, type FormEvent } from 'react';
+import { startTransition, useEffect, useRef, useState, type FormEvent } from 'react';
 
 /**
  * Submit a server-action form WITHOUT React's automatic reset: React clears an action form after every submission, so a
@@ -18,4 +18,11 @@ export function useSubmit(action: (f: FormData) => void, pending: boolean) {
     const data = new FormData(e.currentTarget, (e.nativeEvent as SubmitEvent).submitter);
     startTransition(() => action(data));
   };
+}
+
+/** A fresh request key per form: a double click or a resubmitted page sends the same key and gets the first result back. */
+export function useRequestKey(ok: boolean | undefined, at: number | undefined) {
+  const [key, setKey] = useState(() => crypto.randomUUID());
+  useEffect(() => { if (ok) setKey(crypto.randomUUID()); }, [ok, at]);
+  return key;
 }

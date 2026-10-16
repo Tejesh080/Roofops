@@ -489,3 +489,17 @@ details.tech summary svg { transition: transform .15s; }
   .ops-row { grid-template-columns: minmax(0, 1fr); }
   .issue .form-buttons .btn { min-height: 40px; }
 }
+
+/* SALES-01: quote lines */
+.quote-lines { display: grid; gap: 8px; }
+.quote-line { display: grid; grid-template-columns: 120px minmax(140px, 1fr) minmax(0, 2fr) 80px 70px 100px 90px auto; gap: 8px; align-items: end; }
+.quote-line .grow { min-width: 0; }
+.quote-line .line-amount { padding-bottom: 10px; text-align: right; }
+.quote-totals { margin: 4px 0; }
+@media (max-width: 1100px) {
+  .quote-line { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 8px; border: 1px solid var(--border); border-radius: 9px; }
+  .quote-line .grow { grid-column: 1 / -1; }
+  .quote-line .line-amount { padding-bottom: 0; text-align: left; }
+}
+.quote-lines-table td.amt { white-space: nowrap; padding-left: 12px; }
+@media (max-width: 1100px) { .sales-new { order: -1; } }

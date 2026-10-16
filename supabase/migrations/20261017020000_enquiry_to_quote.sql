@@ -704,3 +704,21 @@ grant execute on function web_lead_create(text, text, text, text, text, text, te
   web_quote_send(text, text, int) to roofops_dashboard;
 grant execute on function wf_quote_publish_next(text) to roofops_workflow;
 grant select on v_dashboard_leads, v_dashboard_quotes, v_dashboard_products, v_dashboard_customer_directory to roofops_dashboard;
+
+-- Which roles may run sales (so the dashboard offers the forms to exactly the people the database allows).
+create or replace view v_dashboard_sales_roles as
+select (select value from app_settings where key = 'sales.roles') as sales_roles;
+grant select on v_dashboard_sales_roles to roofops_dashboard;
+
+-- An accepted quote wins its enquiry (whichever path accepted it: Airtable via n8n 01, or a test), so the pipeline never
+-- shows a job that became a project as still "Quoted".
+create or replace function lead_won_on_quote_accepted() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.status = 'ACCEPTED' and old.status is distinct from 'ACCEPTED' and new.lead_id is not null then
+    update leads set status = 'WON', lost_reason = null where id = new.lead_id and status <> 'WON';
+  end if;
+  return new;
+end $$;
+revoke all on function lead_won_on_quote_accepted() from public;
+drop trigger if exists quotes_win_lead on quotes;
+create trigger quotes_win_lead after update of status on quotes for each row execute function lead_won_on_quote_accepted();

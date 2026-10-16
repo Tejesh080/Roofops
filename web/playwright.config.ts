@@ -31,5 +31,6 @@ export default defineConfig({
     { name: 'dispatch-gate', testMatch: /dispatch-gate\.spec\.ts/ },
     { name: 'site-work', testMatch: /site-work\.spec\.ts/ },
     { name: 'job-journey', testMatch: /job-journey\.spec\.ts/ },
+    { name: 'sales-journey', testMatch: /sales-journey\.spec\.ts/ },
   ],
 });

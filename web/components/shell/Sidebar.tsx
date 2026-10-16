@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BellRing, FolderKanban, HeartPulse, LayoutDashboard, Package, Presentation, Receipt, Workflow, type LucideIcon, CalendarClock } from 'lucide-react';
+import { BellRing, FolderKanban, HeartPulse, LayoutDashboard, Package, Presentation, Receipt, Workflow, type LucideIcon, CalendarClock, Inbox } from 'lucide-react';
 
 interface Item { href: string; text: string; icon: LucideIcon; count?: number }
 
@@ -10,6 +10,7 @@ export function Sidebar({ counts }: { counts: { attention: number; automation: n
   const path = usePathname();
   const items: Item[] = [
     { href: '/', text: 'Overview', icon: LayoutDashboard },
+    { href: '/sales', text: 'Sales', icon: Inbox },
     { href: '/projects', text: 'Projects', icon: FolderKanban },
     { href: '/work', text: 'My work', icon: CalendarClock },
     { href: '/attention', text: 'Attention', icon: BellRing, count: counts.attention },

@@ -144,3 +144,21 @@ accurate history.
 - point staff back at the previous preview;
 - delete 09 or leave it inactive;
 - `npx tsx scripts/sql.ts -f ops/rollback/20261016000000_staff_invoice_approval_and_xero_dispatch.down.sql` (rehearsed: the decision core returns byte-identical).
+
+## Hosted staff pilot acceptance test (2026-10-16, preview `qsf0c8m66`, dispatch switch off)
+
+- Synthetic staff added on hosted with `staff:add-employee` (verified TLS): EMP-801 "Pilot Finance (synthetic)" FINANCE
+  `pilot.finance@example.test`, EMP-802 "Pilot Admin (synthetic)" ADMIN `pilot.admin@example.test`. Passwords typed by the
+  owner at the hidden prompt (`staff:set-password`, logins `pilot.finance`, `pilot.admin`); never seen or stored by the operator.
+- Finance (EMP-801, own session) prepared PRJ-2026-0005 once: APR-2026-0014, requester EMP-801 via the dashboard,
+  $17,831.91 inc GST (quote $44,579.78 less $26,747.87 invoiced: INV-2026-0005 + INV-2026-0035), GST $1,621.08,
+  $16,210.83 ex GST, one line, account 200, OUTPUT, customer Jack Walker CUST-0005. No Approve for the requester.
+- Admin (EMP-802, separate session; Finance's session revoked on sign-out): Approve, the confirmation checkbox and Send
+  replaced by the pending-activation note; only Reject offered. Rejected with a reason: APR-2026-0014 REJECTED,
+  decided_by EMP-802, requester EMP-801.
+- Audit: employee.created ×2, staff.password_set ×2, staff.signed_in (EMP-801, EMP-802), invoice.preview_prepared (EMP-801),
+  approval.reject (EMP-802). Automation events: prepare_requested, preview_prepared, rejected (all SUCCEEDED).
+- Table diff before/after (65 tables): only approvals +1, audit_events +8, automation_events +3, processed_events +2,
+  employees +2, staff_accounts +2, staff_sessions +2, id_counters (APR counter), integration_health (scheduled 08 health).
+  Outbox 9 (all DONE), xero_dispatch_requests 0, invoices 40, external_links 253, payments 27: unchanged. Integrity 28/4/0.
+- n8n 09 inactive (unchanged since creation, never triggered); `STAFF_XERO_DISPATCH` unset; no Xero document created.

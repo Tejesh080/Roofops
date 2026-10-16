@@ -144,6 +144,20 @@ describe.each(TARGETS)('staff invoice approval and Xero dispatch [%s]', (target)
     expect(await draft(inv)).toMatchObject({ state: 'CREATED', xero_invoice_id: 'abcdef01-2345-6789-abcd-ef0123456789' });
     expect(await request(tok.finance!, inv, 1, String(d0.payload_sha256))).toMatchObject({ ok: false, code: 'ALREADY_CREATED' });
     expect(await one(`select xero_invoice_id from v_dashboard_projects where project_number = 'PRJ-2026-0004'`)).toEqual({ xero_invoice_id: 'abcdef01-2345-6789-abcd-ef0123456789' });
+    // STAFF-OPS-02: Airtable's Invoice Preview is projected with the current Xero identity (09 -> 05 never writes Airtable, so
+    // reconciliation repairs whatever 04 wrote earlier, e.g. a "Not eligible" reason from before the project was ready).
+    // The projects' Airtable records (the import does not create the links), so they have an Airtable projection.
+    await db.query(`insert into external_links (provider, entity_type, entity_id, external_type, external_id, verified_at)
+      select 'AIRTABLE', 'project', id, 'Record', 'recStaffOps' || right(project_number, 4) || '0', now() from projects
+       where project_number in ('PRJ-2026-0004', 'PRJ-2026-0007') on conflict do nothing`);
+    const expected = async (prj: string) => (await one(`select x.expected from v_airtable_expected x join projects p on p.id = x.entity_id where p.project_number = $1`, [prj])).expected as R;
+    const preview = String((await expected('PRJ-2026-0004')).fldt9KIOPXh3c3pGU);
+    expect(preview).toContain(`XERO DRAFT ${String((await draft(inv)).xero_invoice_number)} (InvoiceID abcdef01-2345-6789-abcd-ef0123456789)`);
+    expect(preview).toMatch(/Approved in the RoofOps dashboard under APR-\d{4}-\d{4}: prepared by Synthetic Finance Requester, approved by Synthetic Admin Approver/);
+    expect(preview).toContain(`Invoice: ${inv}`);
+    expect(preview).not.toContain('Nothing was sent to Xero');
+    // A project without a final invoice: Invoice Preview is not compared, so a current refusal 04 wrote there stays visible.
+    expect(await expected('PRJ-2026-0007')).not.toHaveProperty('fldt9KIOPXh3c3pGU');
   });
 
   it('a failed write shows when it can be retried; staff retry it once it is due; a changed payload is refused', async () => {

@@ -28,6 +28,7 @@ try {
   check('dashboard role: SECURITY DEFINER functions', await list(`select p.proname v ${PUB} and p.prosecdef and has_function_privilege('roofops_dashboard', p.oid, 'execute') order by 1`),
     (g) => g.every((f) => ['app_today', 'at_link', 'integrity_check', 'invoice_final_preview', 'project_left_to_bill_after_final', 'project_over_billing', 'sm_label', 'wf_invoice_prepare',
       'web_invoice_decide', 'web_invoice_overview', 'web_invoice_prepare', 'web_reissue_decide', 'web_reissue_overview', 'web_reissue_request', 'web_resolve_exception',
+      'web_inspection_book', 'web_inspection_record', 'web_lead_convert', 'web_lead_create', 'web_lead_update', 'web_quote_save', 'web_quote_send',
       'web_staff_session', 'web_staff_sign_in', 'web_staff_sign_out', 'web_task_create', 'web_task_update', 'web_visit_schedule', 'web_visit_update',
       'web_xero_dispatch_request'].includes(f)));
   check('dashboard role: can it write via wf_* (other than prepare)?', await list(`select p.proname v ${PUB} and p.proname like 'wf\\_%'

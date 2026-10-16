@@ -51,7 +51,7 @@ describe.each(TARGETS)('site visits and tasks [%s]', (target) => {
     // One cancelled project (the seed has none): the last PLANNING one.
     cancelled = String((await one(`update projects set status = 'CANCELLED', cancellation_reason = 'Synthetic test: customer withdrew' where id = (select id from projects where status = 'PLANNING' order by project_number desc limit 1) returning project_number`)).project_number);
   }, 180_000);
-  afterAll(async () => { await db?.close(); });
+  afterAll(async () => { await db.close(); });
 
   it('privileges: the dashboard may call the web functions and read the views; the helpers are nobody\'s', async () => {
     const can = async (role: string, fn: string) => (await one(`select bool_or(has_function_privilege($1, p.oid, 'execute')) ok from pg_proc p where p.proname = $2`, [role, fn])).ok;
@@ -75,7 +75,8 @@ describe.each(TARGETS)('site visits and tasks [%s]', (target) => {
     expect(await schedule(tok.planner!, prj, at(1, 7), at(1, 15), ['EMP-811', 'EMP-812'], 'visit-key-0001')).toEqual({ ok: true, duplicate: true, job_number: job, status: 'SCHEDULED' });
     expect(await one('select count(*)::int n from jobs where request_key = $1', ['visit-key-0001'])).toEqual({ n: 1 });
     const v = await row(job);
-    expect(v).toMatchObject({ project_number: prj, status: 'SCHEDULED', notes: 'Bring the long ladder', visit_date: expect.anything() });
+    expect(v).toMatchObject({ project_number: prj, status: 'SCHEDULED', notes: 'Bring the long ladder' });
+    expect(v.visit_date).toBeTruthy();   // the visit's Brisbane calendar day (a date column)
     expect((v.crew as R[]).map((c) => [c.code, c.crew_role])).toEqual([['EMP-812', 'LEADING_HAND'], ['EMP-811', 'CREW']]);
     expect(await one(`select actor_id, business_reference from audit_events where action = 'job.scheduled' and entity_id = (select id from jobs where job_number = $1)`, [job]))
       .toEqual({ actor_id: 'EMP-810', business_reference: prj });
@@ -198,7 +199,7 @@ describe.runIf(TARGETS.includes('postgres'))('site visits under real concurrency
     await db.query('select ops_staff_set_password($1, $2, $3)', ['EMP-814', 'planner2', PW]);
     tok.planner2 = String((await db.query<{ r: R }>('select web_staff_sign_in($1, $2) r', ['planner2', PW]))[0]!.r.token);
   }, 180_000);
-  afterAll(async () => { await db?.close(); });
+  afterAll(async () => { await db.close(); });
 
   it('two planners booking the same roofer into overlapping visits at once: exactly one visit is created', async () => {
     const today = String((await db.query<R>('select app_today()::text d'))[0]!.d);

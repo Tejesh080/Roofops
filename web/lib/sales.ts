@@ -107,7 +107,11 @@ export function leadNextStep(l: Lead, quotes: Quote[]): { title: string; detail:
   if (open?.status === 'SENT') {
     return open.in_airtable
       ? { title: `Waiting for the customer to accept ${open.quote_number}`, detail: 'When they accept, set the quote’s Status to Accepted in Airtable: RoofOps then creates the project.' }
-      : { title: `${open.quote_number} sent; being added to Airtable`, detail: open.airtable_handoff === 'FAILED' ? `The hand-off to Airtable failed: ${open.airtable_handoff_error ?? 'see Automation'}.` : 'RoofOps adds the customer, site and quote to Airtable (usually within a minute).' };
+      : open.airtable_handoff === 'STOPPED'
+        ? { title: `${open.quote_number} sent, but not added to Airtable`, detail: `The hand-off stopped: ${open.airtable_handoff_error ?? 'see Automation'}. An admin re-queues it from its exception once the cause is fixed.` }
+        : { title: `${open.quote_number} sent; being added to Airtable`, detail: open.airtable_handoff === 'RETRYING'
+            ? `The last try failed (${open.airtable_handoff_error ?? 'see Automation'}); RoofOps tries again automatically.`
+            : 'RoofOps adds the customer, site and quote to Airtable (usually within a minute).' };
   }
   if (open?.status === 'DRAFT') return { title: `Check and send ${open.quote_number}`, detail: 'Step 4 below: revise it if needed, then Send.' };
   if (booked) return { title: `Inspection ${booked.inspection_number} booked`, detail: `${booked.inspector ?? 'Someone'} inspects on ${booked.scheduled_for?.replace('T', ' ') ?? 'the booked day'}; then record what was found.` };

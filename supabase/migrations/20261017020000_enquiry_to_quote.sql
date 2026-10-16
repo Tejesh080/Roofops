@@ -428,7 +428,9 @@ end $$;
 create or replace function wf_quote_publish_next(p_worker text default 'n8n:10')
 returns jsonb language sql security definer set search_path = public, pg_temp as $$
   select jsonb_build_object('worker', p_worker, 'writes', coalesce(jsonb_agg(jsonb_build_object('key', o.idempotency_key, 'quote_number', o.payload ->> 'quote_number')), '[]'::jsonb))
-    from (select * from outbox o where o.topic = 'airtable.quote_publish' and o.status in ('PENDING', 'FAILED') and o.next_attempt_at <= now()
+    from (select * from outbox o where o.topic = 'airtable.quote_publish'
+             and ((o.status in ('PENDING', 'FAILED') and o.next_attempt_at <= now())
+                  or (o.status = 'DISPATCHING' and o.locked_until < now()))   -- a run that died holding it: its lease ran out
            order by o.created_at limit 1) o
 $$;
 
@@ -633,6 +635,11 @@ begin
     insert into audit_events (actor_type, actor_id, action, entity_type, entity_id, business_reference, after_state, external_reference, reason, correlation_id)
     values ('INTEGRATION', 'airtable', 'airtable.quote.published', 'quote', o.aggregate_id, v_ref,
             p_result - 'verified', p_result ->> 'quote_record_id', 'Quote, customer and property records in Airtable, linked and read back', o.correlation_id);
+    -- A hand-off that failed earlier and was re-queued: its exception is answered (it has no workflow run to do it below).
+    update workflow_exceptions set resolution_status = 'RESOLVED', resolved_at = now(), resolved_by_system = 'workflow:airtable.quote_publish',
+           resolution_note = 'The quote, customer and property were added to Airtable and read back'
+     where entity_type = 'quote' and entity_id = o.aggregate_id and resolution_status in ('OPEN', 'RETRY_QUEUED')
+       and error_message like 'airtable.quote_publish:%';
   else
     raise exception 'unknown side-effect topic %', o.topic;
   end if;
@@ -643,7 +650,7 @@ begin
     jsonb_build_object('attempt', o.attempts, 'external_id', coalesce(p_result ->> 'folder_id', p_result ->> 'project_record_id', p_result ->> 'invoice_id', p_result ->> 'quote_record_id')), null);
 
   select id into v_run from workflow_runs where entity_id = o.aggregate_id order by started_at desc limit 1;
-  if v_run is not null then   -- a quote hand-off has no workflow run (it is not part of a project's)
+  if v_run is not null or o.topic <> 'airtable.quote_publish' then   -- only a quote hand-off has no workflow run; other topics keep the not-null guard
   insert into workflow_run_steps (run_id, attempt, seq, step_key, status, finished_at, detail)
   values (v_run, o.attempts, (select coalesce(max(seq), 0) + 1 from workflow_run_steps where run_id = v_run), o.topic, 'SUCCEEDED', now(),
           jsonb_build_object('attempt', o.attempts, 'external_id', coalesce(p_result ->> 'folder_id', p_result ->> 'project_record_id', p_result ->> 'invoice_id')));
@@ -681,7 +688,8 @@ select q.quote_number, q.status, q.job_type, q.created_on, q.sent_on, q.valid_un
        coalesce((select jsonb_agg(jsonb_build_object('line_no', ln.line_no, 'line_kind', ln.line_kind, 'product_code', pd.product_code, 'description', ln.description,
                'quantity', ln.quantity, 'unit', ln.unit, 'unit_price', ln.unit_price, 'line_amount', ln.line_amount) order by ln.line_no)
           from quote_version_lines ln left join products pd on pd.id = ln.product_id where ln.quote_version_id = qv.id), '[]'::jsonb) as lines,
-       (select o.status from outbox o where o.topic = 'airtable.quote_publish' and o.aggregate_id = q.id) as airtable_handoff,
+       (select case when o.status = 'FAILED' and o.next_attempt_at = 'infinity' then 'STOPPED' when o.status = 'FAILED' then 'RETRYING' else o.status end
+          from outbox o where o.topic = 'airtable.quote_publish' and o.aggregate_id = q.id) as airtable_handoff,   -- PENDING, DISPATCHING, RETRYING, STOPPED, DONE
        (select o.last_error from outbox o where o.topic = 'airtable.quote_publish' and o.aggregate_id = q.id) as airtable_handoff_error,
        exists (select 1 from external_links x where x.provider = 'AIRTABLE' and x.entity_type = 'quote' and x.entity_id = q.id and x.verified_at is not null) as in_airtable,
        (select p.project_number from projects p where p.quote_id = q.id) as project_number
@@ -716,9 +724,54 @@ create or replace function lead_won_on_quote_accepted() returns trigger language
 begin
   if new.status = 'ACCEPTED' and old.status is distinct from 'ACCEPTED' and new.lead_id is not null then
     update leads set status = 'WON', lost_reason = null where id = new.lead_id and status <> 'WON';
+  -- Its last open quote marked Lost or Expired in Airtable (n8n 06): the enquiry is lost too, for the same reason, so the
+  -- pipeline never keeps it "Quoted". (Also how a quote sent to the wrong customer is closed before re-entering it.)
+  elsif new.status in ('LOST', 'EXPIRED') and old.status is distinct from new.status and new.lead_id is not null
+        and not exists (select 1 from quotes o where o.lead_id = new.lead_id and o.id <> new.id and o.status in ('DRAFT', 'SENT', 'ACCEPTED')) then
+    update leads set status = 'LOST', record_version = record_version + 1, updated_at = now(),
+           lost_reason = coalesce(nullif(btrim(new.lost_reason), ''), format('Quote %s %s', new.quote_number, lower(new.status)))
+     where id = new.lead_id and status = 'QUOTED';
   end if;
   return new;
 end $$;
 revoke all on function lead_won_on_quote_accepted() from public;
 drop trigger if exists quotes_win_lead on quotes;
 create trigger quotes_win_lead after update of status on quotes for each row execute function lead_won_on_quote_accepted();
+
+-- n8n 10 records a failed quote hand-off here. wf_fail_side_effect logs into the project's workflow run, and a quote
+-- hand-off has none (recording a failure there is refused), so it gets its own: a bounded retry with backoff, then the
+-- write stops (never marked done) and ONE exception carries the quote number. ops/requeue-quote-publish.sql re-queues it.
+create or replace function wf_quote_publish_fail(p_key text, p_error_class text, p_message text,
+                                                 p_http_status int default null, p_retry_after_seconds int default null)
+returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  o outbox; v_retryable boolean; v_delay int; v_exc text; v_ref text;
+  v_max int := coalesce((select value::int from app_settings where key = 'wf.side_effect.max_attempts'), 5);
+begin
+  select * into o from outbox where idempotency_key = p_key for update;
+  if not found or o.topic <> 'airtable.quote_publish' then raise exception 'unknown quote hand-off %', p_key using errcode = 'no_data_found'; end if;
+  if o.status <> 'DISPATCHING' then raise exception 'quote hand-off % is %, not claimed', p_key, o.status using errcode = 'check_violation'; end if;
+  select retryable into v_retryable from error_classes where code = p_error_class;
+  if v_retryable is null then raise exception 'unknown error class %', p_error_class using errcode = 'foreign_key_violation'; end if;
+  v_ref := o.payload ->> 'quote_number';
+  if v_retryable and o.attempts < v_max then
+    v_delay := coalesce(p_retry_after_seconds, least(900, 60 * (2 ^ (o.attempts - 1))::int));   -- 1, 2, 4, 8 minutes … capped at 15
+    update outbox set status = 'FAILED', locked_until = null, next_attempt_at = now() + make_interval(secs => v_delay),
+           last_error = left(p_message, 1000) where id = o.id;
+    perform wf_log_event(p_key || ':retry:' || o.attempts, o.correlation_id, null, 'automation.retry_scheduled', 'quote', o.aggregate_id, v_ref,
+      'WORKFLOW', o.topic, 'n8n', 'FAILED', p_error_class,
+      jsonb_build_object('attempt', o.attempts, 'retry_in_seconds', v_delay, 'http_status', p_http_status, 'message', left(p_message, 500)), null);
+    return jsonb_build_object('retry', true, 'retry_in_seconds', v_delay, 'attempt', o.attempts, 'max_attempts', v_max);
+  end if;
+  update outbox set status = 'FAILED', locked_until = null, next_attempt_at = 'infinity', last_error = left(p_message, 1000) where id = o.id;
+  perform wf_log_event(p_key || ':failed:' || o.attempts, o.correlation_id, null, 'automation.failed', 'quote', o.aggregate_id, v_ref,
+    'WORKFLOW', o.topic, 'n8n', 'FAILED', p_error_class,
+    jsonb_build_object('attempt', o.attempts, 'http_status', p_http_status, 'message', left(p_message, 500)), null);
+  v_exc := wf_open_exception(null, null, 'quote', o.aggregate_id, v_ref, p_error_class,
+    format('%s: %s was not added to Airtable after %s attempt(s) and is not retried; nothing was marked done. Fix the cause, then re-queue it (ops/requeue-quote-publish.sql). Last error: %s',
+           o.topic, v_ref, o.attempts, left(p_message, 400)), o.attempts);
+  return jsonb_build_object('retry', false, 'exception_number', v_exc, 'attempt', o.attempts,
+    'reason', case when v_retryable then 'max attempts reached' else 'non-retryable error class' end);
+end $$;
+revoke all on function wf_quote_publish_fail(text, text, text, int, int) from public;
+grant execute on function wf_quote_publish_fail(text, text, text, int, int) to roofops_workflow;

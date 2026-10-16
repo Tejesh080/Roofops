@@ -65,3 +65,15 @@ Branch `factory/ac14-integrity-followup`. Nothing here is on hosted yet: one mig
 2. Create workflow 10 in n8n from `n8n/10-airtable-quote-publish.sdk.ts`, unpublished; one supervised run on a synthetic
    enquiry, then check the three Airtable rows and the proof before enabling its schedule.
 3. Deploy a protected preview from this branch (Xero dispatch switch stays off).
+
+## Release preflight (2026-10-17)
+
+Found and fixed before any hosted run (details and the release sequence: `ops/ops-sales-release-plan.md`):
+recording a failed hand-off went through `wf_fail_side_effect`, which needs a project workflow run (a 5xx would have left
+the hand-off stuck and uncounted): quote hand-offs now fail through `wf_quote_publish_fail` (backoff, then one exception
+with the quote number; `ops/requeue-quote-publish.sql` re-queues; completion answers the exception); a run that dies
+holding a hand-off is handed out again when its lease ends; a retry never writes Status (cannot undo an Accepted made in
+Airtable meanwhile); the dashboard says "retrying" or "stopped" instead of "failed"; an enquiry whose last quote is Lost
+or Expired becomes Lost; the enquiry page fails closed without the migration; quote lines stack on a phone. Airtable
+lacks 7 select options the dashboard can produce (needs adding before the first hand-off). Rollback scripts are in
+`ops/rollback/`.

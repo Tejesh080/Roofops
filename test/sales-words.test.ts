@@ -46,7 +46,9 @@ describe('leadNextStep', () => {
   it('a sent quote waits for Airtable, then for the customer; a failed hand-off says why', () => {
     const l = lead({ ...customer, status: 'QUOTED' });
     expect(leadNextStep(l, [quote({ status: 'SENT' })]).title).toBe('Q-2026-0099 sent; being added to Airtable');
-    expect(leadNextStep(l, [quote({ status: 'SENT', airtable_handoff: 'FAILED', airtable_handoff_error: 'Airtable said 422' })]).detail).toContain('Airtable said 422');
+    expect(leadNextStep(l, [quote({ status: 'SENT', airtable_handoff: 'RETRYING', airtable_handoff_error: 'HTTP 502' })]).detail).toBe('The last try failed (HTTP 502); RoofOps tries again automatically.');
+    expect(leadNextStep(l, [quote({ status: 'SENT', airtable_handoff: 'STOPPED', airtable_handoff_error: 'Airtable said 422' })])).toEqual({ title: 'Q-2026-0099 sent, but not added to Airtable',
+      detail: 'The hand-off stopped: Airtable said 422. An admin re-queues it from its exception once the cause is fixed.' });
     expect(leadNextStep(l, [quote({ status: 'SENT', in_airtable: true })]).title).toBe('Waiting for the customer to accept Q-2026-0099');
   });
   it('won and closed enquiries say so', () => {

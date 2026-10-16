@@ -6,7 +6,7 @@ import { workflow, node, trigger, ifElse, expr } from '@n8n/workflow-sdk';
 // Postgres for the next due write (wf_quote_publish_next), claims it (wf_claim_side_effect), upserts the three Airtable
 // records MERGED ON THEIR RoofOps ID field (a retry finds the same records, never a second one), links property -> customer
 // and quote -> customer + property, reads the quote back and records the proof (wf_complete_side_effect checks numbers and
-// links). A failure is recorded with its class (wf_fail_side_effect: bounded retry, then an exception). After this the quote
+// links). A failure is recorded with its class (wf_quote_publish_fail: bounded retry, then an exception). After this the quote
 // is an ordinary Airtable quote: reconciliation keeps its fields canonical and Status -> Accepted runs n8n 01 unchanged.
 
 const AIRTABLE = { airtableTokenApi: { id: '3XbFnHjAd7mFvBD2', name: 'Roofops Airtable Personal Access Token account' } };
@@ -17,6 +17,7 @@ const T = { customers: BASE + '/tblHKX79FJFHn5FDc', properties: BASE + '/tblSYcC
 const ID = { customer: 'fldDClu1e0ffwnojn', property: 'fldm6rtleyV6yp8ZS', quote: 'fldVUpqZkVKid3Fyy' };
 const LINK = { propertyOwner: 'fldVpX0MOcA8TnGvo', quoteCustomer: 'fld4LsEu8c9EMFj0h', quoteProperty: 'fldisUv1ckHz2Detv' };
 const NUM = { customer: 'fldzmWSHtLVZ4OTmZ', property: 'fldIy8ab7Ky67jL31', quote: 'fldyP20HNafS614d5' };
+const STATUS = 'fldQpTa5tvrzlNg1h';   // Quotes.Status (AIRTABLE_EDIT: Accepted -> n8n 01)
 
 const FAIL_JS = `
 function fail(step, r) {
@@ -87,6 +88,9 @@ const p = one('upsert property', $input.first().json);
 if (!p.ok) return [{ json: p }];
 const customer = $('Build Property').first().json.customer_record_id;
 const fields = Object.assign({}, job.quote_fields, { '${LINK.quoteCustomer}': [customer], '${LINK.quoteProperty}': [p.id] });
+// Status is staff-editable in Airtable. Only the first attempt writes it (creating the row as Sent); a retry may find the row
+// already there and edited (e.g. Accepted) and must never put it back. A row a retry creates gets Sent from reconciliation.
+if (Number($('Claim Quote Publish').last().json.c.attempt) > 1) delete fields['${STATUS}'];
 return [{ json: { ok: true, customer_record_id: customer, property_record_id: p.id, request: { performUpsert: { fieldsToMergeOn: ['${ID.quote}'] }, returnFieldsByFieldId: true, typecast: false, records: [{ fields: fields }] } } }];` } }, output: [{ ok: true, request: {} }] });
 const quoteOk = ifElse({ version: 2.3, config: { name: 'Property OK?', parameters: OK_IF } });
 const upQuote = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Upsert Quote', onError: 'continueRegularOutput',
@@ -129,7 +133,7 @@ const e = $input.first().json; const m = (e.error && (e.error.message || e.error
 return [{ json: { ok: false, failure: { step: 'record quote publish', error_class: 'RECONCILIATION_MISMATCH', http_status: null, retry_after_seconds: null, message: 'record quote publish: ' + String(m).slice(0, 400) } } }];` } },
   output: [{ ok: false, failure: {} }] });
 const recordFailure = node({ type: 'n8n-nodes-base.postgres', version: 2.7, config: { name: 'Record Publish Failure',
-  parameters: { operation: 'executeQuery', query: "select wf_fail_side_effect($1, $2, $3, nullif($4, '')::int, nullif($5, '')::int) as f",
+  parameters: { operation: 'executeQuery', query: "select wf_quote_publish_fail($1, $2, $3, nullif($4, '')::int, nullif($5, '')::int) as f",
     options: { queryReplacement: expr("{{ [ $('Write To Publish').first().json.key, $json.failure.error_class, $json.failure.message, String($json.failure.http_status ?? ''), String($json.failure.retry_after_seconds ?? '') ] }}") } },
   credentials: PG }, output: [{ f: { retry: true } }] });
 

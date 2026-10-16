@@ -503,3 +503,10 @@ details.tech summary svg { transition: transform .15s; }
 }
 .quote-lines-table td.amt { white-space: nowrap; padding-left: 12px; }
 @media (max-width: 1100px) { .sales-new { order: -1; } }
+@media (max-width: 720px) {
+  .quote-lines-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; border-top: 1px solid var(--border); }
+  .quote-lines-table td { border-top: 0; }
+  .quote-lines-table td:first-child { grid-column: 1 / -1; padding-bottom: 2px; }
+  .quote-lines-table td.amt { padding-top: 0; padding-left: 0; text-align: left; }
+  .quote-lines-table td.amt:last-child { text-align: right; }
+}

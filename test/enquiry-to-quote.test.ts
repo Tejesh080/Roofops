@@ -3,6 +3,7 @@
  * acceptance through the existing wf_quote_accepted. Synthetic people: EMP-820 estimator (sales), EMP-821 field crew (no
  * sales role). The Airtable hand-off is completed with the proof n8n 10 would send (no Airtable call).
  */
+import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { openPostgres, type Db } from '../src/db/db.js';
 import { importBundle } from '../src/import/importer.js';
@@ -61,6 +62,8 @@ describe.each(TARGETS)('enquiry to quote [%s]', (target) => {
     }
     expect(await can('roofops_workflow', 'wf_quote_publish_next')).toBe(true);
     expect(await can('roofops_dashboard', 'wf_quote_publish_next')).toBe(false);
+    expect(await can('roofops_workflow', 'wf_quote_publish_fail')).toBe(true);
+    expect(await can('roofops_dashboard', 'wf_quote_publish_fail')).toBe(false);
     for (const fn of ['customer_lookalikes', 'quote_lines_problem', 'quote_insert_version', 'quote_publish_payload']) {
       expect(await can('roofops_dashboard', fn), fn).toBe(false);
       expect(await can('roofops_workflow', fn), fn).toBe(false);
@@ -232,6 +235,74 @@ describe.each(TARGETS)('enquiry to quote [%s]', (target) => {
     expect(await one(`select payload ->> 'quote_airtable_record_id' rec from outbox where topic = 'airtable.project_writeback' and aggregate_id = (select id from projects where project_number = $1)`, [acc.project_number]))
       .toEqual({ rec: 'recQUOTESALES0001' });   // n8n 03 links the new project to this quote's Airtable record
     expect(await leadRow(L)).toMatchObject({ project_number: acc.project_number, status: 'WON' });
+  });
+
+  it('a hand-off that fails: retried with backoff, re-handed out when a run dies holding it, then stopped with one exception (never done); re-queued, it completes and answers the exception', async () => {
+    const L2 = String((await lead(tok.est!, { name: 'Felix Failure', phone: '0466 101 202', email: null, key: 'lead-key-fail' })).lead_number);
+    expect(await convert(tok.est!, L2, 1, { newCustomer: { display_name: 'Felix Failure', customer_type: 'RESIDENTIAL', phone: '0466 101 202' }, confirm: true,
+      property: { address_line1: '21 Failure St', suburb: 'Avoca', state: 'QLD', postcode: '4670', property_type: 'DETACHED_HOUSE' } })).toMatchObject({ ok: true });
+    const Q2 = String((await save(tok.est!, { lead: L2, lines: [LINES[0]], key: 'quote-key-fail' })).quote_number);
+    const sent = await call('select web_quote_send($1, $2, $3) r', [tok.est, Q2, (await one('select record_version::int v from quotes where quote_number = $1', [Q2])).v]);
+    const key = String(sent.airtable_key);
+    const next = async () => ((await asWorkflow(`select wf_quote_publish_next('n8n:10:test') r`, [])).writes as R[]).map((w) => w.quote_number);
+    const claim = () => asWorkflow(`select wf_claim_side_effect($1, 'n8n:10', 180) r`, [key]);
+    const fail = (cls: string, msg: string, http: number | null) => asWorkflow('select wf_quote_publish_fail($1, $2, $3, $4, null) r', [key, cls, msg, http]);
+    const handoff = () => one(`select o.status, o.attempts, o.next_attempt_at = 'infinity' stopped, q.in_airtable, q.airtable_handoff, q.airtable_handoff_error
+      from outbox o join v_dashboard_quotes q on q.quote_number = $2 where o.idempotency_key = $1`, [key, Q2]);
+
+    expect(await next()).toEqual([Q2]);
+    expect(await claim()).toMatchObject({ claimed: true, attempt: 1 });
+    expect(await fail('UPSTREAM_5XX', 'upsert quote: HTTP 502', 502)).toMatchObject({ retry: true, retry_in_seconds: 60, attempt: 1 });
+    expect(await handoff()).toMatchObject({ status: 'FAILED', attempts: 1, stopped: false, in_airtable: false, airtable_handoff: 'RETRYING', airtable_handoff_error: 'upsert quote: HTTP 502' });
+    expect(await next()).toEqual([]);                                     // not due yet
+    await db.query(`update outbox set next_attempt_at = now() where idempotency_key = $1`, [key]);
+    expect(await next()).toEqual([Q2]);
+    expect(await claim()).toMatchObject({ claimed: true, attempt: 2 });
+    expect(await next()).toEqual([]);                                     // held by that run
+    await db.query(`update outbox set locked_until = now() - interval '1 second' where idempotency_key = $1`, [key]);   // the run died holding it
+    expect(await next()).toEqual([Q2]);
+    expect(await claim()).toMatchObject({ claimed: true, attempt: 3 });
+    const stop = await fail('VALIDATION_ERROR', 'upsert quote: INVALID_MULTIPLE_CHOICE_OPTIONS', 422);
+    expect(stop).toMatchObject({ retry: false, reason: 'non-retryable error class' });
+    expect(await handoff()).toMatchObject({ status: 'FAILED', stopped: true, in_airtable: false, airtable_handoff: 'STOPPED' });
+    expect(await next()).toEqual([]);
+    expect(await one(`select entity_type, business_reference, error_class, resolution_status from workflow_exceptions where exception_number = $1`, [stop.exception_number]))
+      .toEqual({ entity_type: 'quote', business_reference: Q2, error_class: 'VALIDATION_ERROR', resolution_status: 'OPEN' });
+    await expect(fail('UPSTREAM_5XX', 'again', 502)).rejects.toThrow(/not claimed/);
+    expect(await one(`select status from integrity_check() where check_key = 'done_has_proof'`)).toEqual({ status: 'PASS' });
+
+    // The cause is fixed; the operator re-queues it (ops/requeue-quote-publish.sql) and n8n 10 completes it with proof.
+    const requeue = readFileSync('ops/requeue-quote-publish.sql', 'utf8').replace(`'Q-2026-0066'`, `'${Q2}'`).replace(`'EXC-0000'`, `'${String(stop.exception_number)}'`);
+    expect(await one(requeue)).toEqual({ requeued: 1, exceptions_queued: 1, audited: 1 });
+    expect(await next()).toEqual([Q2]);
+    expect(await claim()).toMatchObject({ claimed: true, attempt: 4 });
+    const p = (await one('select payload from outbox where idempotency_key = $1', [key])).payload as R;
+    await db.exec('set role roofops_workflow');
+    try {
+      expect((await one(`select wf_complete_side_effect($1, $2::jsonb) r`, [key, JSON.stringify({ verified: true, quote_number: Q2, customer_number: p.customer_number,
+        property_number: p.property_number, quote_record_id: 'recQUOTEFAIL00001', customer_record_id: 'recCUSTFAIL000001', property_record_id: 'recPROPFAIL000001',
+        quote_customer_link_ids: ['recCUSTFAIL000001'], quote_property_link_ids: ['recPROPFAIL000001'] })])).r).toMatchObject({ status: 'RECORDED' });
+    } finally { await db.exec('reset role'); }
+    expect(await handoff()).toMatchObject({ status: 'DONE', in_airtable: true });
+    expect(await one(`select resolution_status from workflow_exceptions where exception_number = $1`, [stop.exception_number])).toEqual({ resolution_status: 'RESOLVED' });
+  });
+
+  it('its last open quote lost or expired (as n8n 06 applies it from Airtable): the enquiry is lost too, with that reason', async () => {
+    const quoted = async (name: string, key: string) => {
+      const n = String((await lead(tok.est!, { name, phone: null, email: `${key}@example.test`, key: `lead-${key}` })).lead_number);
+      await convert(tok.est!, n, 1, { newCustomer: { display_name: name, customer_type: 'RESIDENTIAL', email: `${key}@example.test` }, confirm: true,
+        property: { address_line1: `${key.length} ${name} Rd`, suburb: 'Avoca', state: 'QLD', postcode: '4670', property_type: 'DETACHED_HOUSE' } });
+      const q = String((await save(tok.est!, { lead: n, lines: [LINES[0]], key: `quote-${key}` })).quote_number);
+      await call('select web_quote_send($1, $2, $3) r', [tok.est, q, (await one('select record_version::int v from quotes where quote_number = $1', [q])).v]);
+      expect(await leadRow(n)).toMatchObject({ status: 'QUOTED' });
+      return { n, q };
+    };
+    const a = await quoted('Lena Lost', 'lost-a');
+    await db.query(`update quotes set status = 'LOST', lost_reason = 'Went with a cheaper quote' where quote_number = $1`, [a.q]);
+    expect(await leadRow(a.n)).toMatchObject({ status: 'LOST', lost_reason: 'Went with a cheaper quote' });
+    const b = await quoted('Evan Expired', 'expired-b');
+    await db.query(`update quotes set status = 'EXPIRED' where quote_number = $1`, [b.q]);
+    expect(await leadRow(b.n)).toMatchObject({ status: 'LOST', lost_reason: `Quote ${b.q} expired` });
   });
 });
 

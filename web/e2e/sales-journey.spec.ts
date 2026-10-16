@@ -139,9 +139,17 @@ test('enquiry → customer and site → inspection → quote → sent → in Air
   await page.reload();
   await expect(nextStep(page)).toContainText('being added to Airtable');
 
-  // n8n 10 (simulated): claims the hand-off and records verified proof; the page then says what the office does.
+  // n8n 10 (simulated): the first try fails (Airtable 502) and is retried; the page says so and never claims it was added.
   const key = String(((await asWorkflow(`select wf_quote_publish_next('n8n:10:e2e') r`, [])).writes as R[])[0]!.key);
   expect(await asWorkflow(`select wf_claim_side_effect($1, 'n8n:10', 120) r`, [key])).toMatchObject({ claimed: true });
+  expect(await asWorkflow(`select wf_quote_publish_fail($1, 'UPSTREAM_5XX', 'upsert quote: HTTP 502', 502, null) r`, [key])).toMatchObject({ retry: true });
+  await page.reload();
+  await expect(nextStep(page)).toContainText('The last try failed (upsert quote: HTTP 502); RoofOps tries again automatically.');
+  await expect(qcard).toContainText('Airtable: being added; retrying after: upsert quote: HTTP 502');
+  await expect(qcard).not.toContainText('Airtable: added');
+  // The retry claims it again and records verified proof; the page then says what the office does.
+  await db.query(`update outbox set next_attempt_at = now() where idempotency_key = $1`, [key]);
+  expect(await asWorkflow(`select wf_claim_side_effect($1, 'n8n:10', 120) r`, [key])).toMatchObject({ claimed: true, attempt: 2 });
   const p = (await one('select payload from outbox where idempotency_key = $1', [key])).payload as R;
   expect(await asWorkflow(`select wf_complete_side_effect($1, $2::jsonb) r`, [key, JSON.stringify({ verified: true, quote_number: Q, customer_number: p.customer_number,
     property_number: p.property_number, quote_record_id: 'recE2EQUOTE000001', customer_record_id: 'recE2ECUSTOMER001', property_record_id: 'recE2EPROPERTY001',

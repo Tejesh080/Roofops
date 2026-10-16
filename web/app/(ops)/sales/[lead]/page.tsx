@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { ClipboardList, FileText, MapPin, Search, Signpost } from 'lucide-react';
 import { query } from '@/lib/db';
 import { requireSession, staffIdentity } from '@/lib/auth';
-import { JOB_KIND, LEAD_STATUS, LINE_KIND, MEASURE, QUOTE_STATUS, ROOF_TYPE, SOURCE, getCustomerDirectory, getLead, getProducts, getQuotesForLead, getSalesRoles, leadNextStep } from '@/lib/sales';
+import { JOB_KIND, LEAD_STATUS, LINE_KIND, MEASURE, QUOTE_STATUS, ROOF_TYPE, SOURCE, getCustomerDirectory, getLead, getProducts, getQuotesForLead, getSalesRoles, leadNextStep, salesMissing } from '@/lib/sales';
 import { getStaff } from '@/lib/ops';
 import { Badge } from '@/components/ui/Badge';
 import { CardHead } from '@/components/ui/Empty';
@@ -19,7 +19,11 @@ const money = (n: number) => n.toLocaleString('en-AU', { style: 'currency', curr
 export default async function LeadPage({ params }: { params: Promise<{ lead: string }> }) {
   const session = await requireSession();
   const me = await staffIdentity(session.t);
-  const l = await getLead(query, decodeURIComponent((await params).lead).toUpperCase());
+  let l: Awaited<ReturnType<typeof getLead>>;
+  try { l = await getLead(query, decodeURIComponent((await params).lead).toUpperCase()); } catch (e) {
+    if (!salesMissing(e)) throw e;
+    return <div className="stack"><Link href="/sales" className="t-meta">← Sales</Link><p className="t-meta">Enquiries and quotes are not available on this server yet.</p></div>;
+  }
   if (!l) notFound();
   const [quotes, roles, products, staff, customers, todayRows] = await Promise.all([
     getQuotesForLead(query, l.lead_number), getSalesRoles(query), getProducts(query), getStaff(query), getCustomerDirectory(query),
@@ -107,7 +111,8 @@ export default async function LeadPage({ params }: { params: Promise<{ lead: str
                   </tbody></table>
                   <p className="num">Ex GST {money(q.subtotal_ex_gst)} · GST {money(q.gst_amount)} · <strong>Total {money(q.total_inc_gst)}</strong> ({q.line_amount_type === 'INCLUSIVE' ? 'prices include GST' : 'GST added'})</p>
                   {q.scope_summary && <p className="t-meta">{q.scope_summary}</p>}
-                  {q.sent_on && <p className="t-meta">Sent {q.sent_on}, valid until {q.valid_until} · Airtable: {q.in_airtable ? 'added' : q.airtable_handoff === 'FAILED' ? `hand-off failed (${q.airtable_handoff_error ?? 'see Automation'})` : 'being added'}</p>}
+                  {q.sent_on && <p className="t-meta">Sent {q.sent_on}, valid until {q.valid_until} · Airtable: {q.in_airtable ? 'added' : q.airtable_handoff === 'STOPPED' ? `not added, the hand-off stopped (${q.airtable_handoff_error ?? 'see Automation'})`
+                    : q.airtable_handoff === 'RETRYING' ? `being added; retrying after: ${q.airtable_handoff_error ?? 'an error'}` : 'being added'}</p>}
                 </div>
                 {may && q.status === 'DRAFT' && <SendQuoteForm quote={q.quote_number} version={q.record_version} total={q.total_inc_gst} />}
               </div>

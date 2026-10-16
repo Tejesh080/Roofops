@@ -202,3 +202,20 @@ accurate history.
 - Xero re-read (96 #2836): RO-INV-2026-0041 exactly once (DRAFT, PRJ-2026-0005, 17831.91, tax 1621.08, Jack Walker [CUST-0005]);
   one RO-CUST-0005 contact. Integrity 26/6/0: the two new warnings (Airtable invoice fields for PRJ-2026-0005; INV-2026-0041 not
   yet read from Xero) are both covered by the nightly repair-mode reconciliation (16:30 UTC); no manual repair made.
+
+## Old approval-enabled preview removed (2026-10-16 ~03:25 UTC)
+
+- Inventory (vercel inspect + `/v2/deployments/{id}/aliases`): five preview deployments, none with aliases, no production
+  deployment. `lc1bw3xd9` (dpl_HqNDDL1fYyP3dSXBRSyo1jWDR77V, target preview, built with `STAFF_XERO_DISPATCH=on`) was the only one
+  able to approve or queue. Removed with `vercel remove roofops-dashboard-lc1bw3xd9-tejesh1.vercel.app` (1 deployment); the URL
+  now returns 404 "deployment could not be found" and the API no longer knows the id. Project and other deployments untouched.
+- Remaining previews, all dispatch-off: `lgrp0ep2k` (current, 4b23915, switch absent at build), `i9plwxmgr` (value not exactly
+  `on`; Admin saw the pending note, no Approve), `qsf0c8m66` (switch absent; verified in the hosted acceptance test),
+  `du3h1zvdr` (built from 19009ca, before the dashboard approve/send code existed). All redirect signed-out requests (302).
+- Lingering CLAIMED request (INV-2026-0041): outbox DONE, invoice SYNCED, 0 QUEUED. `wf_xero_dispatch_next` only takes QUEUED
+  requests and first settles this one to HANDED_OVER; any new request is refused ALREADY_CREATED; 05's claim of the key returns
+  the recorded DONE result with `claimed: false`. Shown by read-only queries plus one always-rolled-back probe of those exact calls;
+  all 65 tables identical before and after (scheduled health rows excluded).
+- n8n 09: inactive, "Every Minute" disabled, MCP off, run saving off. Integrity 26/6/0; the next scheduled reconciliation
+  (16:30 UTC 16 Oct) has not run yet. Remaining check: after it, integrity should return to 28/4/0 with only PRJ-2026-0005's
+  four Airtable invoice fields written and INV-2026-0041 read back from Xero.

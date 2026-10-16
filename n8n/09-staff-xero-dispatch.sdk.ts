@@ -11,7 +11,7 @@ import { workflow, node, trigger, ifElse, expr } from '@n8n/workflow-sdk';
 const PG = { postgres: { id: 'kWqjtv0gz7ref2EN', name: 'RoofOps Postgres' } };
 const XERO_WF = 'Y2deCFTZzpv1uo8C';                     // [RoofOps] 05 Xero Draft Invoice, the same sub-workflow 04 and 08 run
 
-const everyMinute = trigger({ type: 'n8n-nodes-base.scheduleTrigger', version: 1.3, config: { name: 'Every Minute',
+const everyMinute = trigger({ type: 'n8n-nodes-base.scheduleTrigger', version: 1.3, config: { name: 'Every Minute', disabled: true,   // staging: off until the owner switches dispatch on
   parameters: { rule: { interval: [{ field: 'minutes', minutesInterval: 1 }] } } }, output: [{}] });
 
 const next = node({ type: 'n8n-nodes-base.postgres', version: 2.7, config: { name: 'Next Staff Request',

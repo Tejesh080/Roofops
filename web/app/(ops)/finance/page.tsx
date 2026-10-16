@@ -10,6 +10,7 @@ import { ReissueSection } from '@/components/finance/ReissueSection';
 import { getReissueOverview } from '@/lib/reissue';
 import { getInvoiceOverview } from '@/lib/invoices';
 import { InvoiceSection } from '@/components/finance/InvoiceSection';
+import { staffDispatchEnabled } from '@/lib/dispatch';
 import { PrepareInvoiceForm } from '@/components/finance/InvoiceForms';
 
 export const dynamic = 'force-dynamic';
@@ -89,7 +90,7 @@ export default async function FinancePage() {
           </div>
         </section>
       </div>
-      <InvoiceSection overview={invoices} />
+      <InvoiceSection overview={invoices} dispatchOn={staffDispatchEnabled()} />
       <div style={{ marginTop: 16 }}><ReissueSection overview={reissues} /></div>
       <p className="t-meta" style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 6 }}>
         <ChevronRight size={13} aria-hidden /> The Copilot can only prepare an invoice. Approval, and the draft in Xero, always need a person.

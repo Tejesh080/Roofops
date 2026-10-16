@@ -20,20 +20,20 @@ export function PrepareInvoiceForm({ project }: { project: string }) {
 }
 
 /** Approve (after ticking the check) or reject (with a reason) the exact preview shown; bound to its hash. */
-export function DecideInvoiceForm({ approval, hash }: { approval: string; hash: string }) {
+export function DecideInvoiceForm({ approval, hash, approveEnabled = true }: { approval: string; hash: string; approveEnabled?: boolean }) {
   const [state, action, pending] = useActionState<ReissueActionState, FormData>(decideFinalInvoice, {});
   if (state.ok) return <p className="resolve-done" role="status"><CheckCircle2 size={15} aria-hidden /> {state.message}</p>;
   return (
     <form action={action} className="resolve-form">
       <input type="hidden" name="approval" value={approval} />
       <input type="hidden" name="hash" value={hash} />
-      <label className="check-line"><input type="checkbox" name="checked" /> I checked the customer, amount, GST and lines above</label>
+      {approveEnabled && <label className="check-line"><input type="checkbox" name="checked" /> I checked the customer, amount, GST and lines above</label>}
       <label className="field"><span>Note (required to reject)</span><textarea name="note" rows={1} placeholder="e.g. Amount agreed with the customer" /></label>
       {state.message && <p className="form-error" role="alert">{state.message}</p>}
       <div className="form-buttons">
-        <button className="btn btn-sm btn-primary" name="decision" value="approve" disabled={pending}>
+        {approveEnabled && <button className="btn btn-sm btn-primary" name="decision" value="approve" disabled={pending}>
           {pending ? <><Loader2 size={14} className="spin" aria-hidden /> Working…</> : `Approve ${approval}`}
-        </button>
+        </button>}
         <button className="btn btn-sm" name="decision" value="reject" disabled={pending}>Reject</button>
       </div>
     </form>

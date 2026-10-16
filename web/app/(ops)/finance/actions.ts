@@ -6,6 +6,7 @@ import { SESSION_COOKIE, verifySession } from '@/lib/session';
 import { query } from '@/lib/db';
 import { REISSUE_CODE, notInstalled } from '@/lib/reissue';
 import { invoiceRefusal } from '@/lib/invoices';
+import { DISPATCH_PENDING, staffDispatchEnabled } from '@/lib/dispatch';
 
 export interface ReissueActionState { ok?: boolean; message?: string }
 type Outcome = { ok: boolean; code?: string; detail?: string; approval_number?: string; generation?: number };
@@ -94,6 +95,7 @@ export async function decideFinalInvoice(_prev: ReissueActionState, form: FormDa
   const approval = String(form.get('approval') ?? '');
   const decision = form.get('decision') === 'reject' ? 'reject' : 'approve';
   const note = String(form.get('note') ?? '').trim();
+  if (decision === 'approve' && !staffDispatchEnabled()) return { message: DISPATCH_PENDING };   // nothing queued while n8n 09 is off
   if (decision === 'approve' && form.get('checked') !== 'on') return { message: 'Tick that you checked the customer, amount, GST and lines before approving.' };
   if (decision === 'reject' && note.length < 5) return { message: 'Say why it is rejected (a few words), so the requester knows what to fix.' };
   try {
@@ -111,6 +113,7 @@ export async function decideFinalInvoice(_prev: ReissueActionState, form: FormDa
 
 export async function requestXeroDraft(_prev: ReissueActionState, form: FormData): Promise<ReissueActionState> {
   const invoice = String(form.get('invoice') ?? '');
+  if (!staffDispatchEnabled()) return { message: DISPATCH_PENDING };
   if (form.get('checked') !== 'on') return { message: 'Tick that you checked the draft (number, amount, customer) first.' };
   try {
     const r = await asStaffInvoice('select web_xero_dispatch_request($1, $2, $3, $4) r', [invoice, Number(form.get('generation')), String(form.get('sha') ?? '')]);

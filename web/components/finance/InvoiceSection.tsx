@@ -6,6 +6,7 @@ import { date, money } from '@/lib/labels';
 import { Badge } from '@/components/ui/Badge';
 import { CardHead, Empty } from '@/components/ui/Empty';
 import { DecideInvoiceForm, SendToXeroForm } from './InvoiceForms';
+import { DISPATCH_PENDING } from '@/lib/dispatch';
 
 const VIA: Record<PendingInvoice['requested_via'], string> = { dashboard: 'in the dashboard', copilot: 'with the Copilot', airtable: 'in Airtable (shared account)' };
 
@@ -33,13 +34,13 @@ function Preview({ p }: { p: PendingInvoice }) {
   );
 }
 
-function Decision({ p, me, roles }: { p: PendingInvoice; me: NonNullable<InvoiceOverview['me']>; roles: string }) {
+function Decision({ p, me, roles, dispatchOn }: { p: PendingInvoice; me: NonNullable<InvoiceOverview['me']>; roles: string; dispatchOn: boolean }) {
   if (!me.may_approve) return <p className="t-meta reissue-wait">Waiting for an approver ({roles}).</p>;
   if (p.i_requested_it) return <p className="t-meta reissue-wait">You prepared this. A second person ({roles}) must approve it; you can still reject (withdraw) it.</p>;
-  return <DecideInvoiceForm approval={p.approval_number} hash={p.payload_hash} />;
+  return <>{!dispatchOn && <p className="t-meta reissue-wait" role="note">{DISPATCH_PENDING}</p>}<DecideInvoiceForm approval={p.approval_number} hash={p.payload_hash} approveEnabled={dispatchOn} /></>;
 }
 
-function Draft({ d, me }: { d: DraftProgress; me: NonNullable<InvoiceOverview['me']> }) {
+function Draft({ d, me, dispatchOn }: { d: DraftProgress; me: NonNullable<InvoiceOverview['me']>; dispatchOn: boolean }) {
   const s = DRAFT_STATE[d.state];
   const canSend = me.may_dispatch && (d.state === 'READY_TO_SEND' || d.state === 'FAILED') && !d.problem;
   return (
@@ -60,14 +61,15 @@ function Draft({ d, me }: { d: DraftProgress; me: NonNullable<InvoiceOverview['m
           {d.request ? <>Last request: {d.request.requested_by ?? 'someone'}, {date(d.request.requested_at)} ({d.request.status.toLowerCase().replace('_', ' ')}{d.request.closed_reason ? `: ${d.request.closed_reason}` : ''}).</> : null}
         </p>
       ) : null}
-      {canSend ? <SendToXeroForm invoice={d.invoice_number} generation={d.generation} sha={d.payload_sha256} again={d.state === 'FAILED'} />
+      {canSend && !dispatchOn ? <p className="t-meta reissue-wait" role="note">Sending to Xero from the dashboard is not switched on yet (pending the owner&apos;s activation).</p>
+        : canSend ? <SendToXeroForm invoice={d.invoice_number} generation={d.generation} sha={d.payload_sha256} again={d.state === 'FAILED'} />
         : (d.state === 'READY_TO_SEND' || d.state === 'FAILED') && !me.may_dispatch ? <p className="t-meta reissue-wait">A Finance or Admin person sends it to Xero.</p> : null}
     </div>
   );
 }
 
 /** Final invoices awaiting a decision, and Xero drafts not yet settled. Staff only: the demo viewer is told to sign in. */
-export function InvoiceSection({ overview }: { overview: InvoiceOverview | null }) {
+export function InvoiceSection({ overview, dispatchOn }: { overview: InvoiceOverview | null; dispatchOn: boolean }) {
   const me = overview?.me;
   return (
     <div className="grid g-2" style={{ marginTop: 16 }}>
@@ -83,7 +85,7 @@ export function InvoiceSection({ overview }: { overview: InvoiceOverview | null 
                   <span className="t-meta"> · {p.preview.customer_name} · {money(p.preview.amount_inc_gst)}</span></div>
                 <Badge l={{ text: 'Awaiting approval', tone: 'warn' }} />
                 <Preview p={p} />
-                <Decision p={p} me={me} roles="finance, admin, operations manager" />
+                <Decision p={p} me={me} roles="finance, admin, operations manager" dispatchOn={dispatchOn} />
               </div>
             ))}
         </div>
@@ -94,7 +96,7 @@ export function InvoiceSection({ overview }: { overview: InvoiceOverview | null 
           {!overview ? <p className="t-meta">Sign in as yourself to send invoices to Xero.</p>
             : !overview.ok || !me ? <p className="t-meta">{overview.reason ?? 'Sign in again as yourself.'}</p>
             : !overview.drafts?.length ? <Empty icon={CloudUpload} title="Nothing waiting for Xero" text="Approved invoices appear here until their draft exists in Xero." />
-            : overview.drafts.map((d) => <Draft key={`${d.invoice_number}:${d.generation}`} d={d} me={me} />)}
+            : overview.drafts.map((d) => <Draft key={`${d.invoice_number}:${d.generation}`} d={d} me={me} dispatchOn={dispatchOn} />)}
         </div>
       </section>
     </div>

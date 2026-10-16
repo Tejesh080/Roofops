@@ -77,6 +77,7 @@ env.push(
   `DASHBOARD_DATABASE_URL=postgresql://${WEB_ROLE}:${webPassword}@${HOST}/${DB}`,
   `AUTH_SECRET=${secret(48, previous.AUTH_SECRET)}`,
   'DEMO_USERNAME=pilot-demo-viewer',
+  'STAFF_XERO_DISPATCH=on',   // the rehearsal exercises approve + send (n8n 09 is simulated); hosted keeps it off until 09 is activated
   `DEMO_PASSWORD=${demoPassword}`,
   `PILOT_DEMO_LOGIN=pilot-demo-viewer`,
   `PILOT_DEMO_PASSWORD=${demoPassword}`,

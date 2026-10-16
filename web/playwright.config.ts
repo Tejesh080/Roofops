@@ -28,5 +28,6 @@ export default defineConfig({
     { name: 'staff-journey', testMatch: /staff-journey\.spec\.ts/ },
     { name: 'operations', testMatch: /operations\.spec\.ts/ },
     { name: 'invoice-approval', testMatch: /invoice-approval\.spec\.ts/ },
+    { name: 'dispatch-gate', testMatch: /dispatch-gate\.spec\.ts/ },
   ],
 });

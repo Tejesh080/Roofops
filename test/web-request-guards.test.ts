@@ -29,3 +29,13 @@ describe('copilot API: same-origin JSON only', () => {
     expect(sameOriginJson(req({ 'content-type': 'application/json', origin: 'null', host: '127.0.0.1:3000' }))).toBe(false);
   });
 });
+
+describe('staff Xero dispatch switch', () => {
+  it('is off unless explicitly "on" (staging keeps approve and send disabled while n8n 09 is inactive)', async () => {
+    const { staffDispatchEnabled } = await import('../web/lib/dispatch.ts');
+    expect(staffDispatchEnabled({})).toBe(false);
+    expect(staffDispatchEnabled({ STAFF_XERO_DISPATCH: 'true' })).toBe(false);
+    expect(staffDispatchEnabled({ STAFF_XERO_DISPATCH: 'off' })).toBe(false);
+    expect(staffDispatchEnabled({ STAFF_XERO_DISPATCH: 'on' })).toBe(true);
+  });
+});

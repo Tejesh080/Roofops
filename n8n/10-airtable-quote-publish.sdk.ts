@@ -89,17 +89,24 @@ const p = one('upsert property', $input.first().json);
 if (!p.ok) return [{ json: p }];
 const customer = $('Build Property').first().json.customer_record_id;
 const fields = Object.assign({}, job.quote_fields, { '${LINK.quoteCustomer}': [customer], '${LINK.quoteProperty}': [p.id] });
-// Status is staff-editable in Airtable. Only the first attempt writes it (creating the row as Sent); a retry may find the row
-// already there and edited (e.g. Accepted) and must never put it back. A row a retry creates gets Sent from reconciliation.
-if (Number($('Claim Quote Publish').last().json.c.attempt) > 1) delete fields['${STATUS}'];
+// Status is staff-editable in Airtable. It is written only by the first attempt of a hand-off that may write it
+// (write_status: Postgres says false once the Airtable row may exist, e.g. for a revision); a retry may find the row there
+// and edited (e.g. Accepted) and must never put it back. A row created without it gets Sent from reconciliation.
+if (Number($('Claim Quote Publish').last().json.c.attempt) > 1 || job.write_status === false) delete fields['${STATUS}'];
 return [{ json: { ok: true, customer_record_id: customer, property_record_id: p.id, request: { performUpsert: { fieldsToMergeOn: ['${ID.quote}'] }, returnFieldsByFieldId: true, typecast: false, records: [{ fields: fields }] } } }];` } }, output: [{ ok: true, request: {} }] });
 const quoteOk = ifElse({ version: 2.3, config: { name: 'Property OK?', parameters: OK_IF } });
 const upQuote = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Upsert Quote', onError: 'continueRegularOutput',
   parameters: { method: 'PATCH', url: T.quotes, authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi',
     sendBody: true, contentType: 'json', specifyBody: 'json', jsonBody: expr('{{ JSON.stringify($json.request) }}'), options: RAW },
   credentials: AIRTABLE }, output: [{ statusCode: 200, body: { records: [{ id: 'rec' }] } }] });
+// A failed, timed-out or malformed upsert goes to the failure path here, before any read-back depends on its body.
+const checkQuote = node({ type: 'n8n-nodes-base.code', version: 2, config: { name: 'Check Quote Upsert',
+  parameters: { mode: 'runOnceForAllItems', jsCode: FAIL_JS + `
+const u = one('upsert quote', $input.first().json);
+return [{ json: u.ok ? { ok: true, record_id: u.id } : u }];` } }, output: [{ ok: true, record_id: 'rec' }] });
+const upsertedOk = ifElse({ version: 2.3, config: { name: 'Quote Upserted?', parameters: OK_IF } });
 const readQuote = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Read Back Quote', onError: 'continueRegularOutput',
-  parameters: { method: 'GET', url: expr(T.quotes + '/{{ ($json.body.records || [{}])[0].id }}'), authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi',
+  parameters: { method: 'GET', url: expr(T.quotes + '/{{ $json.record_id }}'), authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi',
     sendQuery: true, queryParameters: { parameters: [{ name: 'returnFieldsByFieldId', value: 'true' }] }, options: RAW },
   credentials: AIRTABLE }, output: [{ statusCode: 200, body: { id: 'rec', fields: {} } }] });
 
@@ -173,7 +180,9 @@ export default workflow('roofops-airtable-quote-publish', '[RoofOps] 10 Airtable
   .add(everyMinute).to(next).to(pick).to(any.onTrue(claim.to(claimed.onTrue(buildCustomer.to(customerBuilt
     .onTrue(upCustomer.to(buildProperty).to(propertyOk
       .onTrue(upProperty.to(buildQuote).to(quoteOk
-        .onTrue(upQuote.to(readQuote).to(readCustomer).to(readProperty).to(verify).to(verified.onTrue(complete).onFalse(recordFailure)))
+        .onTrue(upQuote.to(checkQuote).to(upsertedOk
+          .onTrue(readQuote.to(readCustomer).to(readProperty).to(verify).to(verified.onTrue(complete).onFalse(recordFailure)))
+          .onFalse(recordFailure)))
         .onFalse(recordFailure)))
       .onFalse(recordFailure)))
     .onFalse(recordFailure))))))

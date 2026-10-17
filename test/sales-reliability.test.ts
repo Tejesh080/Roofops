@@ -110,7 +110,9 @@ describe.each(TARGETS)('sales reliability [%s]', (target) => {
       expect(await one('select count(*)::int n from quote_versions v join quotes q on q.id = v.quote_id where q.quote_number = $1', [s.quote])).toEqual({ n: 1 });
       await db.query(`update outbox set locked_until = now() - interval '1 second' where idempotency_key = $1`, [s.key]);   // the run died
       expect(await revise(s.quote, '11', `rel-rev-${target}-3`)).toMatchObject({ ok: true, version: 2 });
-      expect(await one('select status from outbox where idempotency_key = $1', [s.key])).toEqual({ status: 'PENDING' });
+      // The dead run's hand-off had an attempt: it is kept as history (stopped) and v2 gets a fresh one (20261017050000).
+      expect(await one(`select status, next_attempt_at = 'infinity' stopped from outbox where idempotency_key = $1`, [s.key])).toEqual({ status: 'FAILED', stopped: true });
+      expect(await one('select status, attempts::int a from outbox where idempotency_key = $1', [`${s.key}:v2`])).toEqual({ status: 'PENDING', a: 0 });
     });
   });
 

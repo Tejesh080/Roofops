@@ -85,6 +85,7 @@ export const SALES_CODE: Record<string, string> = {
   INSPECTOR_BUSY: 'The inspector is busy then.',
   IN_PAST: 'That time is in the past.',
   ALREADY_QUOTED: 'This enquiry already has an open quote.',
+  QUOTE_SENT_FINAL: 'A sent quote cannot change.',
 };
 export const salesRefusal = (r: { code?: string; detail?: string }) =>
   r.code && SALES_CODE[r.code] ? `${SALES_CODE[r.code]}${r.detail && r.code !== 'SIGNED_OUT' ? ` (${r.detail})` : ''}` : (r.detail ?? 'Not done.');

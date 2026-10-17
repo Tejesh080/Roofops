@@ -10,13 +10,14 @@ import { importBundle } from '../src/import/importer.js';
 import { TARGETS, migratedDb } from './helpers/db.js';
 
 type R = Record<string, unknown>;
-/** n8n 10's proof plus the three records as Airtable holds them (read back after writing; 20261017040000 requires them). */
-const withReadBack = (proof: R, p: R): R => {
+/** n8n 10's proof plus the three records as Airtable holds them (read back after writing; 20261017040000 requires them),
+ * from the attempt that holds the hand-off, with the one quote record found and its Status (20261017060000). */
+const withReadBack = (proof: R, p: R, attempt: number): R => {
   const qf = p.quote_fields as R;
-  return { ...proof,
+  return { ...proof, attempt, quote_record_count: 1,
     customer_read_back: { id: proof.customer_record_id, roofops_id: p.customer_id, number: p.customer_number },
     property_read_back: { id: proof.property_record_id, roofops_id: p.property_id, number: p.property_number, owner_link_ids: [proof.customer_record_id] },
-    quote_read_back: { id: proof.quote_record_id, roofops_id: p.quote_id, number: p.quote_number, version: qf.fldEjEqlzE8Y0M1nf, amount: qf.fldbfUE8DVh1Dwjfs,
+    quote_read_back: { id: proof.quote_record_id, roofops_id: p.quote_id, number: p.quote_number, version: qf.fldEjEqlzE8Y0M1nf, amount: qf.fldbfUE8DVh1Dwjfs, status: 'Sent',
       customer_link_ids: proof.quote_customer_link_ids, property_link_ids: proof.quote_property_link_ids } };
 };
 const PW = 'sales test password 1';
@@ -223,7 +224,7 @@ describe.each(TARGETS)('enquiry to quote [%s]', (target) => {
     const p = (await one('select payload from outbox where idempotency_key = $1', [key])).payload as R;
     const proof = withReadBack({ verified: true, quote_number: Q, customer_number: p.customer_number, property_number: p.property_number,
       quote_record_id: 'recQUOTESALES0001', customer_record_id: 'recCUSTSALES00001', property_record_id: 'recPROPSALES00001',
-      quote_customer_link_ids: ['recCUSTSALES00001'], quote_property_link_ids: ['recPROPSALES00001'] }, p);
+      quote_customer_link_ids: ['recCUSTSALES00001'], quote_property_link_ids: ['recPROPSALES00001'] }, p, 1);
     const complete = async (r: R) => {
       await db.exec('set role roofops_workflow');
       try { return (await one(`select wf_complete_side_effect($1, $2::jsonb) r`, [key, JSON.stringify(r)])).r as R; } finally { await db.exec('reset role'); }
@@ -262,7 +263,8 @@ describe.each(TARGETS)('enquiry to quote [%s]', (target) => {
     const key = String(sent.airtable_key);
     const next = async () => ((await asWorkflow(`select wf_quote_publish_next('n8n:10:test') r`, [])).writes as R[]).map((w) => w.quote_number);
     const claim = () => asWorkflow(`select wf_claim_side_effect($1, 'n8n:10', 180) r`, [key]);
-    const fail = (cls: string, msg: string, http: number | null) => asWorkflow('select wf_quote_publish_fail($1, $2, $3, $4, null) r', [key, cls, msg, http]);
+    const fail = async (cls: string, msg: string, http: number | null) => asWorkflow('select wf_quote_publish_fail($1, $2, $3, $4, null, $5) r',
+      [key, cls, msg, http, (await one('select attempts::int a from outbox where idempotency_key = $1', [key])).a]);   // from the attempt holding it
     const handoff = () => one(`select o.status, o.attempts, o.next_attempt_at = 'infinity' stopped, q.in_airtable, q.airtable_handoff, q.airtable_handoff_error
       from outbox o join v_dashboard_quotes q on q.quote_number = $2 where o.idempotency_key = $1`, [key, Q2]);
 
@@ -284,12 +286,13 @@ describe.each(TARGETS)('enquiry to quote [%s]', (target) => {
     expect(await next()).toEqual([]);
     expect(await one(`select entity_type, business_reference, error_class, resolution_status from workflow_exceptions where exception_number = $1`, [stop.exception_number]))
       .toEqual({ entity_type: 'quote', business_reference: Q2, error_class: 'VALIDATION_ERROR', resolution_status: 'OPEN' });
-    await expect(fail('UPSTREAM_5XX', 'again', 502)).rejects.toThrow(/not claimed/);
+    expect(await fail('UPSTREAM_5XX', 'again', 502)).toMatchObject({ late: true, retry: false });   // not claimed: changes nothing
+    expect(await handoff()).toMatchObject({ status: 'FAILED', stopped: true });
     expect(await one(`select status from integrity_check() where check_key = 'done_has_proof'`)).toEqual({ status: 'PASS' });
 
     // The cause is fixed; the operator re-queues it (ops/requeue-quote-publish.sql) and n8n 10 completes it with proof.
     const requeue = readFileSync('ops/requeue-quote-publish.sql', 'utf8').replace(`'Q-2026-0066'`, `'${Q2}'`).replace(`'EXC-0000'`, `'${String(stop.exception_number)}'`);
-    expect(await one(requeue)).toEqual({ requeued: 1, exceptions_queued: 1, audited: 1 });
+    expect(await one(requeue)).toEqual({ requeued: 1, exceptions_queued: 1, audited: 1, refused_because: null });
     expect(await next()).toEqual([Q2]);
     expect(await claim()).toMatchObject({ claimed: true, attempt: 4 });
     const p = (await one('select payload from outbox where idempotency_key = $1', [key])).payload as R;
@@ -297,7 +300,7 @@ describe.each(TARGETS)('enquiry to quote [%s]', (target) => {
     try {
       expect((await one(`select wf_complete_side_effect($1, $2::jsonb) r`, [key, JSON.stringify(withReadBack({ verified: true, quote_number: Q2, customer_number: p.customer_number,
         property_number: p.property_number, quote_record_id: 'recQUOTEFAIL00001', customer_record_id: 'recCUSTFAIL000001', property_record_id: 'recPROPFAIL000001',
-        quote_customer_link_ids: ['recCUSTFAIL000001'], quote_property_link_ids: ['recPROPFAIL000001'] }, p))])).r).toMatchObject({ status: 'RECORDED' });
+        quote_customer_link_ids: ['recCUSTFAIL000001'], quote_property_link_ids: ['recPROPFAIL000001'] }, p, 4))])).r).toMatchObject({ status: 'RECORDED' });
     } finally { await db.exec('reset role'); }
     expect(await handoff()).toMatchObject({ status: 'DONE', in_airtable: true });
     expect(await one(`select resolution_status from workflow_exceptions where exception_number = $1`, [stop.exception_number])).toEqual({ resolution_status: 'RESOLVED' });

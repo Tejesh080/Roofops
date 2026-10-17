@@ -142,22 +142,22 @@ test('enquiry → customer and site → inspection → quote → sent → in Air
   // n8n 10 (simulated): the first try fails (Airtable 502) and is retried; the page says so and never claims it was added.
   const key = String(((await asWorkflow(`select wf_quote_publish_next('n8n:10:e2e') r`, [])).writes as R[])[0]!.key);
   expect(await asWorkflow(`select wf_claim_side_effect($1, 'n8n:10', 120) r`, [key])).toMatchObject({ claimed: true });
-  expect(await asWorkflow(`select wf_quote_publish_fail($1, 'UPSTREAM_5XX', 'upsert quote: HTTP 502', 502, null) r`, [key])).toMatchObject({ retry: true });
+  expect(await asWorkflow(`select wf_quote_publish_fail($1, 'UPSTREAM_5XX', 'create quote: HTTP 502', 502, null, 1) r`, [key])).toMatchObject({ retry: true });
   await page.reload();
-  await expect(nextStep(page)).toContainText('The last try failed (upsert quote: HTTP 502); RoofOps tries again automatically.');
-  await expect(qcard).toContainText('Airtable: being added; retrying after: upsert quote: HTTP 502');
+  await expect(nextStep(page)).toContainText('The last try failed (create quote: HTTP 502); RoofOps tries again automatically.');
+  await expect(qcard).toContainText('Airtable: being added; retrying after: create quote: HTTP 502');
   await expect(qcard).not.toContainText('Airtable: added');
   // The retry claims it again and records verified proof; the page then says what the office does.
   await db.query(`update outbox set next_attempt_at = now() where idempotency_key = $1`, [key]);
   expect(await asWorkflow(`select wf_claim_side_effect($1, 'n8n:10', 120) r`, [key])).toMatchObject({ claimed: true, attempt: 2 });
   const p = (await one('select payload from outbox where idempotency_key = $1', [key])).payload as R;
-  expect(await asWorkflow(`select wf_complete_side_effect($1, $2::jsonb) r`, [key, JSON.stringify({ verified: true, quote_number: Q, customer_number: p.customer_number,
+  expect(await asWorkflow(`select wf_complete_side_effect($1, $2::jsonb) r`, [key, JSON.stringify({ verified: true, attempt: 2, quote_record_count: 1, quote_number: Q, customer_number: p.customer_number,
     property_number: p.property_number, quote_record_id: 'recE2EQUOTE000001', customer_record_id: 'recE2ECUSTOMER001', property_record_id: 'recE2EPROPERTY001',
     quote_customer_link_ids: ['recE2ECUSTOMER001'], quote_property_link_ids: ['recE2EPROPERTY001'],
     // The three records as Airtable holds them, read back by n8n 10 (required since 20261017040000).
     customer_read_back: { id: 'recE2ECUSTOMER001', roofops_id: p.customer_id, number: p.customer_number },
     property_read_back: { id: 'recE2EPROPERTY001', roofops_id: p.property_id, number: p.property_number, owner_link_ids: ['recE2ECUSTOMER001'] },
-    quote_read_back: { id: 'recE2EQUOTE000001', roofops_id: p.quote_id, number: Q, version: (p.quote_fields as R).fldEjEqlzE8Y0M1nf, amount: (p.quote_fields as R).fldbfUE8DVh1Dwjfs,
+    quote_read_back: { id: 'recE2EQUOTE000001', roofops_id: p.quote_id, number: Q, version: (p.quote_fields as R).fldEjEqlzE8Y0M1nf, amount: (p.quote_fields as R).fldbfUE8DVh1Dwjfs, status: 'Sent',
       customer_link_ids: ['recE2ECUSTOMER001'], property_link_ids: ['recE2EPROPERTY001'] } })])).toMatchObject({ status: 'RECORDED' });
   await page.reload();
   await expect(nextStep(page)).toContainText(`Waiting for the customer to accept ${Q}`);
@@ -252,7 +252,7 @@ test('a second enquiry for the same caller is shown first and recorded only when
     .toMatchObject({ phone: '0433 222 112' });
 });
 
-test('a sent quote revised in the dashboard is not shown as in Airtable until the new version is there, and the old version cannot be accepted', async ({ browser, baseURL }) => {
+test('a sent quote is final: the page offers no revision and says how to change the price; a forged revision is refused and nothing is written', async ({ browser, baseURL }) => {
   // Setup as the dashboard would have done it: Noah's enquiry (from the journey) quoted, sent and published to Airtable.
   const est = await signIn(browser, 'EST', baseURL!);
   const L = String((await one(`select lead_number from leads where contact_name = 'Noah Richards' and customer_id is not null order by received_at desc limit 1`)).lead_number);
@@ -265,29 +265,23 @@ test('a sent quote revised in the dashboard is not shown as in Airtable until th
   await asWorkflow(`select wf_claim_side_effect($1, 'n8n:10', 120) r`, [key]);
   const p = (await one('select payload from outbox where idempotency_key = $1', [key])).payload as R;
   const ids = { q: 'recE2EREVQUOTE001', c: 'recE2EREVCUST0001', p: 'recE2EREVPROP0001' };
-  expect(await asWorkflow(`select wf_complete_side_effect($1, $2::jsonb) r`, [key, JSON.stringify({ verified: true, quote_number: Q, customer_number: p.customer_number,
+  expect(await asWorkflow(`select wf_complete_side_effect($1, $2::jsonb) r`, [key, JSON.stringify({ verified: true, attempt: 1, quote_record_count: 1, quote_number: Q, customer_number: p.customer_number,
     property_number: p.property_number, quote_record_id: ids.q, customer_record_id: ids.c, property_record_id: ids.p, quote_customer_link_ids: [ids.c], quote_property_link_ids: [ids.p],
     customer_read_back: { id: ids.c, roofops_id: p.customer_id, number: p.customer_number },
     property_read_back: { id: ids.p, roofops_id: p.property_id, number: p.property_number, owner_link_ids: [ids.c] },
-    quote_read_back: { id: ids.q, roofops_id: p.quote_id, number: Q, version: 1, amount: 950, customer_link_ids: [ids.c], property_link_ids: [ids.p] } })])).toMatchObject({ status: 'RECORDED' });
+    quote_read_back: { id: ids.q, roofops_id: p.quote_id, number: Q, version: 1, amount: 950, status: 'Sent', customer_link_ids: [ids.c], property_link_ids: [ids.p] } })])).toMatchObject({ status: 'RECORDED' });
 
   const page = est.page;
   await page.goto(`/sales/${L}`);
-  const qcard = page.locator(`[data-quote="${Q}"]`);
-  await expect(qcard).toContainText('Airtable: added');
-  // The estimator revises the sent quote (more labour).
-  await page.getByRole('region', { name: '4. Quote' }).getByText(`Revise ${Q}`).click();
-  const form = page.getByRole('form', { name: `Revise ${Q}` });
-  await form.getByLabel('Line 1 quantity').fill('12');
-  await form.getByRole('button', { name: 'Save as version 2' }).click();
-  await expect(page.locator(`[data-quote="${Q}"]`)).toContainText('version 2');
-  await expect(page.locator(`[data-quote="${Q}"]`)).toContainText('Airtable: being added');
-  await expect(page.locator(`[data-quote="${Q}"]`)).not.toContainText('Airtable: added');
-  await expect(page.getByRole('region', { name: 'Next step' })).toContainText('being added to Airtable');
-  expect(await one('select status, (payload -> \'quote_fields\' ->> \'fldEjEqlzE8Y0M1nf\')::int v from outbox where idempotency_key = $1', [`${key}:v2`])).toEqual({ status: 'PENDING', v: 2 });
-  // The office accepts what Airtable still shows (version 1): refused, no project.
-  const acc = await asWorkflow('select wf_quote_accepted($1::jsonb) r', [JSON.stringify({ event_id: 'EVT-E2E-REV-OLD', correlation_id: 'CORR-E2E-REV', event_type: 'quote.accepted',
-    source: 'airtable', actor_id: 'airtable-automation', occurred_at: new Date().toISOString(), payload: { quote_id: Q, accepted_version: 1 } })]);
-  expect(acc).toMatchObject({ status: 'REJECTED', error_class: 'INVALID_STATE' });
-  expect(await one('select count(*)::int n from projects p join quotes q on q.id = p.quote_id where q.quote_number = $1', [Q])).toEqual({ n: 0 });
+  const quoteCard = page.getByRole('region', { name: '4. Quote' });
+  await expect(page.locator(`[data-quote="${Q}"]`)).toContainText('Airtable: added');
+  await expect(quoteCard).toContainText(`${Q} was sent and cannot change. For a different price, mark it Lost in Airtable and record a new enquiry for the customer.`);
+  await expect(quoteCard.getByText(`Revise ${Q}`)).toHaveCount(0);
+  await expect(page.getByRole('form', { name: `Revise ${Q}` })).toHaveCount(0);
+  // A revision sent anyway (stale page, forged request): refused by the database; one version, one hand-off.
+  const rv = (await one('select record_version::int v from quotes where quote_number = $1', [Q])).v;
+  expect((await one(`select web_quote_save($1, null, $2, $3, 'LEAK_REPAIR', 'INCLUSIVE', null, $4::jsonb, 'e2e-rev-quote-0002') r`,
+    [tok, Q, rv, JSON.stringify([{ line_kind: 'LABOUR', description: 'Re-bed ridge', quantity: '12', unit: 'hrs', unit_price: '95' }])])).r).toMatchObject({ ok: false, code: 'QUOTE_SENT_FINAL' });
+  expect(await one(`select (select count(*)::int from quote_versions v where v.quote_id = q.id) versions, (select count(*)::int from outbox o where o.aggregate_id = q.id and o.topic = 'airtable.quote_publish') handoffs from quotes q where q.quote_number = $1`, [Q]))
+    .toEqual({ versions: 1, handoffs: 1 });
 });

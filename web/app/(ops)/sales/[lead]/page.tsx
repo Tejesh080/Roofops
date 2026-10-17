@@ -34,6 +34,7 @@ export default async function LeadPage({ params }: { params: Promise<{ lead: str
   const next = leadNextStep(l, quotes);
   const booked = l.inspections.find((i) => i.status === 'SCHEDULED');
   const openQuote = quotes.find((q) => q.status === 'DRAFT' || q.status === 'SENT') ?? null;
+  const draftQuote = openQuote?.status === 'DRAFT' ? openQuote : null;   // a sent quote is final (quote publishing lifecycle)
   const customer = customers.find((c) => c.customer_number === l.customer_number) ?? null;
 
   return (
@@ -123,12 +124,13 @@ export default async function LeadPage({ params }: { params: Promise<{ lead: str
                 {may && q.status === 'DRAFT' && <SendQuoteForm quote={q.quote_number} version={q.record_version} total={q.total_inc_gst} />}
               </div>
             ))}
-            {may && !closed && l.customer_number && (!quotes.length || openQuote) && (
+            {may && !closed && l.customer_number && (!quotes.length || draftQuote) && (
               <details className="ops-details" open={!quotes.length}>
-                <summary className="btn btn-sm">{openQuote ? `Revise ${openQuote.quote_number}` : 'Prepare the quote'}</summary>
-                <QuoteBuilder lead={l.lead_number} quote={openQuote} products={products} />
+                <summary className="btn btn-sm">{draftQuote ? `Revise ${draftQuote.quote_number}` : 'Prepare the quote'}</summary>
+                <QuoteBuilder lead={l.lead_number} quote={draftQuote} products={products} />
               </details>
             )}
+            {may && openQuote?.status === 'SENT' && <p className="t-meta">{openQuote.quote_number} was sent and cannot change. For a different price, mark it Lost in Airtable and record a new enquiry for the customer.</p>}
             {!l.customer_number && <p className="t-meta">Record the customer and site first.</p>}
           </div>
         </section>

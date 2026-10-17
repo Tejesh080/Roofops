@@ -5,8 +5,8 @@ import { workflow, node, trigger, ifElse, expr } from '@n8n/workflow-sdk';
 // airtable.quote_publish, carrying the customer, property and quote rows by their RoofOps numbers. Every minute this asks
 // Postgres for the next due write (wf_quote_publish_next), claims it (wf_claim_side_effect), upserts the three Airtable
 // records MERGED ON THEIR RoofOps ID field (a retry finds the same records, never a second one), links property -> customer
-// and quote -> customer + property, reads the quote back and records the proof (wf_complete_side_effect checks numbers and
-// links). A failure is recorded with its class (wf_quote_publish_fail: bounded retry, then an exception). After this the quote
+// and quote -> customer + property, reads all three records back and records what Airtable holds as the proof
+// (wf_complete_side_effect checks record ids, RoofOps IDs, numbers, owner and quote links, version and amount). A failure is recorded with its class (wf_quote_publish_fail: bounded retry, then an exception). After this the quote
 // is an ordinary Airtable quote: reconciliation keeps its fields canonical and Status -> Accepted runs n8n 01 unchanged.
 
 const AIRTABLE = { airtableTokenApi: { id: '3XbFnHjAd7mFvBD2', name: 'Roofops Airtable Personal Access Token account' } };
@@ -17,6 +17,7 @@ const T = { customers: BASE + '/tblHKX79FJFHn5FDc', properties: BASE + '/tblSYcC
 const ID = { customer: 'fldDClu1e0ffwnojn', property: 'fldm6rtleyV6yp8ZS', quote: 'fldVUpqZkVKid3Fyy' };
 const LINK = { propertyOwner: 'fldVpX0MOcA8TnGvo', quoteCustomer: 'fld4LsEu8c9EMFj0h', quoteProperty: 'fldisUv1ckHz2Detv' };
 const NUM = { customer: 'fldzmWSHtLVZ4OTmZ', property: 'fldIy8ab7Ky67jL31', quote: 'fldyP20HNafS614d5' };
+const QF = { version: 'fldEjEqlzE8Y0M1nf', amount: 'fldbfUE8DVh1Dwjfs' };   // Quotes.Version, Quotes.Amount (inc GST)
 const STATUS = 'fldQpTa5tvrzlNg1h';   // Quotes.Status (AIRTABLE_EDIT: Accepted -> n8n 01)
 
 const FAIL_JS = `
@@ -102,24 +103,55 @@ const readQuote = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, confi
     sendQuery: true, queryParameters: { parameters: [{ name: 'returnFieldsByFieldId', value: 'true' }] }, options: RAW },
   credentials: AIRTABLE }, output: [{ statusCode: 200, body: { id: 'rec', fields: {} } }] });
 
+// The customer and property records as Airtable now holds them (the proof is what was read, never what was sent).
+const readCustomer = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Read Back Customer', onError: 'continueRegularOutput',
+  parameters: { method: 'GET', url: expr(T.customers + "/{{ $('Build Quote').first().json.customer_record_id }}"), authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi',
+    sendQuery: true, queryParameters: { parameters: [{ name: 'returnFieldsByFieldId', value: 'true' }] }, options: RAW },
+  credentials: AIRTABLE }, output: [{ statusCode: 200, body: { id: 'rec', fields: {} } }] });
+const readProperty = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Read Back Property', onError: 'continueRegularOutput',
+  parameters: { method: 'GET', url: expr(T.properties + "/{{ $('Build Quote').first().json.property_record_id }}"), authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi',
+    sendQuery: true, queryParameters: { parameters: [{ name: 'returnFieldsByFieldId', value: 'true' }] }, options: RAW },
+  credentials: AIRTABLE }, output: [{ statusCode: 200, body: { id: 'rec', fields: {} } }] });
+
 const verify = node({ type: 'n8n-nodes-base.code', version: 2, config: { name: 'Verify Quote Read-Back',
   parameters: { mode: 'runOnceForAllItems', jsCode: FAIL_JS + `
 const up = one('upsert quote', $('Upsert Quote').first().json);
 if (!up.ok) return [{ json: up }];
-const r = $input.first().json;
-if (r.statusCode !== 200) return [{ json: fail('read back quote', r) }];
+const rq = $('Read Back Quote').first().json;
+const rc = $('Read Back Customer').first().json;
+const rp = $input.first().json;                                       // Read Back Property
+if (rq.statusCode !== 200) return [{ json: fail('read back quote', rq) }];
+if (rc.statusCode !== 200) return [{ json: fail('read back customer', rc) }];
+if (rp.statusCode !== 200) return [{ json: fail('read back property', rp) }];
 const ids = $('Build Quote').first().json;
-const f = r.body.fields || {};
+const q = rq.body.fields || {}; const c = rc.body.fields || {}; const p = rp.body.fields || {};
+const has = (list, id) => Array.isArray(list) && list.indexOf(id) >= 0;
+const want = job.quote_fields || {};
 const problems = [];
-if (r.body.id !== up.id) problems.push('read back a different record');
-if (f['${NUM.quote}'] !== job.quote_number) problems.push('Quote Number is ' + f['${NUM.quote}']);
-if (f['${ID.quote}'] !== job.quote_id) problems.push('RoofOps ID is ' + f['${ID.quote}']);
-if (!(f['${LINK.quoteCustomer}'] || []).includes(ids.customer_record_id)) problems.push('quote is not linked to customer ' + ids.customer_record_id);
-if (!(f['${LINK.quoteProperty}'] || []).includes(ids.property_record_id)) problems.push('quote is not linked to property ' + ids.property_record_id);
+if (rq.body.id !== up.id) problems.push('read back a different quote record');
+if (q['${NUM.quote}'] !== job.quote_number) problems.push('Quote Number is ' + q['${NUM.quote}']);
+if (q['${ID.quote}'] !== job.quote_id) problems.push('quote RoofOps ID is ' + q['${ID.quote}']);
+if (Number(q['${QF.version}']) !== Number(want['${QF.version}'])) problems.push('Version is ' + q['${QF.version}'] + ', not ' + want['${QF.version}']);
+if (Number(q['${QF.amount}']) !== Number(want['${QF.amount}'])) problems.push('Amount is ' + q['${QF.amount}'] + ', not ' + want['${QF.amount}']);
+if (!has(q['${LINK.quoteCustomer}'], ids.customer_record_id)) problems.push('quote is not linked to customer ' + ids.customer_record_id);
+if (!has(q['${LINK.quoteProperty}'], ids.property_record_id)) problems.push('quote is not linked to property ' + ids.property_record_id);
+if (rc.body.id !== ids.customer_record_id) problems.push('read back a different customer record');
+if (c['${NUM.customer}'] !== job.customer_number) problems.push('Customer ID is ' + c['${NUM.customer}']);
+if (c['${ID.customer}'] !== job.customer_id) problems.push('customer RoofOps ID is ' + c['${ID.customer}']);
+if (rp.body.id !== ids.property_record_id) problems.push('read back a different property record');
+if (p['${NUM.property}'] !== job.property_number) problems.push('Property ID is ' + p['${NUM.property}']);
+if (p['${ID.property}'] !== job.property_id) problems.push('property RoofOps ID is ' + p['${ID.property}']);
+if (!has(p['${LINK.propertyOwner}'], ids.customer_record_id)) problems.push('property owner is not customer ' + ids.customer_record_id);
 if (problems.length) return [{ json: refuse('verify read-back', 'RECONCILIATION_MISMATCH', problems.join('; ')) }];
-return [{ json: { ok: true, proof: { verified: true, quote_number: f['${NUM.quote}'], customer_number: job.customer_number, property_number: job.property_number,
-  quote_record_id: up.id, customer_record_id: ids.customer_record_id, property_record_id: ids.property_record_id,
-  quote_customer_link_ids: f['${LINK.quoteCustomer}'], quote_property_link_ids: f['${LINK.quoteProperty}'], read_back_at: new Date().toISOString(), n8n_execution: $execution.id } } }];` } },
+// Every value below is what Airtable returned; Postgres checks it again against the hand-off before recording DONE.
+return [{ json: { ok: true, proof: { verified: true, quote_number: q['${NUM.quote}'], customer_number: c['${NUM.customer}'], property_number: p['${NUM.property}'],
+  quote_record_id: rq.body.id, customer_record_id: rc.body.id, property_record_id: rp.body.id,
+  quote_customer_link_ids: q['${LINK.quoteCustomer}'], quote_property_link_ids: q['${LINK.quoteProperty}'],
+  customer_read_back: { id: rc.body.id, roofops_id: c['${ID.customer}'], number: c['${NUM.customer}'] },
+  property_read_back: { id: rp.body.id, roofops_id: p['${ID.property}'], number: p['${NUM.property}'], owner_link_ids: p['${LINK.propertyOwner}'] },
+  quote_read_back: { id: rq.body.id, roofops_id: q['${ID.quote}'], number: q['${NUM.quote}'], version: q['${QF.version}'], amount: q['${QF.amount}'],
+    customer_link_ids: q['${LINK.quoteCustomer}'], property_link_ids: q['${LINK.quoteProperty}'] },
+  read_back_at: new Date().toISOString(), n8n_execution: $execution.id } } }];` } },
   output: [{ ok: true, proof: { verified: true } }] });
 const verified = ifElse({ version: 2.3, config: { name: 'Read-Back Verified?', parameters: OK_IF } });
 
@@ -141,7 +173,7 @@ export default workflow('roofops-airtable-quote-publish', '[RoofOps] 10 Airtable
   .add(everyMinute).to(next).to(pick).to(any.onTrue(claim.to(claimed.onTrue(buildCustomer.to(customerBuilt
     .onTrue(upCustomer.to(buildProperty).to(propertyOk
       .onTrue(upProperty.to(buildQuote).to(quoteOk
-        .onTrue(upQuote.to(readQuote).to(verify).to(verified.onTrue(complete).onFalse(recordFailure)))
+        .onTrue(upQuote.to(readQuote).to(readCustomer).to(readProperty).to(verify).to(verified.onTrue(complete).onFalse(recordFailure)))
         .onFalse(recordFailure)))
       .onFalse(recordFailure)))
     .onFalse(recordFailure))))))

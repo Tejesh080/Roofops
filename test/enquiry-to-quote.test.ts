@@ -10,6 +10,15 @@ import { importBundle } from '../src/import/importer.js';
 import { TARGETS, migratedDb } from './helpers/db.js';
 
 type R = Record<string, unknown>;
+/** n8n 10's proof plus the three records as Airtable holds them (read back after writing; 20261017040000 requires them). */
+const withReadBack = (proof: R, p: R): R => {
+  const qf = p.quote_fields as R;
+  return { ...proof,
+    customer_read_back: { id: proof.customer_record_id, roofops_id: p.customer_id, number: p.customer_number },
+    property_read_back: { id: proof.property_record_id, roofops_id: p.property_id, number: p.property_number, owner_link_ids: [proof.customer_record_id] },
+    quote_read_back: { id: proof.quote_record_id, roofops_id: p.quote_id, number: p.quote_number, version: qf.fldEjEqlzE8Y0M1nf, amount: qf.fldbfUE8DVh1Dwjfs,
+      customer_link_ids: proof.quote_customer_link_ids, property_link_ids: proof.quote_property_link_ids } };
+};
 const PW = 'sales test password 1';
 const ADDRESS = { address_line1: '7  Wattle   Court', suburb: 'bundaberg  east', state: 'qld', postcode: '4670', property_type: 'DETACHED_HOUSE', storeys: '1', access_notes: 'Side gate' };
 const LINES = [
@@ -106,10 +115,13 @@ describe.each(TARGETS)('enquiry to quote [%s]', (target) => {
     const refused = await convert(tok.est!, dup, 1, { newCustomer: { display_name: 'Noah Richards', customer_type: 'RESIDENTIAL', phone: '0400 000003' } });
     expect(refused).toMatchObject({ ok: false, code: 'POSSIBLE_DUPLICATE', lookalikes: [{ customer_number: 'CUST-0003' }] });
     expect(String(refused.detail)).toContain('Noah Richards (CUST-0003)');
-    // The usual answer: it IS that customer, at a site we already know (PROP-0002, typed differently).
-    const reuse = await convert(tok.est!, dup, 1, { customer: 'CUST-0003', property: { address_line1: '18 banksia rise', suburb: 'BUNDABERG NORTH', state: 'QLD', postcode: '4670', property_type: 'DETACHED_HOUSE' } });
-    expect(reuse).toMatchObject({ ok: true, customer_number: 'CUST-0003', new_customer: false, property_number: 'PROP-0002' });
-    expect(await convert(tok.est!, dup, 99)).toMatchObject({ ok: true, duplicate: true, customer_number: 'CUST-0003', property_number: 'PROP-0002' });
+    // PROP-0002 belongs to CUST-0002: it is not given to Noah as a second owner (sales reliability, 20261017040000).
+    expect(await convert(tok.est!, dup, 1, { customer: 'CUST-0003', property: { address_line1: '18 banksia rise', suburb: 'BUNDABERG NORTH', state: 'QLD', postcode: '4670', property_type: 'DETACHED_HOUSE' } }))
+      .toMatchObject({ ok: false, code: 'SITE_OWNED_BY_ANOTHER_CUSTOMER', owner: { customer_number: 'CUST-0002' } });
+    // The usual answer: it IS that customer, at a site of his we already know (PROP-0003, typed differently).
+    const reuse = await convert(tok.est!, dup, 1, { customer: 'CUST-0003', property: { address_line1: '25 pelican view road', suburb: 'KALKIE', state: 'QLD', postcode: '4670', property_type: 'DETACHED_HOUSE' } });
+    expect(reuse).toMatchObject({ ok: true, customer_number: 'CUST-0003', new_customer: false, property_number: 'PROP-0003' });
+    expect(await convert(tok.est!, dup, 99)).toMatchObject({ ok: true, duplicate: true, customer_number: 'CUST-0003', property_number: 'PROP-0003' });
 
     // A genuinely different person with the same name: confirmed new, and the pair is queued for a person to check.
     const other = String((await lead(tok.est!, { name: 'Noah Richards', phone: '0499 111222', email: null, key: 'lead-key-0005' })).lead_number);
@@ -209,9 +221,9 @@ describe.each(TARGETS)('enquiry to quote [%s]', (target) => {
     expect(await asWorkflow(`select wf_claim_side_effect($1, 'n8n:10', 120) r`, [key])).toMatchObject({ claimed: true });
     expect((await asWorkflow(`select wf_quote_publish_next('n8n:10:test') r`, [])).writes).toEqual([]);   // never handed out twice
     const p = (await one('select payload from outbox where idempotency_key = $1', [key])).payload as R;
-    const proof = { verified: true, quote_number: Q, customer_number: p.customer_number, property_number: p.property_number,
+    const proof = withReadBack({ verified: true, quote_number: Q, customer_number: p.customer_number, property_number: p.property_number,
       quote_record_id: 'recQUOTESALES0001', customer_record_id: 'recCUSTSALES00001', property_record_id: 'recPROPSALES00001',
-      quote_customer_link_ids: ['recCUSTSALES00001'], quote_property_link_ids: ['recPROPSALES00001'] };
+      quote_customer_link_ids: ['recCUSTSALES00001'], quote_property_link_ids: ['recPROPSALES00001'] }, p);
     const complete = async (r: R) => {
       await db.exec('set role roofops_workflow');
       try { return (await one(`select wf_complete_side_effect($1, $2::jsonb) r`, [key, JSON.stringify(r)])).r as R; } finally { await db.exec('reset role'); }
@@ -283,9 +295,9 @@ describe.each(TARGETS)('enquiry to quote [%s]', (target) => {
     const p = (await one('select payload from outbox where idempotency_key = $1', [key])).payload as R;
     await db.exec('set role roofops_workflow');
     try {
-      expect((await one(`select wf_complete_side_effect($1, $2::jsonb) r`, [key, JSON.stringify({ verified: true, quote_number: Q2, customer_number: p.customer_number,
+      expect((await one(`select wf_complete_side_effect($1, $2::jsonb) r`, [key, JSON.stringify(withReadBack({ verified: true, quote_number: Q2, customer_number: p.customer_number,
         property_number: p.property_number, quote_record_id: 'recQUOTEFAIL00001', customer_record_id: 'recCUSTFAIL000001', property_record_id: 'recPROPFAIL000001',
-        quote_customer_link_ids: ['recCUSTFAIL000001'], quote_property_link_ids: ['recPROPFAIL000001'] })])).r).toMatchObject({ status: 'RECORDED' });
+        quote_customer_link_ids: ['recCUSTFAIL000001'], quote_property_link_ids: ['recPROPFAIL000001'] }, p))])).r).toMatchObject({ status: 'RECORDED' });
     } finally { await db.exec('reset role'); }
     expect(await handoff()).toMatchObject({ status: 'DONE', in_airtable: true });
     expect(await one(`select resolution_status from workflow_exceptions where exception_number = $1`, [stop.exception_number])).toEqual({ resolution_status: 'RESOLVED' });

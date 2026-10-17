@@ -34,7 +34,8 @@ describe.each(TARGETS)('enquiry to quote [%s]', (target) => {
   const one = async (sql: string, p: unknown[] = []) => (await db.query<R>(sql, p))[0]!;
   const call = async (sql: string, p: unknown[]) => (await one(sql, p)).r as R;
   const lead = (t: string, o: Partial<{ name: string; phone: string | null; email: string | null; source: string; key: string }> = {}) =>
-    call('select web_lead_create($1, $2, $3, $4, $5, $6, $7, $8) r', [t, o.name ?? 'Olive Sample', o.phone === undefined ? '0412 345 678' : o.phone,
+    // Confirmed as separate: these cases reuse one contact on purpose; duplicate enquiries have their own tests (release-blockers).
+    call('select web_lead_create($1, $2, $3, $4, $5, $6, $7, $8, true) r', [t, o.name ?? 'Olive Sample', o.phone === undefined ? '0412 345 678' : o.phone,
       o.email === undefined ? 'olive.sample@example.test' : o.email, '7 Wattle Ct, Bundaberg East', o.source ?? 'PHONE', 'Leaking over the kitchen', o.key ?? 'lead-key-0001']);
   const leadRow = (n: string) => one('select * from v_dashboard_leads where lead_number = $1', [n]);
   const convert = (t: string, n: string, v: number, o: { customer?: string | null; newCustomer?: R; property?: R; confirm?: boolean } = {}) =>
@@ -172,14 +173,17 @@ describe.each(TARGETS)('enquiry to quote [%s]', (target) => {
     expect(await one(`select q.lead_source, i.inspection_number, e.employee_code from quotes q join inspections i on i.id = q.inspection_id join employees e on e.id = q.estimator_id where q.quote_number = $1`, [Q]))
       .toEqual({ lead_source: 'PHONE', inspection_number: b.inspection_number, employee_code: 'EMP-820' });
 
-    // Revise: a new version, prices now exclusive of GST (GST 10% on top); the old version stays as history.
-    expect(await save(tok.est!, { quote: Q, version: 2, amount: 'EXCLUSIVE', key: 'quote-key-r1' })).toMatchObject({ ok: false, code: 'STALE' });
-    const r2 = await save(tok.est!, { quote: Q, version: 1, amount: 'EXCLUSIVE', job: 'STORM_DAMAGE_REPAIR', key: 'quote-key-r1' });
-    expect(r2).toMatchObject({ ok: true, version: 2, total_inc_gst: 2057, gst_amount: 187, record_version: 2 });
-    expect(await save(tok.est!, { quote: Q, version: 1, amount: 'EXCLUSIVE', key: 'quote-key-r1' })).toEqual({ ok: true, duplicate: true, quote_number: Q });
+    // Revise: a new version with more labour (14 hrs); the old version stays as history. Prices must include GST: an
+    // exclusive revision is refused (the invoice and Xero path supports only GST-inclusive prices).
+    const LINES2 = [{ ...LINES[0]!, quantity: '14' }, LINES[1]!, LINES[2]!];
+    expect(await save(tok.est!, { quote: Q, version: 1, amount: 'EXCLUSIVE', lines: LINES2, key: 'quote-key-rx' })).toMatchObject({ ok: false, code: 'INVALID' });
+    expect(await save(tok.est!, { quote: Q, version: 2, lines: LINES2, key: 'quote-key-r1' })).toMatchObject({ ok: false, code: 'STALE' });
+    const r2 = await save(tok.est!, { quote: Q, version: 1, lines: LINES2, job: 'STORM_DAMAGE_REPAIR', key: 'quote-key-r1' });
+    expect(r2).toMatchObject({ ok: true, version: 2, total_inc_gst: 2060, gst_amount: 187.27, record_version: 2 });   // 1330 + 250 + 480; GST = 2060/11
+    expect(await save(tok.est!, { quote: Q, version: 1, lines: LINES2, key: 'quote-key-r1' })).toEqual({ ok: true, duplicate: true, quote_number: Q });
     expect(await one(`select count(*)::int n from quote_versions v join quotes q on q.id = v.quote_id where q.quote_number = $1`, [Q])).toEqual({ n: 2 });
     expect(await one('select version_number, line_amount_type, total_inc_gst::text t, job_type, jsonb_array_length(lines) n from v_dashboard_quotes where quote_number = $1', [Q]))
-      .toEqual({ version_number: 2, line_amount_type: 'EXCLUSIVE', t: '2057.00', job_type: 'STORM_DAMAGE_REPAIR', n: 3 });
+      .toEqual({ version_number: 2, line_amount_type: 'INCLUSIVE', t: '2060.00', job_type: 'STORM_DAMAGE_REPAIR', n: 3 });
 
     // Send: Sent on the business date, valid for 30 days, handed to Airtable exactly once; the enquiry is Quoted.
     const send = (v: number) => call('select web_quote_send($1, $2, $3) r', [tok.est, Q, v]);
@@ -192,7 +196,7 @@ describe.each(TARGETS)('enquiry to quote [%s]', (target) => {
     expect(await leadRow(L)).toMatchObject({ status: 'QUOTED' });
     const payload = (await one(`select payload from outbox where idempotency_key = $1`, [s.airtable_key])).payload as R;
     expect(payload).toMatchObject({ quote_number: Q, customer_number: c.customer_number, property_number: c.property_number,
-      quote_fields: { fldyP20HNafS614d5: Q, fldQpTa5tvrzlNg1h: 'Sent', fldEjEqlzE8Y0M1nf: 2, fldbfUE8DVh1Dwjfs: 2057 },
+      quote_fields: { fldyP20HNafS614d5: Q, fldQpTa5tvrzlNg1h: 'Sent', fldEjEqlzE8Y0M1nf: 2, fldbfUE8DVh1Dwjfs: 2060 },
       customer_fields: { fldzmWSHtLVZ4OTmZ: c.customer_number, fldI46VewtlNRnwui: 'Iris Journey' }, property_fields: { fldIy8ab7Ky67jL31: c.property_number } });
     expect((await db.query(`select action from audit_events where business_reference in ($1, $2) and action ~ '^(lead|inspection|quote)\\.' order by occurred_at, action`, [L, Q])).map((a) => a.action))
       .toEqual(['lead.created', 'lead.converted', 'inspection.booked', 'inspection.completed', 'quote.drafted', 'quote.revised', 'quote.sent']);
@@ -222,7 +226,7 @@ describe.each(TARGETS)('enquiry to quote [%s]', (target) => {
     expect(await one(`select in_airtable, airtable_handoff from v_dashboard_quotes where quote_number = $1`, [Q])).toEqual({ in_airtable: true, airtable_handoff: 'DONE' });
     // From now on reconciliation keeps the Airtable quote canonical, like every imported one.
     expect(await one(`select x.expected ->> 'fldQpTa5tvrzlNg1h' st, (x.expected ->> 'fldbfUE8DVh1Dwjfs')::numeric amt from v_airtable_expected x join quotes q on q.id = x.entity_id where q.quote_number = $1`, [Q]))
-      .toEqual({ st: 'Sent', amt: '2057.00' });
+      .toEqual({ st: 'Sent', amt: '2060.00' });
     expect(await one(`select status from integrity_check() where check_key = 'done_has_proof'`)).toEqual({ status: 'PASS' });
 
     // The office marks it Accepted in Airtable -> n8n 01 -> the existing wf_quote_accepted: one project for this customer and site.

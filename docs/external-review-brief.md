@@ -43,3 +43,19 @@ assumptions the tests share with the code. Context: `docs/independent-verificati
 - Note: external systems are simulated in these tests by calling the database functions with the payload the code
   expects; they do not prove Airtable, Drive or Xero accept the writes.
 - Please do not run anything against the hosted database, n8n, Airtable or Xero.
+
+## Critical changes in the release-blocker sprint (please review first)
+
+| Change | File | What to challenge |
+|---|---|---|
+| Explicit business date (`business_date_mode`), new `app_today()`, `app_date_at()`, `app_business_date()` | `supabase/migrations/20261017030000_release_blockers.sql` §1, `src/import/importer.ts`, `web/lib/business-date.ts` | REAL ignores a leftover override (flagged); the migration keeps hosted SYNTHETIC; Brisbane calendar (no DST) is right for the business |
+| Per-line GST shares (`gst_line_tax`), in both `invoice_final_preview` (copied verbatim + one insertion) and `xero_draft_payload` | same migration §2, `n8n/05-xero-draft-invoice.sdk.ts` (`TaxAmount`) | Largest-remainder allocation; single-line finals unchanged; the approval compares preview and payload key by key; multi-line finals blocked until `xero.line_tax_amounts = on`; Xero's acceptance of overridden line tax is unverified |
+| GST-exclusive / GST-free quotes refused at save | `20261017020000_enquiry_to_quote.sql` (`web_quote_save`) | Backstop in `invoice_final_preview` unchanged |
+| `integrity_check` wrapper (previous one renamed, as earlier migrations did) | `20261017030000` §3 | Unknown topics now FAIL; quote proof; abandoned-claim WARNING; no view depends on the function |
+| Duplicate enquiries | `web_lead_create` in `20261017020000` | Advisory locks on phone then email; confirm flag; audit |
+| Customer phone/email correction | `web_customer_correct_contact` in `20261017030000` §4 | Only phone/email, versioned, audited; invoices keep snapshots |
+| Rollbacks | `ops/rollback/20261017030000_release_blockers.down.sql` (+ the three before it) | Restores verbatim definitions from the restored hosted dump |
+
+Tests that challenge behaviour rather than repeat it: `test/release-blockers.test.ts` (Adelaide DST instants, overdue
+boundary, stored-record fingerprint across a mode switch, 120 random GST line sets with an independent arithmetic check,
+05's real node request body, fail-closed integrity, a real-Postgres duplicate-enquiry race).

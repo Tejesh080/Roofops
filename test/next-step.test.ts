@@ -56,7 +56,22 @@ describe('next steps', () => {
 
   it('on site, then finished: the crew completes the visit; with nothing left, set Completed in Airtable', () => {
     expect(nextSteps(project({ status: 'IN_PROGRESS' }), [], [visit({ status: 'IN_PROGRESS' })], [], TODAY)[0]).toMatchObject({ title: 'Crew on site: JOB-2026-0001' });
-    expect(nextSteps(project({ status: 'IN_PROGRESS' }), [], [visit({ status: 'COMPLETED' })], [], TODAY)[0]).toMatchObject({ title: 'Work finished? Set the project to Completed', where: 'airtable' });
+    const done = nextSteps(project({ status: 'IN_PROGRESS' }), [], [visit({ status: 'COMPLETED' })], [], TODAY);
+    expect(done[0]).toMatchObject({ title: 'JOB-2026-0001 is complete, but the project is still In progress', where: 'airtable', tone: 'warn' });
+    expect(done[0]!.detail).toContain('Completing a visit does not complete the project');
+    expect(done.filter((s) => /Set the project to Completed/.test(s.title))).toHaveLength(0);   // not said twice
+  });
+
+  it('a finished visit while Airtable still says Scheduled is not mistaken for a finished job: staff are told what is still needed', () => {
+    const steps = nextSteps(project({ status: 'SCHEDULED' }), [], [visit({ status: 'COMPLETED' })], [], TODAY);
+    expect(steps[0]).toMatchObject({ title: 'JOB-2026-0001 is complete, but the project is still Scheduled', where: 'airtable' });
+    expect(steps[0]!.detail).toContain('the final invoice waits for it');
+    // Another visit still booked: not yet (the work continues).
+    expect(nextSteps(project({ status: 'SCHEDULED' }), [], [visit({ status: 'COMPLETED' }), visit({ job_number: 'JOB-2026-0002', status: 'SCHEDULED' })], [], TODAY)
+      .some((s) => /is complete, but the project/.test(s.title))).toBe(false);
+    // A completed project: nothing about it.
+    expect(nextSteps(project({ status: 'COMPLETED', invoice_status: 'READY_TO_INVOICE' }), [], [visit({ status: 'COMPLETED' })], [], TODAY)
+      .some((s) => /is complete, but the project/.test(s.title))).toBe(false);
   });
 
   it('completed: an open completion item names the Airtable field and the honest choices; then invoicing on the Finance page', () => {

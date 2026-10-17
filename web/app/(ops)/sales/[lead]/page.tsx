@@ -3,11 +3,11 @@ import { notFound } from 'next/navigation';
 import { ClipboardList, FileText, MapPin, Search, Signpost } from 'lucide-react';
 import { query } from '@/lib/db';
 import { requireSession, staffIdentity } from '@/lib/auth';
-import { JOB_KIND, LEAD_STATUS, LINE_KIND, MEASURE, QUOTE_STATUS, ROOF_TYPE, SOURCE, getCustomerDirectory, getLead, getProducts, getQuotesForLead, getSalesRoles, leadNextStep, salesMissing } from '@/lib/sales';
+import { JOB_KIND, LEAD_STATUS, LINE_KIND, MEASURE, QUOTE_STATUS, ROOF_TYPE, SOURCE, getCorrectionRoles, getCustomerDirectory, getLead, getProducts, getQuotesForLead, getSalesRoles, leadNextStep, salesMissing } from '@/lib/sales';
 import { getStaff } from '@/lib/ops';
 import { Badge } from '@/components/ui/Badge';
 import { CardHead } from '@/components/ui/Empty';
-import { BookInspectionForm, ConvertForm, LeadActions, QuoteBuilder, RecordInspectionForm, SendQuoteForm } from '@/components/sales/SalesForms';
+import { BookInspectionForm, ConvertForm, CorrectContactForm, LeadActions, QuoteBuilder, RecordInspectionForm, SendQuoteForm } from '@/components/sales/SalesForms';
 
 export const dynamic = 'force-dynamic';
 export async function generateMetadata({ params }: { params: Promise<{ lead: string }> }) {
@@ -25,15 +25,16 @@ export default async function LeadPage({ params }: { params: Promise<{ lead: str
     return <div className="stack"><Link href="/sales" className="t-meta">← Sales</Link><p className="t-meta">Enquiries and quotes are not available on this server yet.</p></div>;
   }
   if (!l) notFound();
-  const [quotes, roles, products, staff, customers, todayRows] = await Promise.all([
+  const [quotes, roles, products, staff, customers, todayRows, correctors] = await Promise.all([
     getQuotesForLead(query, l.lead_number), getSalesRoles(query), getProducts(query), getStaff(query), getCustomerDirectory(query),
-    query<{ d: string }>('select app_today()::text d')]);
+    query<{ d: string }>('select app_today()::text d'), getCorrectionRoles(query)]);
   const today = todayRows[0]?.d ?? '';
   const may = !!me && roles.includes(me.role);
   const closed = l.status === 'LOST' || l.status === 'DISQUALIFIED' || !!l.project_number;
   const next = leadNextStep(l, quotes);
   const booked = l.inspections.find((i) => i.status === 'SCHEDULED');
   const openQuote = quotes.find((q) => q.status === 'DRAFT' || q.status === 'SENT') ?? null;
+  const customer = customers.find((c) => c.customer_number === l.customer_number) ?? null;
 
   return (
     <div className="stack" style={{ gap: 18 }}>
@@ -66,7 +67,12 @@ export default async function LeadPage({ params }: { params: Promise<{ lead: str
           <CardHead icon={MapPin} title="2. Customer and site" />
           <div className="card-body">
             {l.customer_number ? (
-              <dl className="kv"><dt>Customer</dt><dd>{l.customer_name} ({l.customer_number})</dd><dt>Site</dt><dd>{l.site} ({l.property_number})</dd></dl>
+              <>
+                <dl className="kv"><dt>Customer</dt><dd>{l.customer_name} ({l.customer_number})</dd>
+                  {customer && <><dt>Phone</dt><dd>{customer.phone ?? '—'}</dd><dt>Email</dt><dd>{customer.email ?? '—'}</dd></>}
+                  <dt>Site</dt><dd>{l.site} ({l.property_number})</dd></dl>
+                {customer && !!me && correctors.includes(me.role) && <CorrectContactForm customer={customer} />}
+              </>
             ) : may && !closed ? (
               <ConvertForm lead={l.lead_number} version={l.record_version} contact={l.contact_name} phone={l.phone} email={l.email} customers={customers} />
             ) : <p className="t-meta">Not recorded yet.</p>}

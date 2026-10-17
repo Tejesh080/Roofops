@@ -130,7 +130,9 @@ test('accepted quote → one project → visit booked and worked → In Progress
 
   // 4. Work finished: Next steps says to set Completed in Airtable; the office does; completion items are now the blocker.
   await admin.page.reload();
-  await expect(firstStep(admin.page)).toContainText('Work finished? Set the project to Completed');
+  // A completed visit is not a completed project: the first step says so and where the project is completed.
+  await expect(firstStep(admin.page)).toContainText('is complete, but the project is still In progress');
+  await expect(firstStep(admin.page)).toContainText('Completing a visit does not complete the project');
   expect(await airtable({ [F.status]: 'Completed' })).toMatchObject({ outcome: 'APPLIED' });
   await admin.page.reload();
   await expect(firstStep(admin.page)).toContainText('Completion item open');

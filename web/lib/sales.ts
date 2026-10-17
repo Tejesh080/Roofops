@@ -25,7 +25,7 @@ export interface Quote {
   airtable_handoff: string | null; airtable_handoff_error: string | null; in_airtable: boolean; project_number: string | null;
 }
 export interface Product { product_code: string; name: string; category: string | null; unit: string }
-export interface CustomerEntry { customer_number: string; display_name: string; customer_type: string; email: string | null; phone: string | null }
+export interface CustomerEntry { customer_number: string; display_name: string; customer_type: string; email: string | null; phone: string | null; record_version: number }
 
 const LEAD_COLUMNS = `lead_number, status, source, contact_name, phone, email, property_address_text, notes, lost_reason,
   to_char(received_at at time zone 'Australia/Brisbane', 'YYYY-MM-DD HH24:MI') received_at,
@@ -44,7 +44,7 @@ export async function getLead(q: Query, n: string): Promise<Lead | null> {
 }
 export const getQuotesForLead = (q: Query, n: string) => q<Quote>(`select ${QUOTE_COLUMNS} from v_dashboard_quotes where lead_number = $1 order by created_on, quote_number`, [n]);
 export const getProducts = (q: Query) => q<Product>('select product_code, name, category, unit from v_dashboard_products order by name');
-export const getCustomerDirectory = (q: Query) => q<CustomerEntry>('select customer_number, display_name, customer_type, email, phone from v_dashboard_customer_directory order by display_name');
+export const getCustomerDirectory = (q: Query) => q<CustomerEntry>('select customer_number, display_name, customer_type, email, phone, record_version::int from v_dashboard_customer_directory order by display_name');
 
 export const salesMissing = (e: unknown) => /v_dashboard_(leads|quotes|products|customer_directory)|web_(lead|inspection|quote)_/.test(String((e as Error)?.message ?? e)) && /does not exist/.test(String((e as Error)?.message ?? e));
 
@@ -78,6 +78,7 @@ export const SALES_CODE: Record<string, string> = {
   INVALID_TRANSITION: 'That is not possible in its current state.',
   REASON_REQUIRED: 'A short reason is needed.',
   POSSIBLE_DUPLICATE: 'This looks like a customer we already have.',
+  POSSIBLE_DUPLICATE_ENQUIRY: 'This person already has an open enquiry.',
   NOT_CONVERTED: 'Record the customer and the site first.',
   ALREADY_BOOKED: 'An inspection is already booked.',
   INSPECTOR_UNKNOWN: 'That person cannot inspect.',
@@ -119,11 +120,21 @@ export function leadNextStep(l: Lead, quotes: Quote[]): { title: string; detail:
   return { title: 'Prepare the quote', detail: 'Step 4 below: the lines, prices and GST.' };
 }
 
+const roleList = (v: string | null | undefined) => (v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 export async function getSalesRoles(q: Query): Promise<string[]> {
   try {
     const [r] = await q<{ sales_roles: string | null }>('select sales_roles from v_dashboard_sales_roles');
-    return (r?.sales_roles ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    return roleList(r?.sales_roles);
   } catch {
     return [];   // not installed: nobody is offered the forms
+  }
+}
+/** Who may correct a customer's phone or email (customer.correction_roles). */
+export async function getCorrectionRoles(q: Query): Promise<string[]> {
+  try {
+    const [r] = await q<{ correction_roles: string | null }>('select correction_roles from v_dashboard_sales_roles');
+    return roleList(r?.correction_roles);
+  } catch {
+    return [];
   }
 }

@@ -224,7 +224,7 @@ drop function if exists web_inspection_record(text, text, integer, text, jsonb);
 drop function if exists web_inspection_book(text, text, text, timestamptz, text);
 drop function if exists web_lead_convert(text, text, integer, text, jsonb, jsonb, boolean);
 drop function if exists web_lead_update(text, text, text, integer, text);
-drop function if exists web_lead_create(text, text, text, text, text, text, text, text);
+drop function if exists web_lead_create(text, text, text, text, text, text, text, text, boolean);
 drop function if exists customer_lookalikes(text, text, text);
 alter table leads drop constraint if exists leads_lost_needs_reason;
 delete from app_settings where key in ('sales.roles', 'sales.inspector_roles', 'quote.validity_days');

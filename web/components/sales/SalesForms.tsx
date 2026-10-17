@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, Loader2, Plus, Trash2 } from 'lucide-react';
-import { bookInspection, convertLead, createLead, recordInspection, saveQuote, sendQuote, updateLead, type SalesActionState } from '@/app/(ops)/sales/actions';
+import { bookInspection, convertLead, correctCustomerContact, createLead, recordInspection, saveQuote, sendQuote, updateLead, type SalesActionState } from '@/app/(ops)/sales/actions';
 import { useRequestKey, useSubmit } from '@/components/ui/useSubmit';
 import type { CustomerEntry, Product, Quote } from '@/lib/sales';
 import { JOB_KIND, LINE_KIND, MEASURE, ROOF_TYPE, SOURCE, quoteTotals } from '@/lib/sales';
@@ -39,6 +39,13 @@ export function NewLeadForm() {
       <label className="field"><span>Address of the job (as they said it)</span><input name="address" maxLength={300} /></label>
       <label className="field"><span>What they need</span><textarea name="notes" rows={2} maxLength={4000} placeholder="e.g. Leak over the kitchen after the storm" /></label>
       <Result s={state} />
+      {!state.ok && !!state.similar_enquiries?.length && (
+        <div className="t-meta" role="note" aria-label="Open enquiries for this person">
+          <p>Open enquiries for this person:</p>
+          <ul>{state.similar_enquiries.map((e) => <li key={e.lead_number}><Link href={`/sales/${e.lead_number}`}>{e.lead_number}</Link> {e.contact_name}, received {e.received} ({e.reasons.join(', ')})</li>)}</ul>
+          <label className="check-line"><input type="checkbox" name="confirm_separate" /> This is a separate job: record it anyway</label>
+        </div>
+      )}
       {state.ok && state.lead_number && <p><Link className="btn btn-sm" href={`/sales/${state.lead_number}`}>Open {state.lead_number}</Link></p>}
       {state.ok && !!state.lookalikes?.length && (
         <p className="t-meta" role="note">Possibly an existing customer: {state.lookalikes.map((c) => `${c.display_name} (${c.customer_number}: ${c.reasons.join(', ')})`).join('; ')}. Check before adding a new one.</p>
@@ -196,8 +203,8 @@ export function QuoteBuilder({ lead, quote, products }: { lead: string; quote: Q
   const [lines, setLines] = useState<Line[]>(() => quote?.lines.length
     ? quote.lines.map((l) => ({ line_kind: l.line_kind, product_code: l.product_code ?? '', description: l.description, quantity: String(Number(l.quantity)), unit: l.unit, unit_price: String(Number(l.unit_price)) }))
     : [blank()]);
-  const [amountType, setAmountType] = useState<'INCLUSIVE' | 'EXCLUSIVE'>(quote?.line_amount_type === 'EXCLUSIVE' ? 'EXCLUSIVE' : 'INCLUSIVE');
-  const totals = useMemo(() => quoteTotals(lines.map((l) => ({ quantity: Number(l.quantity) || 0, unit_price: Number(l.unit_price) || 0 })), amountType), [lines, amountType]);
+  // Prices always include GST: the invoice and Xero path supports nothing else yet (the database refuses other quotes).
+  const totals = useMemo(() => quoteTotals(lines.map((l) => ({ quantity: Number(l.quantity) || 0, unit_price: Number(l.unit_price) || 0 })), 'INCLUSIVE'), [lines]);
   const set = (i: number, k: keyof Line, v: string) => setLines((ls) => ls.map((l, j) => {
     if (j !== i) return l;
     const next = { ...l, [k]: v };
@@ -214,8 +221,8 @@ export function QuoteBuilder({ lead, quote, products }: { lead: string; quote: Q
       <div className="ops-row">
         <label className="field"><span>Kind of job</span><select name="job_type" defaultValue={quote?.job_type ?? 'LEAK_REPAIR'}>
           {Object.entries(JOB_KIND).map(([v, t]) => <option key={v} value={v}>{t}</option>)}</select></label>
-        <label className="field"><span>Prices</span><select name="amount_type" value={amountType} onChange={(e) => setAmountType(e.target.value as 'INCLUSIVE' | 'EXCLUSIVE')}>
-          <option value="INCLUSIVE">include GST</option><option value="EXCLUSIVE">exclude GST (10% added)</option></select></label>
+        <input type="hidden" name="amount_type" value="INCLUSIVE" />
+        <p className="t-meta">Prices include GST.</p>
       </div>
       <label className="field"><span>Scope (what the customer gets)</span><textarea name="scope" rows={2} maxLength={4000} defaultValue={quote?.scope_summary ?? ''} /></label>
       <div className="quote-lines" role="table" aria-label="Quote lines">
@@ -255,5 +262,29 @@ export function SendQuoteForm({ quote, version, total }: { quote: string; versio
       <Result s={state} />
       <Submit pending={pending} label={`Send ${quote}`} busy="Sending…" />
     </form>
+  );
+}
+
+/** Correct a customer's phone or email (who the enquiry, quote or project belongs to is not changed here). */
+export function CorrectContactForm({ customer }: { customer: CustomerEntry }) {
+  const [state, action, pending] = useActionState<SalesActionState, FormData>(correctCustomerContact, {});
+  const submit = useSubmit(action, pending);
+  if (state.ok) return <Result s={state} />;
+  return (
+    <details className="ops-details">
+      <summary className="btn btn-sm">Correct phone or email</summary>
+      <form onSubmit={submit} className="ops-form" aria-label={`Correct ${customer.customer_number}`}>
+        <input type="hidden" name="customer" value={customer.customer_number} />
+        <input type="hidden" name="version" value={customer.record_version} />
+        <div className="ops-row">
+          <label className="field"><span>Phone</span><input name="phone" inputMode="tel" maxLength={30} defaultValue={customer.phone ?? ''} /></label>
+          <label className="field"><span>Email</span><input name="email" type="email" maxLength={200} defaultValue={customer.email ?? ''} /></label>
+        </div>
+        <label className="field"><span>Why (kept in the audit trail)</span><input name="reason" minLength={5} maxLength={500} required /></label>
+        <p className="t-meta">Invoices already made keep the old details. The name, and which customer this enquiry belongs to, cannot be changed here.</p>
+        <Result s={state} />
+        <Submit pending={pending} label="Save correction" busy="Saving…" />
+      </form>
+    </details>
   );
 }

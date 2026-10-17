@@ -9,6 +9,7 @@ import { salesMissing, salesRefusal } from '@/lib/sales';
 export interface SalesActionState {
   ok?: boolean; message?: string; at?: number; lead_number?: string; quote_number?: string;
   lookalikes?: { customer_number: string; display_name: string; reasons: string[] }[];
+  similar_enquiries?: { lead_number: string; contact_name: string; status: string; received: string; reasons: string[] }[];
 }
 type Outcome = Record<string, unknown> & { ok: boolean; code?: string; detail?: string; duplicate?: boolean };
 
@@ -36,7 +37,8 @@ async function run(sql: string, args: unknown[], ok: (r: Outcome) => SalesAction
   try {
     const r = await asStaff(sql, args);
     if ('signedOut' in r) return { message: SIGNED_OUT };
-    if (!r.ok) return { message: salesRefusal(r), lookalikes: (r.lookalikes as SalesActionState['lookalikes']) ?? undefined };
+    if (!r.ok) return { message: salesRefusal(r), lookalikes: (r.lookalikes as SalesActionState['lookalikes']) ?? undefined,
+                        similar_enquiries: (r.similar_enquiries as SalesActionState['similar_enquiries']) ?? undefined };
     return ok(r);
   } catch (e) {
     return failed(e);
@@ -46,8 +48,9 @@ async function run(sql: string, args: unknown[], ok: (r: Outcome) => SalesAction
 export async function createLead(_p: SalesActionState, f: FormData): Promise<SalesActionState> {
   if (str(f, 'contact_name').length < 2) return { message: 'Enter the person’s name.' };
   if (!str(f, 'phone') && !str(f, 'email')) return { message: 'Enter a phone number or an email address.' };
-  return run('select web_lead_create($1, $2, $3, $4, $5, $6, $7, $8) r',
-    [str(f, 'contact_name'), str(f, 'phone') || null, str(f, 'email') || null, str(f, 'address') || null, str(f, 'source'), str(f, 'notes') || null, str(f, 'request_key')],
+  return run('select web_lead_create($1, $2, $3, $4, $5, $6, $7, $8, $9) r',
+    [str(f, 'contact_name'), str(f, 'phone') || null, str(f, 'email') || null, str(f, 'address') || null, str(f, 'source'), str(f, 'notes') || null, str(f, 'request_key'),
+      f.get('confirm_separate') === 'on'],
     (r) => done(r, r.duplicate ? `${String(r.lead_number)} was already recorded (nothing added twice).` : `${String(r.lead_number)} recorded.`,
       { lead_number: String(r.lead_number), lookalikes: (r.lookalikes as SalesActionState['lookalikes']) ?? [] }));
 }
@@ -112,4 +115,13 @@ export async function sendQuote(_p: SalesActionState, f: FormData): Promise<Sale
   if (f.get('checked') !== 'on') return { message: 'Tick that you checked the customer, site, lines and total before sending.' };
   return run('select web_quote_send($1, $2, $3) r', [str(f, 'quote'), v],
     (r) => done(r, r.duplicate ? `${String(r.quote_number)} was already sent.` : `${String(r.quote_number)} sent, valid until ${String(r.valid_until)}. RoofOps adds it to Airtable for the office.`));
+}
+
+/** Correct a customer's phone or email (a typo, a new number). Invoices and documents already made keep what they had. */
+export async function correctCustomerContact(_p: SalesActionState, f: FormData): Promise<SalesActionState> {
+  const v = version(f);
+  if (!v) return { message: 'Reload the page and try again.' };
+  if (str(f, 'reason').length < 5) return { message: 'Say why (a few words), for the record.' };
+  return run('select web_customer_correct_contact($1, $2, $3, $4, $5, $6) r', [str(f, 'customer'), v, str(f, 'phone') || null, str(f, 'email') || null, str(f, 'reason')],
+    (r) => done(r, r.unchanged ? 'Nothing changed: those are already the details.' : `${String(r.customer_number)} corrected. Airtable shows it after the next check; update the Xero contact by hand if needed.`));
 }

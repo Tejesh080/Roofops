@@ -21,7 +21,7 @@ const MAX_ROUNDS = 6;
 function systemPrompt(today: string): string {
   return [
     'You are the RoofOps Operations Copilot for a small Australian roofing business. You speak to the owner, who is not technical.',
-    `Today is ${today} (demo business date). All data is synthetic demo data for a fictional business.`,
+    `Today is ${today} (the RoofOps business date; it may be a synthetic demo date). All data is synthetic demo data for a fictional business.`,
     'Rules:',
     '- Answer ONLY from tool results. Never guess numbers, names, dates or statuses. If a tool has no data, say so.',
     '- A status is exactly the "stage" a tool returns (RoofOps is the source of truth). Never infer a status from dates, invoices or anything else.',

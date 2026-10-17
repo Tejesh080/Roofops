@@ -5,7 +5,8 @@
  * the dashboard and the Copilot ran on a different "today" from every Postgres workflow (PRJ-2026-0011 gained "Past the
  * planned finish date" once the real date passed 2026-10-01).
  *
- * Rule: there is one RoofOps business date, resolved by app_today() with the owner's rights, for every caller.
+ * Rule: there is one RoofOps business date, resolved by app_today() with the owner's rights, for every caller (since
+ * 20261017030000 the mode is explicit: business_date_mode REAL = the real Brisbane date, SYNTHETIC = the override).
  *  * business_date_override set to a date: that date. Missing or empty: no override, the real date in Brisbane.
  *  * Anything else is refused with an error, never replaced by another date.
  *  * The dashboard reads the date only through app_today(); it has no access to app_settings rows.
@@ -54,18 +55,18 @@ describe.each(TARGETS)('One RoofOps business date for every caller [%s]', (targe
     }
   });
 
-  it('3. a missing or empty setting means "no override" (the real Brisbane date); a malformed one is refused, never replaced', async () => {
+  it('3. the date mode is explicit (20261017030000): REAL is the real Brisbane date whatever the override says; SYNTHETIC needs a valid override and never falls back', async () => {
+    const setMode = (m: string) => db.query(`update app_settings set value = $1 where key = 'business_date_mode'`, [m]);
     try {
-      await setOverride(null);
-      expect(await as('roofops_dashboard', today)).toBe(await brisbane());
-      await setOverride('');
-      expect(await as('roofops_dashboard', today)).toBe(await brisbane());
-      for (const bad of ['not-a-date', '2026-13-40', '29/09/2026x']) {
+      await setMode('REAL');
+      expect(await as('roofops_dashboard', today)).toBe(await brisbane());   // the demo override is still set, and ignored
+      await setMode('SYNTHETIC');
+      for (const bad of [null, '', 'not-a-date', '2026-13-40', '29/09/2026x']) {
         await setOverride(bad);
         await expect(today()).rejects.toThrow(/business_date_override .* is not a date/);
         await expect(as('roofops_dashboard', today)).rejects.toThrow(/business_date_override .* is not a date/);
       }
-    } finally { await setOverride(DEMO_DATE); }
+    } finally { await setMode('SYNTHETIC'); await setOverride(DEMO_DATE); }
     expect(await as('roofops_dashboard', today)).toBe(DEMO_DATE);
   });
 

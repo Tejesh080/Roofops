@@ -35,6 +35,15 @@ export function nextSteps(p: ProjectRow, checklist: ChecklistItem[], visits: Vis
   for (const t of overdue) {
     steps.push({ title: `Overdue task: ${t.title}`, detail: `${t.task_number}, due ${t.due_on}${t.assignee_name ? `, ${t.assignee_name}` : ', nobody assigned'}`, where: 'dashboard', tone: 'bad' });
   }
+  // A finished site visit is not a finished project: the project's Status is set in Airtable, and invoicing waits for it.
+  const finished = visits.filter((v) => v.status === 'COMPLETED').sort((a, b) => b.scheduled_start.localeCompare(a.scheduled_start));
+  const visitDoneProjectOpen = finished.length > 0 && !live.length && p.status !== 'COMPLETED';
+  if (visitDoneProjectOpen) {
+    const status = p.status.charAt(0) + p.status.slice(1).toLowerCase().replace(/_/g, ' ');
+    steps.push({ title: `${finished[0]!.job_number} is complete, but the project is still ${status}`,
+      detail: 'Completing a visit does not complete the project. If all the work is done, set Projects › Status to Completed in Airtable (the final invoice waits for it); if more work remains, book the next visit.',
+      where: 'airtable', tone: 'warn' });
+  }
   for (const v of delayed) {
     steps.push({ title: `Reschedule ${v.job_number} (weather delayed)`, detail: `${v.status_reason ?? 'Delayed'}. A planner picks new times under Site visits.`, where: 'dashboard', tone: 'bad' });
   }
@@ -68,7 +77,7 @@ export function nextSteps(p: ProjectRow, checklist: ChecklistItem[], visits: Vis
       } else if (upcoming.length) {
         const v = upcoming[0]!;
         steps.push({ title: `Next visit ${v.job_number} on ${visitWhen(v.scheduled_start, v.scheduled_end)}`, detail: `Crew: ${v.crew.map((c) => c.name).join(', ')}.`, where: 'dashboard', tone: 'info' });
-      } else if (!delayed.length) {
+      } else if (!delayed.length && !visitDoneProjectOpen) {
         steps.push({ title: 'Work finished? Set the project to Completed', detail: 'In Airtable: Projects › Status → Completed (with the actual completion date). Or schedule another visit if work remains.', where: 'airtable', tone: 'warn' });
       }
       break;

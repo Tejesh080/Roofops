@@ -59,7 +59,7 @@ export async function updateVisit(_prev: OpsActionState, form: FormData): Promis
     if ('signedOut' in r) return { message: SIGNED_OUT };
     if (!r.ok) return { message: opsRefusal(r) };
     revalidatePath('/', 'layout');
-    const done: Record<string, string> = { start: 'started: the crew is on site', complete: 'completed', weather_delay: 'marked weather delayed: a planner reschedules it',
+    const done: Record<string, string> = { start: 'started: the crew is on site', complete: 'completed. The project itself is not marked complete: when all the work is done, set its Status to Completed in Airtable (Projects › Status)', weather_delay: 'marked weather delayed: a planner reschedules it',
       reschedule: 'rescheduled', cancel: 'cancelled' };
     return { ok: true, at: Date.now(), message: `${r.job_number} ${done[action] ?? 'updated'}.` };
   } catch (e) {

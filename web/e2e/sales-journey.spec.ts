@@ -30,7 +30,7 @@ async function asWorkflow(sql: string, p: unknown[]): Promise<R> {
   await db.query('set role roofops_workflow');
   try { return (await one(sql, p)).r as R; } finally { await db.query('reset role'); }
 }
-async function signIn(browser: Browser, who: 'EST' | 'CREW', baseURL: string): Promise<{ ctx: BrowserContext; page: Page }> {
+async function signIn(browser: Browser, who: 'EST' | 'CREW' | 'ADMIN', baseURL: string): Promise<{ ctx: BrowserContext; page: Page }> {
   const ctx = await browser.newContext({ baseURL });
   const page = await ctx.newPage();
   await page.goto('/login');
@@ -200,4 +200,49 @@ test('enquiry → customer and site → inspection → quote → sent → in Air
   await crew.page.goto(`/sales/${L2}`);
   await expect(crew.page.getByRole('button')).not.toContainText(['Mark contacted']);
   for (const c of [est.ctx, crew.ctx]) await c.close();
+});
+
+test('a second enquiry for the same caller is shown first and recorded only when confirmed; an admin corrects a phone number, and a stale screen never claims success', async ({ browser, baseURL }) => {
+  const est = await signIn(browser, 'EST', baseURL!);
+  const page = est.page;
+  await page.goto('/sales');
+  const form = page.getByRole('form', { name: 'New enquiry' });
+  // Noah Richards has an open enquiry (from the journey above); the same phone, written differently, is caught.
+  const open = String((await one(`select lead_number from leads where contact_name = 'Noah Richards' and status not in ('LOST', 'DISQUALIFIED', 'WON') order by received_at desc limit 1`)).lead_number);
+  await form.getByLabel('Name', { exact: true }).fill('N Richards');
+  await form.getByLabel('Phone', { exact: true }).fill('(04) 0000-0003');
+  await form.getByRole('button', { name: 'Record enquiry' }).click();
+  await expect(form.getByRole('alert')).toContainText('This person already has an open enquiry');
+  await expect(form.getByRole('note', { name: 'Open enquiries for this person' })).toContainText(open);
+  await expect(form.getByLabel('Name', { exact: true })).toHaveValue('N Richards');                 // kept after the refusal
+  expect(await one(`select count(*)::int n from leads where contact_name = 'N Richards'`)).toEqual({ n: 0 });
+  await form.getByLabel('This is a separate job: record it anyway').check();
+  await form.getByRole('button', { name: 'Record enquiry' }).click();
+  await expect(form.getByRole('status')).toContainText(/LEAD-\d{4}-\d{4} recorded/);
+  expect(await one(`select count(*)::int n from leads where contact_name = 'N Richards'`)).toEqual({ n: 1 });
+
+  // The estimator may not correct customer details; an admin may. A screen opened before someone else's change is refused.
+  const L = String((await one(`select lead_number from leads where contact_name = 'Iris Journey'`)).lead_number);
+  await page.goto(`/sales/${L}`);
+  await expect(page.getByText('Correct phone or email')).toHaveCount(0);
+  const admin = await signIn(browser, 'ADMIN', baseURL!);
+  await admin.page.goto(`/sales/${L}`);
+  const card = admin.page.getByRole('region', { name: '2. Customer and site' });
+  await card.getByText('Correct phone or email').click();
+  const fix = admin.page.getByRole('form', { name: /^Correct CUST-/ });
+  await db.query(`update customers set phone = '0433 222 999' where display_name = 'Iris Journey'`);   // someone else, meanwhile
+  await fix.getByLabel('Phone').fill('0433 222 112');
+  await fix.getByLabel('Why (kept in the audit trail)').fill('Typo in the number');
+  await fix.getByRole('button', { name: 'Save correction' }).click();
+  await expect(fix.getByRole('alert')).toContainText('Someone changed this since you opened the page');
+  await expect(card).not.toContainText('corrected');
+  expect((await one(`select phone from customers where display_name = 'Iris Journey'`)).phone).toBe('0433 222 999');
+  await admin.page.reload();
+  await card.getByText('Correct phone or email').click();
+  await fix.getByLabel('Phone').fill('0433 222 112');
+  await fix.getByLabel('Why (kept in the audit trail)').fill('Typo in the number');
+  await fix.getByRole('button', { name: 'Save correction' }).click();
+  await expect(card).toContainText('corrected');
+  expect(await one(`select c.phone, a.actor_id from customers c join audit_events a on a.entity_id = c.id and a.action = 'customer.contact_corrected' where c.display_name = 'Iris Journey' order by a.occurred_at desc limit 1`))
+    .toMatchObject({ phone: '0433 222 112' });
 });

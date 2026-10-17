@@ -9,7 +9,9 @@ Vercel, n8n, Airtable or Xero. Every step marked **[approval]** waits for the ow
 |---|---|---|
 | Migration 1 | `supabase/migrations/20261017000000_airtable_shows_dashboard_approved_invoice.sql` | `96fc85482963135d580309502e85c4b102917011a520b584b37dfd68c706690c` |
 | Migration 2 | `supabase/migrations/20261017010000_site_visits_and_tasks.sql` | `5e4e31743c7a8cca56e6472bdb857574d7adbd72d91b38b171a0dab6a7198c0c` |
-| Migration 3 | `supabase/migrations/20261017020000_enquiry_to_quote.sql` | `f5db7a9cea97becd58376400681a19926b15b23055d23305c5757ec6b4eea529` |
+| Migration 3 | `supabase/migrations/20261017020000_enquiry_to_quote.sql` | `7864440090e1ffc0d2878ce925fac8b5a1bd53321c9543e359cacbcd9dbcee4d` |
+| Migration 4 (release blockers) | `supabase/migrations/20261017030000_release_blockers.sql` | `52e812eb52d9119964a162c324823437fcf7d99ce4f4ee71dd6fa90a0b2eccb4` |
+| n8n 05 (changed: per-line TaxAmount; deploy later, step H) | `n8n/05-xero-draft-invoice.sdk.ts` | `f2527749f26cb4eda9fa673d158ded30adfc88113a1caba1a208cca2f8d47f2c` |
 | n8n 10 (new, inactive) | `n8n/10-airtable-quote-publish.sdk.ts` | `93fc44135d3d2344918a51d4d1eba7eb18a52eb98dd0dc0c435f102314eb44f3` |
 | Rollbacks | `ops/rollback/20261017{000000,010000,020000}_*.down.sql` | generated verbatim from the restored hosted copy |
 | Operator script | `ops/requeue-quote-publish.sql` | re-queues one stopped quote hand-off |
@@ -62,10 +64,13 @@ Order matters only where stated. Stop at any failed check and use Rollback below
    `Phone`, `Other`; Quotes > *Roof Type*: `Other`; Customers > *Type*: `Builder`, `Strata`; Properties > *Property Type*:
    `Industrial`, `Strata Complex`. Until then a hand-off with one of them stops with a VALIDATION_ERROR exception (never
    marked done). Re-check the schema read-only right before step E.
-A. **[approval] Hosted migrations.** Fresh read-only backup; then `npm run db:load -- --hosted` (applies exactly the three,
-   each in its own transaction). Expect: 52 migrations, security 16/16, integrity 28/4/0 (the drift above). The next
+A. **[approval] Hosted migrations.** Fresh read-only backup; then `npm run db:load -- --hosted` (applies exactly the four,
+   each in its own transaction). Expect: 53 migrations, security 16/16, integrity 29/5/0 (the drift above, plus "business date
+   is synthetic"). The next
    n8n 07 repair run then rewrites PRJ-2026-0007's Invoice Preview in Airtable (**[approval]**: one Airtable field; or
    pause 07 until you are ready).
+A2. **[approval] Real date.** `npx tsx scripts/sql.ts -f ops/business-date-switch-to-real.sql` (audited; undo documented in
+   the file). Expect the banner "Today …", integrity business_date PASS, more overdue/at-risk items (the demo data ages).
 B. **[approval] Protected Vercel Preview** from this branch, Vercel Authentication on, `STAFF_XERO_DISPATCH` unset.
    (Safe in either order with A: without the migrations the new pages say "not available on this server yet".)
 C. **[approval] Create n8n 10** from the file, inactive, schedule trigger disabled. Do not activate.
@@ -83,12 +88,16 @@ F. Field operations with synthetic staff: on that synthetic project (never a rea
    Adding a FIELD_CREW synthetic login (`staff:add-employee`) is needed for a crew-eye view.
 G. Keep n8n 10 inactive (run manually per quote) until E has passed and you decide to enable its schedule.
 
+H. **[approval, later] Per-line GST for finals with variations.** Update n8n 05 from the file (TaxAmount per line), run one
+   supervised Demo draft with a variation line and check Xero's TotalTax equals RoofOps's GST, then set
+   `xero.line_tax_amounts = on`. Until then such finals are refused at preview (single-line finals are unaffected).
+
 ## Rollback
 
 - Web: promote nothing; delete or stop sharing the Preview. Production is untouched.
 - n8n 10: deactivate/delete. It writes only the three Airtable rows of a sent quote, found by RoofOps ID.
 - Database, in this order, each one transaction (`npx tsx scripts/sql.ts -f <file>`):
-  `ops/rollback/20261017020000_enquiry_to_quote.down.sql`, then `..._site_visits_and_tasks.down.sql`, then
+  `ops/rollback/20261017030000_release_blockers.down.sql`, then `ops/rollback/20261017020000_enquiry_to_quote.down.sql`, then `..._site_visits_and_tasks.down.sql`, then
   `..._airtable_shows_dashboard_approved_invoice.down.sql`. Records made meanwhile are kept; the dashboard shows Sales,
   visits and tasks as unavailable; quote acceptance through Airtable keeps working.
 - Last resort: restore the pre-release dump (loses every hosted change made after it).

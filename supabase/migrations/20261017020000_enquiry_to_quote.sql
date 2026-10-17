@@ -44,13 +44,17 @@ returns jsonb language sql stable security definer set search_path = public, pg_
 $$;
 
 -- 1. Record an enquiry (phone, web form, referral ...).
+-- An open enquiry for the same person (phone digits, email or name) is shown first and recorded only when the person
+-- confirms it is a separate one (p_confirm); a match with an existing customer is only a note (repeat customers are
+-- normal). Two people recording the same caller at once are serialised on the phone and email, so both see the other.
 create or replace function web_lead_create(p_token text, p_contact_name text, p_phone text, p_email text, p_address text,
-                                           p_source text, p_notes text, p_request_key text)
+                                           p_source text, p_notes text, p_request_key text, p_confirm boolean default false)
 returns jsonb language plpgsql security definer set search_path = extensions, public, pg_temp as $$
 declare
   v_emp employees := staff_session_employee(p_token); l leads;
   v_name text := btrim(regexp_replace(coalesce(p_contact_name, ''), '\s+', ' ', 'g'));
   v_email text := nullif(lower(btrim(coalesce(p_email, ''))), ''); v_phone text := nullif(btrim(coalesce(p_phone, '')), '');
+  v_digits text; v_similar jsonb;
 begin
   if v_emp.id is null then return jsonb_build_object('ok', false, 'code', 'SIGNED_OUT'); end if;
   if not staff_role_allowed(v_emp, 'sales.roles') then
@@ -69,14 +73,36 @@ begin
     return jsonb_build_object('ok', false, 'code', 'INVALID', 'detail', 'choose where the enquiry came from');
   end if;
   if length(coalesce(p_notes, '')) > 4000 or length(coalesce(p_address, '')) > 300 then return jsonb_build_object('ok', false, 'code', 'INVALID', 'detail', 'too long'); end if;
+  v_digits := nullif(regexp_replace(coalesce(v_phone, ''), '[^0-9]', '', 'g'), '');
+  if v_digits is not null then perform pg_advisory_xact_lock(hashtext('lead:phone:' || v_digits)); end if;   -- always phone, then email
+  if v_email is not null then perform pg_advisory_xact_lock(hashtext('lead:email:' || v_email)); end if;
+  select jsonb_agg(jsonb_build_object('lead_number', o.lead_number, 'contact_name', o.contact_name, 'status', o.status,
+           'received', to_char(o.received_at at time zone 'Australia/Brisbane', 'YYYY-MM-DD'),
+           'reasons', to_jsonb(array_remove(array[
+             case when v_digits is not null and regexp_replace(coalesce(o.phone, ''), '[^0-9]', '', 'g') = v_digits then 'same phone' end,
+             case when v_email is not null and lower(o.email) = v_email then 'same email' end,
+             case when lower(o.contact_name) = lower(v_name) then 'same name' end], null))) order by o.received_at desc)
+    into v_similar from leads o
+   where o.status not in ('LOST', 'DISQUALIFIED', 'WON')
+     and ((v_digits is not null and regexp_replace(coalesce(o.phone, ''), '[^0-9]', '', 'g') = v_digits)
+          or (v_email is not null and lower(o.email) = v_email) or lower(o.contact_name) = lower(v_name));
+  if v_similar is not null and not coalesce(p_confirm, false) then
+    return jsonb_build_object('ok', false, 'code', 'POSSIBLE_DUPLICATE_ENQUIRY', 'similar_enquiries', v_similar,
+      'lookalikes', customer_lookalikes(v_name, v_email, v_phone),
+      'detail', format('%s open enquir%s for this person already (%s); open it instead, or confirm this is a separate job',
+                       jsonb_array_length(v_similar), case when jsonb_array_length(v_similar) = 1 then 'y' else 'ies' end,
+                       (select string_agg(e ->> 'lead_number', ', ') from jsonb_array_elements(v_similar) e)));
+  end if;
   insert into leads (lead_number, source, status, contact_name, email, phone, property_address_text, notes, request_key, created_by, received_at)
   values (next_friendly_id('LEAD', extract(year from app_today())::int), p_source, 'NEW', v_name, v_email, v_phone,
           nullif(btrim(coalesce(p_address, '')), ''), nullif(btrim(coalesce(p_notes, '')), ''), p_request_key, v_emp.id, now())
   returning * into l;
   insert into audit_events (actor_type, actor_id, action, entity_type, entity_id, business_reference, after_state, reason)
-  values ('USER', v_emp.employee_code, 'lead.created', 'lead', l.id, l.lead_number, jsonb_build_object('source', p_source), format('Enquiry from %s', v_name));
+  values ('USER', v_emp.employee_code, 'lead.created', 'lead', l.id, l.lead_number, jsonb_build_object('source', p_source, 'confirmed_separate_from', case when coalesce(p_confirm, false) then v_similar end),
+          format('Enquiry from %s', v_name) || case when coalesce(p_confirm, false) and v_similar is not null then ' (confirmed as separate from an open enquiry)' else '' end);
   return jsonb_build_object('ok', true, 'lead_number', l.lead_number, 'record_version', l.record_version,
-                            'lookalikes', customer_lookalikes(v_name, v_email, v_phone));
+                            'lookalikes', customer_lookalikes(v_name, v_email, v_phone),
+                            'confirmed_separate', coalesce(p_confirm, false) and v_similar is not null);
 end $$;
 
 -- 2. Move an enquiry on: contacted; lost or disqualified (with a reason).
@@ -327,7 +353,10 @@ begin
   if coalesce(p_job_type, '') not in ('LEAK_REPAIR', 'ROOF_RESTORATION', 'ROOF_REPLACEMENT', 'FULL_REROOF', 'EXTENSION_ROOF', 'STORM_DAMAGE_REPAIR') then
     return jsonb_build_object('ok', false, 'code', 'INVALID', 'detail', 'choose the kind of job');
   end if;
-  if coalesce(p_amount_type, '') not in ('INCLUSIVE', 'EXCLUSIVE') then return jsonb_build_object('ok', false, 'code', 'INVALID', 'detail', 'say whether prices include GST'); end if;
+  -- Only prices that include GST: the invoice and Xero path is GST-inclusive end to end (invoice_final_preview refuses
+  -- anything else, but only at invoicing, after the job is done). Refusing here keeps an unsupported quote out of the
+  -- financial process entirely.
+  if coalesce(p_amount_type, '') <> 'INCLUSIVE' then return jsonb_build_object('ok', false, 'code', 'INVALID', 'detail', 'prices must include GST (GST-exclusive and GST-free quotes cannot be invoiced yet)'); end if;
   if length(coalesce(v_scope, '')) > 4000 then return jsonb_build_object('ok', false, 'code', 'INVALID', 'detail', 'the scope is too long'); end if;
   v_problem := quote_lines_problem(p_lines);
   if v_problem is not null then return jsonb_build_object('ok', false) || v_problem; end if;
@@ -701,12 +730,12 @@ create or replace view v_dashboard_products as
 select product_code, name, category, unit from products where is_active;
 
 create or replace view v_dashboard_customer_directory as
-select customer_number, display_name, customer_type, email, phone from customers where status = 'ACTIVE';
+select customer_number, display_name, customer_type, email, phone, record_version from customers where status = 'ACTIVE';
 
 revoke execute on all functions in schema public from public;
 revoke execute on function customer_lookalikes(text, text, text), quote_lines_problem(jsonb), quote_insert_version(uuid, int, text, text, jsonb, uuid),
   quote_publish_payload(uuid), wf_complete_side_effect_core(text, jsonb) from roofops_workflow, roofops_dashboard;
-grant execute on function web_lead_create(text, text, text, text, text, text, text, text), web_lead_update(text, text, text, int, text),
+grant execute on function web_lead_create(text, text, text, text, text, text, text, text, boolean), web_lead_update(text, text, text, int, text),
   web_lead_convert(text, text, int, text, jsonb, jsonb, boolean), web_inspection_book(text, text, text, timestamptz, text),
   web_inspection_record(text, text, int, text, jsonb), web_quote_save(text, text, text, int, text, text, text, jsonb, text),
   web_quote_send(text, text, int) to roofops_dashboard;
@@ -715,7 +744,8 @@ grant select on v_dashboard_leads, v_dashboard_quotes, v_dashboard_products, v_d
 
 -- Which roles may run sales (so the dashboard offers the forms to exactly the people the database allows).
 create or replace view v_dashboard_sales_roles as
-select (select value from app_settings where key = 'sales.roles') as sales_roles;
+select (select value from app_settings where key = 'sales.roles') as sales_roles,
+       (select value from app_settings where key = 'customer.correction_roles') as correction_roles;   -- set by 20261017030000
 grant select on v_dashboard_sales_roles to roofops_dashboard;
 
 -- An accepted quote wins its enquiry (whichever path accepted it: Airtable via n8n 01, or a test), so the pipeline never

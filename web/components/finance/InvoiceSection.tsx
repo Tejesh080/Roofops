@@ -7,7 +7,7 @@ import { date, money } from '@/lib/labels';
 import { Badge } from '@/components/ui/Badge';
 import { CardHead, Empty } from '@/components/ui/Empty';
 import { DecideInvoiceForm, SendToXeroForm } from './InvoiceForms';
-import { DISPATCH_PENDING } from '@/lib/dispatch';
+import { DISPATCH_OFF, approveOffNote } from '@/lib/dispatch';
 
 const VIA: Record<PendingInvoice['requested_via'], string> = { dashboard: 'in the dashboard', copilot: 'with the Copilot', airtable: 'in Airtable (shared account)' };
 
@@ -40,7 +40,7 @@ function Decision({ p, me, roles, dispatchOn }: { p: PendingInvoice; me: NonNull
   // The requester may withdraw (reject) their own preview, never approve it (Postgres refuses SAME_PERSON either way).
   if (p.i_requested_it) return <><p className="t-meta reissue-wait">You prepared this. A second person ({roles}) must approve it; you can still withdraw it by rejecting it with a reason.</p>
     <DecideInvoiceForm approval={p.approval_number} hash={p.payload_hash} approveEnabled={false} /></>;
-  return <>{!dispatchOn && <p className="t-meta reissue-wait" role="note">{DISPATCH_PENDING}</p>}<DecideInvoiceForm approval={p.approval_number} hash={p.payload_hash} approveEnabled={dispatchOn} /></>;
+  return <>{!dispatchOn && <p className="t-meta reissue-wait" role="note">{approveOffNote(p.requested_via)}</p>}<DecideInvoiceForm approval={p.approval_number} hash={p.payload_hash} approveEnabled={dispatchOn} /></>;
 }
 
 function Draft({ d, me, dispatchOn }: { d: DraftProgress; me: NonNullable<InvoiceOverview['me']>; dispatchOn: boolean }) {
@@ -64,7 +64,7 @@ function Draft({ d, me, dispatchOn }: { d: DraftProgress; me: NonNullable<Invoic
           {d.request ? <>Last request: {d.request.requested_by ?? 'someone'}, {date(d.request.requested_at)} ({requestStatus(d)}{d.request.closed_reason ? `: ${d.request.closed_reason}` : ''}).</> : null}
         </p>
       ) : null}
-      {canSend && !dispatchOn ? <p className="t-meta reissue-wait" role="note">Sending to Xero from the dashboard is not switched on yet (pending the owner&apos;s activation).</p>
+      {canSend && !dispatchOn ? <p className="t-meta reissue-wait" role="note">{DISPATCH_OFF.send} It is queued and sent once that is switched on.</p>
         : canSend ? <SendToXeroForm invoice={d.invoice_number} generation={d.generation} sha={d.payload_sha256} again={d.state === 'FAILED'} />
         : (d.state === 'READY_TO_SEND' || d.state === 'FAILED') && !me.may_dispatch ? <p className="t-meta reissue-wait">A Finance or Admin person sends it to Xero.</p> : null}
     </div>

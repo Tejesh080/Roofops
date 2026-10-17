@@ -6,7 +6,7 @@ import { SESSION_COOKIE, verifySession } from '@/lib/session';
 import { query } from '@/lib/db';
 import { REISSUE_CODE, notInstalled } from '@/lib/reissue';
 import { invoiceRefusal } from '@/lib/invoices';
-import { DISPATCH_PENDING, staffDispatchEnabled } from '@/lib/dispatch';
+import { DISPATCH_OFF, staffDispatchEnabled } from '@/lib/dispatch';
 
 export interface ReissueActionState { ok?: boolean; message?: string }
 type Outcome = { ok: boolean; code?: string; detail?: string; approval_number?: string; generation?: number };
@@ -31,6 +31,7 @@ function failed(e: unknown): ReissueActionState {
 export async function requestReissue(_prev: ReissueActionState, form: FormData): Promise<ReissueActionState> {
   const invoice = String(form.get('invoice') ?? '');
   const reason = String(form.get('reason') ?? '').trim();
+  if (!staffDispatchEnabled()) return { message: DISPATCH_OFF.reissueRequest };   // nothing could send the replacement
   if (reason.length < 10) return { message: REISSUE_CODE.REASON_REQUIRED };
   try {
     const r = await asStaff('select web_reissue_request($1, $2, $3) r', [invoice, reason]);
@@ -45,6 +46,7 @@ export async function requestReissue(_prev: ReissueActionState, form: FormData):
 
 export async function approveReissue(_prev: ReissueActionState, form: FormData): Promise<ReissueActionState> {
   const approval = String(form.get('approval') ?? '');
+  if (!staffDispatchEnabled()) return { message: DISPATCH_OFF.reissueApprove };   // it would queue a write nothing sends
   if (form.get('checked') !== 'on') return { message: 'Confirm that you checked the draft (number, amount, customer) before approving.' };
   try {
     const r = await asStaff('select web_reissue_decide($1, $2, $3) r', [approval, String(form.get('note') ?? '').trim() || null]);
@@ -78,6 +80,7 @@ function invoiceFailed(e: unknown): ReissueActionState {
 
 export async function prepareFinalInvoice(_prev: ReissueActionState, form: FormData): Promise<ReissueActionState> {
   const project = String(form.get('project') ?? '');
+  if (!staffDispatchEnabled()) return { message: DISPATCH_OFF.prepare };   // a dashboard preview could not be approved anywhere
   try {
     const r = await asStaffInvoice('select web_invoice_prepare($1, $2) r', [project]);
     if ('signedOut' in r) return { message: 'Sign in as yourself to prepare an invoice (the shared demo login cannot).' };
@@ -95,7 +98,7 @@ export async function decideFinalInvoice(_prev: ReissueActionState, form: FormDa
   const approval = String(form.get('approval') ?? '');
   const decision = form.get('decision') === 'reject' ? 'reject' : 'approve';
   const note = String(form.get('note') ?? '').trim();
-  if (decision === 'approve' && !staffDispatchEnabled()) return { message: DISPATCH_PENDING };   // nothing queued while n8n 09 is off
+  if (decision === 'approve' && !staffDispatchEnabled()) return { message: DISPATCH_OFF.approve };   // nothing queued while n8n 09 is off; rejecting stays open
   if (decision === 'approve' && form.get('checked') !== 'on') return { message: 'Tick that you checked the customer, amount, GST and lines before approving.' };
   if (decision === 'reject' && note.length < 5) return { message: 'Say why it is rejected (a few words), so the requester knows what to fix.' };
   try {
@@ -113,7 +116,7 @@ export async function decideFinalInvoice(_prev: ReissueActionState, form: FormDa
 
 export async function requestXeroDraft(_prev: ReissueActionState, form: FormData): Promise<ReissueActionState> {
   const invoice = String(form.get('invoice') ?? '');
-  if (!staffDispatchEnabled()) return { message: DISPATCH_PENDING };
+  if (!staffDispatchEnabled()) return { message: DISPATCH_OFF.send };
   if (form.get('checked') !== 'on') return { message: 'Tick that you checked the draft (number, amount, customer) first.' };
   try {
     const r = await asStaffInvoice('select web_xero_dispatch_request($1, $2, $3, $4) r', [invoice, Number(form.get('generation')), String(form.get('sha') ?? '')]);

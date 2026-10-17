@@ -6,12 +6,13 @@ import { date, money } from '@/lib/labels';
 import { Badge } from '@/components/ui/Badge';
 import { CardHead, Empty } from '@/components/ui/Empty';
 import { ApproveReissueForm, RequestReissueForm } from './ReissueForms';
+import { DISPATCH_OFF } from '@/lib/dispatch';
 
 /** Where a reissue stands, in plain words, and what the signed-in person can do next. */
 /** A reissue is done only when the ledger says so: the current generation CREATED with its Xero InvoiceID. */
 const created = (it: ReissueItem) => it.latest_decided?.generation_status === 'CREATED' && Boolean(it.latest_decided.xero_invoice_id);
 
-function Step({ it, me, roles }: { it: ReissueItem; me: NonNullable<ReissueOverview['me']>; roles: string }) {
+function Step({ it, me, roles, dispatchOn }: { it: ReissueItem; me: NonNullable<ReissueOverview['me']>; roles: string; dispatchOn: boolean }) {
   const p = it.pending;
   if (p) {
     return (
@@ -24,6 +25,7 @@ function Step({ it, me, roles }: { it: ReissueItem; me: NonNullable<ReissueOverv
           <span className="t-meta">Reason</span><span>{p.reason}</span><span />
         </div>
         {p.i_requested_it ? <p className="t-meta reissue-wait">You requested this. A second person ({roles}) must approve it.</p>
+          : me.may_reissue && !dispatchOn ? <p className="t-meta reissue-wait" role="note">{DISPATCH_OFF.reissueApprove}</p>
           : me.may_reissue ? <ApproveReissueForm approval={p.approval_number} />
           : <p className="t-meta reissue-wait">Waiting for someone else ({roles}) to approve it.</p>}
       </div>
@@ -32,19 +34,21 @@ function Step({ it, me, roles }: { it: ReissueItem; me: NonNullable<ReissueOverv
   const d = it.latest_decided;
   if (d && it.status !== 'VOIDED') {
     const text = created(it) ? `Replacement draft created in Xero (InvoiceID ${d.xero_invoice_id}). Airtable shows it after the next sync.`
-      : d.write_status === 'PENDING' ? 'Approved and queued. A Finance or Admin person sends the replacement draft to Xero under Xero drafts on this page.'
+      : d.write_status === 'PENDING' ? (dispatchOn ? 'Approved and queued. A Finance or Admin person sends the replacement draft to Xero under Xero drafts on this page.'
+        : 'Approved and queued. Sending from the dashboard is off, so it is sent once that is switched on (nothing is sent before).')
       : d.write_status ? `The replacement draft is ${d.write_status.toLowerCase()}; see Automation if it needs a person.` : 'Decided.';
     return <p className="t-meta reissue-wait">{d.approval_number}: requested by {d.requested_by}, approved by {d.decided_by}. {text}</p>;
   }
   if (it.status === 'VOIDED') {
     if (!it.check?.ok) return <p className="t-meta reissue-wait">Cannot be reissued: {it.check?.detail ?? 'not eligible'}.</p>;
+    if (me.may_reissue && !dispatchOn) return <p className="t-meta reissue-wait" role="note">{DISPATCH_OFF.reissueRequest}</p>;
     return me.may_reissue ? <RequestReissueForm invoice={it.invoice_number} />
       : <p className="t-meta reissue-wait">Eligible for a reissue. Someone in {roles} can request it.</p>;
   }
   return null;
 }
 
-export function ReissueSection({ overview }: { overview: ReissueOverview | null }) {
+export function ReissueSection({ overview, dispatchOn }: { overview: ReissueOverview | null; dispatchOn: boolean }) {
   return (
     <section className="card" id="reissues">
       <CardHead icon={RefreshCcw} title="Invoice reissues"><span className="chip">Two people: one requests, another approves</span></CardHead>
@@ -63,7 +67,7 @@ export function ReissueSection({ overview }: { overview: ReissueOverview | null 
                   <Badge l={it.pending ? { text: 'Awaiting approval', tone: 'warn' } : it.status === 'VOIDED' ? { text: 'Voided', tone: 'bad' }
                     : created(it) ? { text: 'Reissued', tone: 'good' } : { text: 'Approved, queued', tone: 'info' }} />
                   <div className="issue-expl">{it.voided_reason ?? ''}</div>
-                  <Step it={it} me={overview.me!} roles={(overview.roles ?? 'Finance, Admin').toLowerCase()} />
+                  <Step it={it} me={overview.me!} roles={(overview.roles ?? 'Finance, Admin').toLowerCase()} dispatchOn={dispatchOn} />
                 </div>
               ))}
             </div>

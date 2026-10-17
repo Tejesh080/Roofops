@@ -10,7 +10,7 @@ import { ReissueSection } from '@/components/finance/ReissueSection';
 import { getReissueOverview } from '@/lib/reissue';
 import { getInvoiceOverview } from '@/lib/invoices';
 import { InvoiceSection } from '@/components/finance/InvoiceSection';
-import { staffDispatchEnabled } from '@/lib/dispatch';
+import { DISPATCH_OFF, staffDispatchEnabled } from '@/lib/dispatch';
 import { PrepareInvoiceForm } from '@/components/finance/InvoiceForms';
 
 export const dynamic = 'force-dynamic';
@@ -36,7 +36,10 @@ export default async function FinancePage() {
   const session = await requireSession();
   const [rows, overdue, reissues, invoices] = await Promise.all([listProjects(query, 'all'), listOverdueInvoices(query), getReissueOverview(query, session.t),
     getInvoiceOverview(query, session.t)]);
-  const mayPrepare = Boolean(invoices?.ok && invoices.me?.may_prepare);
+  const dispatchOn = staffDispatchEnabled();
+  // Preparing here only while dashboard approvals can be sent: a dashboard preview can only be approved in the dashboard.
+  const mayPrepare = Boolean(invoices?.ok && invoices.me?.may_prepare) && dispatchOn;
+  const prepareOff = Boolean(invoices?.ok && invoices.me?.may_prepare) && !dispatchOn;
   const ready = rows.filter((p) => p.invoice_status === 'READY_TO_INVOICE');
   const awaiting = rows.filter((p) => p.invoice_status === 'AWAITING_APPROVAL');
   const inXero = rows.filter((p) => p.xero_invoice_id);
@@ -53,6 +56,7 @@ export default async function FinancePage() {
         <section className="card">
           <CardHead icon={BadgeDollarSign} title="Ready to invoice"><span className="chip num">{money(sum(ready))}</span></CardHead>
           <div className="card-body">
+            {prepareOff && ready.length > 0 && <p className="t-meta reissue-wait" role="note" aria-label="Preparing invoices">{DISPATCH_OFF.prepare}</p>}
             {ready.length === 0 ? <Empty icon={CheckCircle2} title="Nothing waiting to be invoiced" /> :
               <Rows rows={ready} right={(p) => <>
                 <span className="strong num">{money(p.invoice_amount_inc_gst)}</span>
@@ -90,8 +94,8 @@ export default async function FinancePage() {
           </div>
         </section>
       </div>
-      <InvoiceSection overview={invoices} dispatchOn={staffDispatchEnabled()} />
-      <div style={{ marginTop: 16 }}><ReissueSection overview={reissues} /></div>
+      <InvoiceSection overview={invoices} dispatchOn={dispatchOn} />
+      <div style={{ marginTop: 16 }}><ReissueSection overview={reissues} dispatchOn={dispatchOn} /></div>
       <p className="t-meta" style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 6 }}>
         <ChevronRight size={13} aria-hidden /> The Copilot can only prepare an invoice. Approval, and the draft in Xero, always need a person.
       </p>

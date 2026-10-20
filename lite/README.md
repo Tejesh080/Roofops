@@ -1,39 +1,78 @@
 # RoofOps Lite
 
-A small automation kit for a trade business (roofing, plumbing, electrical and so on). It uses **Airtable** as the CRM
-and **n8n** for the automations. There is no database to run, no server to host and no app to deploy. It reuses the
-Airtable base and the n8n Cloud account that RoofOps already has. It is separate from Advanced RoofOps, and nothing in
-it touches Advanced RoofOps tables, workflows, invoices or Xero.
+A small, reusable automation package for a trade business (roofing, plumbing, electrical and so on): an **Airtable**
+CRM and five **n8n** workflows, with **Twilio** for SMS. There is no database to run, no server to host and no app
+to deploy. Everything business-specific is one config file. Lite is separate from Advanced RoofOps: nothing in it
+touches Advanced RoofOps tables, workflows, invoices or Xero.
 
 | Module | What it does | Built as |
 |---|---|---|
-| **1. Quote-to-Paid CRM** | One Job record per enquiry, from New Lead to Paid, with contact, site, quote and invoice status | 5 Airtable tables + views ([airtable/](airtable/)) |
-| **2. Instant Lead Follow-Up** | A website form posts a lead. It is checked, de-duplicated, saved, and acknowledged on the channel the person agreed to. Logged. | n8n workflow `[Lite] Instant Lead Follow-Up` |
-| **3. Google Review Requests** | Daily: each finished job gets one review request with your Google review link, only with consent, never twice | n8n workflow `[Lite] Google Review Requests` |
-| **4. Lead Reactivation** | Weekly: quiet enquiries get one follow-up, only with marketing permission, with cooldown and cap. Replies and STOPs are recorded. | n8n workflows `[Lite] Lead Reactivation` + `[Lite] Inbound Replies` |
+| **Quote-to-Paid CRM** | One Job per enquiry, New Lead to Paid, with contact (and their consent), site, quote, messages and alerts | 6 Airtable tables + an Interface ([airtable/](airtable/)) |
+| **Instant Lead Follow-Up** | A website form posts a lead. It is checked, de-duplicated, saved with the consent given (source, time, wording), and acknowledged by SMS once. | `[Lite] Instant Lead Follow-Up` + `lead-form.html` |
+| **Google Review Requests** | Daily: each finished job gets one review request, only with review permission | `[Lite] Google Review Requests` |
+| **Lead Reactivation** | Weekly: quiet enquiries get one follow-up, only with recorded marketing consent, with cooldown and cap | `[Lite] Lead Reactivation` |
+| **Replies and delivery receipts** | STOP opts out of everything; other replies reopen the enquiry; Twilio delivery receipts update the log | `[Lite] Inbound Replies` |
+| **Monitoring** | Failed runs, failed or unconfirmed messages, leads nobody contacted: raised once as alerts; safe retry | `[Lite] Monitor` |
 
-**Messages go to a TEST sink.** Every message that would be sent is written to **Lite Message Log** with Status
-"Simulated Sent". Nothing reaches a real phone or inbox. Connecting a real SMS or email provider is a deliberate later
-step (see Blocked below).
+**Messaging is off by default.** `messaging.mode` is `test-sink`: every message is written to **Lite Message Log** as
+"Simulated Sent" and nothing reaches a phone. In `twilio` mode, real SMS go only to numbers on
+`messaging.twilio.allowedRecipients` until `allowAllRecipients` is set at go-live.
 
-## Try it in 1 minute (local, nothing leaves your computer)
+## How a message is sent (and never twice)
+
+1. The workflow plans the message and checks permission (see Consent below).
+2. It writes the message to the Message Log first (Status **Sending**, with a Dedupe Key and the CRM updates to make
+   once it is sent).
+3. It reads the log back. If another run reserved the same message earlier, this one is Skipped as a duplicate.
+   Airtable has no conditional writes, so the earliest row wins.
+4. It sends: test sink, or Twilio (`POST /Messages.json`, Basic Auth credential, delivery receipts to the reply webhook).
+5. It records the outcome:
+
+   | Outcome | Meaning |
+   |---|---|
+   | **Sent** | Twilio accepted it; the log row has the SID, and the job moves on. |
+   | **Failed** | Twilio refused it, with the error code (for example 21211 invalid number). Nothing was sent. |
+   | **Unknown** | No clear answer (timeout, server error). It may have been sent, so it is never resent by itself. |
+
+   A Twilio 21610 (unsubscribed recipient) opts the contact out. Receipts later turn Sent into **Delivered**, or into
+   Failed.
+
+Staff tick **Retry Requested** on a Failed or Unknown message. `[Lite] Monitor` first asks Twilio whether it went out:
+- **Found:** the row is corrected and nothing is resent.
+- **Not found:** it is resent once, through the same reservation.
+- **Never resent:** opted-out contacts, 21610 errors, or messages that could not be checked.
+
+## Consent and opt-out (Australia: Spam Act 2003)
+
+| Message | Purpose | Needs |
+|---|---|---|
+| Lead acknowledgement | Operational: a reply to their own enquiry | SMS consent ticked on the form |
+| Review request | Commercial | **Review Opt-In** (or Marketing Opt-In), with **Consent Source** and **Consent Recorded At**. Set `consent.reviewRequests` to `"service"` to accept SMS consent instead (client decision). |
+| Reactivation | Marketing | **Marketing Opt-In**, with Consent Source and Consent Recorded At |
+
+- **Every message names the business;** review and marketing messages say "Reply STOP". The build refuses templates
+  without these.
+- **STOP, UNSUBSCRIBE, CANCEL, END, QUIT, OPT OUT…** opt the person out at once, well within the 5 working days the
+  law allows. Lite never re-subscribes anyone automatically: a START is flagged for staff.
+- **No consent is assumed.** A contact with a ticked box but no recorded source and date gets no review request or
+  marketing. Details: [docs/compliance-au.md](docs/compliance-au.md).
+
+## Try it locally (nothing leaves your computer)
 
 ```bash
 npx tsx lite/demo/run-demo.ts
 ```
+```bash
+npx tsx lite/demo/run-demo.ts lite/config/example-plumbing-twilio.json lite/demo/output-twilio
+```
 
-The demo:
-- builds the 4 workflows from `lite/config/demo.json`;
-- loads synthetic data (every record starts with "ZZ Lite Demo");
-- starts a local webhook server and sends it real HTTP requests: a new lead, the same lead again, an invalid lead, a
-  lead without consent, a reply "Yes please", a reply "STOP";
-- runs Review Requests and Reactivation twice each, to show nobody is messaged twice.
+- The first runs the test sink. Report: [demo/output/demo-report.md](demo/output/demo-report.md).
+- The second runs Twilio mode against a **local fake** of the Twilio API: signed webhooks, real error codes, a refused
+  number, an alert, a retry. Report: [demo/output-twilio/demo-report.md](demo/output-twilio/demo-report.md).
 
-It runs the workflows' **actual n8n node code** against an in-memory Airtable that enforces the Lite schema. The report
-goes to [`demo/output/demo-report.md`](demo/output/demo-report.md): every step, the pipeline by stage, the Message Log
-and sample message texts.
+Both run the workflows' **actual n8n node code** against an in-memory Airtable that enforces the Lite schema.
 
-Tests (17, the same code):
+Tests: 40, the same code, acceptance tests A–H.
 ```bash
 npx vitest run test/lite.test.ts
 ```
@@ -41,131 +80,31 @@ npx vitest run test/lite.test.ts
 ## How it is built
 
 ```
-lite/config/<client>.json      one file per business: name, phone, Airtable base + n8n credential, message templates,
-                               review link, thresholds (validated: lite/config/config.ts)
-lite/airtable/schema.json      the five Lite tables (field names are the contract)
-lite/airtable/setup.ts         creates them in a base (dry run by default; create-only; refuses if they exist)
-lite/airtable/views.md         the CRM views and Interface to set up by hand
-lite/n8n/src/*.sdk.ts          the four workflows (n8n Workflow SDK) + shared parts
-lite/build.ts                  config + sources -> lite/dist/<client>/<workflow>.sdk.ts  (create with the n8n MCP tools)
-                                                   and lite/dist/<client>/<workflow>.json   (n8n: Import from File)
-lite/demo/                     the local demo: in-memory Airtable, synthetic data, webhook server
-lite/tools/                    the SDK recorder, loader and runner the build, demo and tests share
+lite/config/<client>.json      one file per business: name, timezone, Airtable base + credential, n8n URL, Twilio
+                               (sender, account, credential, allowlist), consent wording and rules, templates, timings,
+                               monitoring (validated: lite/config/config.ts; template: template.json)
+lite/airtable/schema.json      the six Lite tables (field names are the contract)
+lite/airtable/setup.ts         creates them (dry run by default; --apply create-only; --upgrade adds only what is missing)
+lite/airtable/seed-demo.ts     loads the synthetic demo data (dry run by default)
+lite/airtable/views.md         the Quote-to-Paid Interface
+lite/n8n/src/*.sdk.ts          the five workflows (n8n Workflow SDK) + shared parts (common, send pipeline)
+lite/forms/lead-form.ts        the website enquiry form
+lite/build.ts                  config + sources -> lite/dist/<client>/<workflow>.sdk.ts (n8n MCP tools)
+                                                   lite/dist/<client>/<workflow>.json   (n8n: Import from File)
+                                                   lite/dist/<client>/lead-form.html    (paste into the website)
+lite/demo/                     local demo: in-memory Airtable, fake Twilio, synthetic data, runbooks, demo script
 ```
 
-The generated workflows are plain n8n workflows: HTTP Request nodes to the Airtable API, using an existing n8n
-Airtable credential, plus Code and If nodes. They are exported **inactive**. n8n Cloud's own validator accepts the
-generated node structures and connection patterns: webhook, Respond to Webhook, schedule and manual triggers, If,
-Code, and Airtable HTTP reads and writes.
+Install a client: [DEPLOY.md](DEPLOY.md) (full guide) and [SETUP-CHECKLIST.md](SETUP-CHECKLIST.md) (one page).
+Demo script: [demo/portfolio-demo-script.md](demo/portfolio-demo-script.md).
 
-## Deploy for a business
+## Limits (MVP)
 
-The full, tested guide is [DEPLOY.md](DEPLOY.md): accounts, isolation, both table routes, the Interface, testing,
-go-live and handover. A recorded demo walkthrough is in [demo/portfolio-demo-script.md](demo/portfolio-demo-script.md).
-The short version follows.
-
-The commands here run on your machine. Steps marked **(cloud)** change Airtable or n8n and need the owner's approval.
-
-1. **Config.** Copy `lite/config/template.json` to `lite/config/<client>.json` and fill it in: the business name,
-   phone and sign-off, the Airtable base id, the n8n Airtable credential, the Google review URL and the message
-   templates. Then check it:
-   ```bash
-   npx tsx lite/build.ts lite/config/<client>.json
-   ```
-   This refuses any `<placeholder>` left behind, a review template without `{reviewUrl}`, or a reactivation message
-   without a STOP instruction.
-2. **(cloud) Create the five Lite tables** in that base. Use a token limited to that base, with `schema.bases:read`
-   and `schema.bases:write`. First look at the plan, which changes nothing:
-   ```bash
-   npx tsx lite/airtable/setup.ts lite/config/<client>.json
-   ```
-   Then create the tables:
-   ```bash
-   LITE_AIRTABLE_TOKEN=... npx tsx lite/airtable/setup.ts lite/config/<client>.json --apply
-   ```
-   The tool only creates, and stops without changing anything if any Lite table already exists. Then confirm the
-   result, read-only:
-   ```bash
-   LITE_AIRTABLE_TOKEN=... npx tsx lite/airtable/setup.ts lite/config/<client>.json --verify
-   ```
-3. **Views.** Set up the CRM views and Interface in Airtable ([airtable/views.md](airtable/views.md)), about 15 minutes.
-4. **(cloud) Put the workflows in n8n**, inactive. Either import each `lite/dist/<client>/*.json` (Workflows ›
-   Import from File), or create them from `lite/dist/<client>/*.sdk.ts` with the n8n MCP tools (`validate_workflow`,
-   then `create_workflow_from_code`). Check that each Airtable node shows the credential from the config.
-5. **(cloud) Test with synthetic data, still inactive.** The exact steps, payloads and expected results for the demo
-   base are in [demo/cloud-demo-runbook.md](demo/cloud-demo-runbook.md).
-   - In the n8n editor, use "Execute workflow" on a webhook workflow and POST a test lead (the demo's payloads are in
-     `lite/demo/run-demo.ts`) to the **test** webhook URL.
-   - Run the review and reactivation workflows with "Run Now".
-   - Check Lite Jobs and Lite Message Log.
-6. **(cloud, owner decision) Go live.** Activate the workflows. Point the website form at the **production** webhook
-   URL `https://<n8n host>/webhook/<leadIntake.webhookPath>`, and the provider's reply webhook at
-   `/webhook/<replies.webhookPath>`. Do this only after the items under Blocked are done.
-
-### The lead webhook (what a website form sends)
-
-`POST /webhook/<leadIntake.webhookPath>` with JSON:
-
-```json
-{ "name": "Jane Citizen", "first_name": "Jane", "phone": "0412 345 678", "email": "jane@example.com",
-  "address": "12 Example St", "suburb": "Bargara", "postcode": "4670", "service": "roof leak repair",
-  "message": "Water through the ceiling", "source": "website",
-  "consent_sms": true, "consent_email": true, "marketing_opt_in": false, "preferred_channel": "sms" }
-```
-
-- **Required:** a name, and a phone or email. Anything else missing is fine.
-- **Answer:** `200` with the job reference and acknowledgement status, `200` with `duplicate: true` for a repeat
-  enquiry within `dedupeWindowDays`, or `400` with the reasons.
-- **Replies:** `POST /webhook/<replies.webhookPath>` with `{ "from": "<phone or email>", "text": "..." }`.
-
-## Reuse for another trade business
-
-Everything business-specific is in the config. For a plumber, for example:
-1. Copy `template.json` to `lite/config/acme-plumbing.json`. Set the name, trade (`"plumbing"`), phone, sign-off,
-   their Airtable base and n8n credential, their Google review link, and the message wording.
-2. Build it:
-   ```bash
-   npx tsx lite/build.ts lite/config/acme-plumbing.json
-   ```
-   This writes `lite/dist/acme-plumbing/`.
-3. Follow "Deploy for a business" with that config.
-
-No workflow code changes. A test proves that a second config changes the name, review link, webhook path and base, and
-leaves nothing of the first. To change stages, consent rules or timing: thresholds are in the config; stages and
-consent rules are in `lite/n8n/src/` (rebuild afterwards).
-
-## Guarantees and limits
-
-**Built in:**
-- **Consent:** service messages need the matching consent box. Reactivation also needs Marketing Opt-In. Opted Out
-  blocks everything.
-- **Opt-out:** a STOP reply (or UNSUBSCRIBE, OPT OUT…) sets Opted Out and removes marketing permission. The
-  opt-out words are in the config.
-- **Duplicates:** a repeat lead is spotted by email, or by phone in any format (0412…, +61 412…). Each job gets one
-  review request: the job is marked, and the log is checked too, so a re-run or a half-finished run never asks twice.
-  Reactivation has a cooldown and a per-month key.
-- **Failures:** an Airtable error stops the run with a clear message (n8n marks the execution failed), so nothing is
-  reported as done when it was not. The local Airtable rejects any field or option that is not in the schema, as the
-  real one does with `typecast: false`.
-
-**Limits (MVP):**
-- Each look-up reads up to 100 records, which is fine for a small business. Pagination is not built yet.
-- Times use the n8n server clock. The review delay and inactivity thresholds are whole days.
-- An existing contact's consent is not changed by a new form submission; staff change consent in Airtable.
-
-## Blocked: needs the owner before going live
-
-1. **Done for the demo (2026-10-20):**
-   - the Lite tables, demo data, the Quote-to-Paid Interface and the four workflows (unpublished) are in the RoofOps
-     base and n8n project;
-   - all seven acceptance tests passed (`evidence/lite-cloud-demo-20261020.md`).
-
-   For a client, follow [DEPLOY.md](DEPLOY.md), and give them their own base.
-2. **A real SMS or email provider.** Lite only has the test sink. Going live means choosing a provider (for example
-   Twilio, or an email API), creating its n8n credential, and replacing the sink in `lite/n8n/src/common.part.ts`
-   (`deliver`) with that provider's node. That is a decision and a paid account, so it is not done.
-3. **Webhook protection.** The demo webhooks accept any POST. It is built in, but off:
-   1. Create an n8n "Header Auth" credential (for example header `X-Lite-Key`, with a long random value).
-   2. Set `"webhookAuth": { "id": "<credential id>", "name": "<credential name>" }` in the config.
-   3. Rebuild. Both webhook nodes then require that header, and the form and provider must send it.
-4. **The Google review link** in the config is a placeholder until the business provides its own.
+- **Lookup size:** each look-up reads up to 100 records (no pagination). That is enough for a small business: about
+  100 open enquiries or finished jobs waiting for a review at one time.
+- **Channels:** SMS only with Twilio. In test-sink mode email is simulated too.
+- **Simultaneous form copies:** two copies of one form arriving at the same moment can create two contact/job
+  records. Only one SMS is sent, and the second job is marked Lost.
+- **Timezone:** schedules run in the business timezone (workflow setting). Delays are whole days.
+- **Retries:** a retry uses the number on the message row. Fix the number there (or on the contact for future
+  messages), then tick Retry Requested.

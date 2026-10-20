@@ -1,0 +1,924 @@
+{
+  "name": "[Lite] Inbound Replies",
+  "nodes": [
+    {
+      "id": "c95d41fc-8049-4cf5-a4b7-b22cb29567c0",
+      "name": "Reply Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "zz-plumbing/sms",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "9d63f828-37bf-497f-a4d9-5e44f0fbd2f4"
+    },
+    {
+      "id": "1a81e546-8498-4790-a984-7f78b87894a2",
+      "name": "Verify Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nconst CFG = {\"messaging\":{\"mode\":\"twilio\",\"provider\":\"twilio\",\"twilio\":{\"accountSid\":\"AC00000000000000000000000000000000\",\"from\":\"+61491570006\",\"messagingServiceSid\":null,\"credential\":{\"id\":\"ZZExampleTwilio1\",\"name\":\"ZZ example Twilio API key\"},\"inboundAuth\":\"signature\",\"signatureVariable\":\"LITE_TWILIO_AUTH_TOKEN\",\"inboundCredential\":null,\"allowedRecipients\":[\"+61491570156\",\"+61491570157\",\"+61491570158\",\"+61491570159\",\"+61491570110\"],\"allowAllRecipients\":false}},\"n8n\":{\"baseUrl\":\"https://zz-example.app.n8n.cloud\",\"errorWorkflowId\":\"ZZExampleMonitr1\"},\"replies\":{\"webhookPath\":\"zz-plumbing/sms\",\"optOutKeywords\":[\"STOP\",\"STOPALL\",\"UNSUBSCRIBE\",\"OPT OUT\",\"OPTOUT\",\"CANCEL\",\"QUIT\",\"END\",\"REMOVE\"]}};\nconst clean = (s) => String(s == null ? '' : s).trim();\nconst formulaText = (s) => clean(s).replace(/[\\\\'\"{}]/g, '');\nconst normEmail = (s) => { const e = clean(s).toLowerCase(); return /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(e) ? e : ''; };\nconst normPhone = (s) => { let d = clean(s).replace(/[^0-9+]/g, ''); if (d.startsWith('+61')) d = '0' + d.slice(3); d = d.replace(/[^0-9]/g, ''); return /^0[2-478][0-9]{8}$/.test(d) ? d : ''; };\n\nconst h = $input.first().json;\nconst b = h.body || {}; const q = h.query || {};\nconst TW = CFG.messaging.mode === 'twilio' ? CFG.messaging.twilio : null;\nconst reject = (status, why) => [{ json: { ok: false, response: { status: status, body: { ok: false, errors: [why] }, text: why } } }];\nlet reply;\nif (TW) {\n  const event = q.event === 'status' ? 'status' : 'message';\n  if (Object.keys(q).some((k) => k !== 'event')) return reject(403, 'unexpected query parameters');\n  if (TW.inboundAuth === 'signature') {\n    const secret = $vars[TW.signatureVariable];\n    if (!secret) return reject(503, 'Twilio signature secret is not configured (n8n Variable ' + TW.signatureVariable + ')');\n    // Twilio signs the exact URL it calls plus every POST parameter, sorted by name.\n    const url = CFG.n8n.baseUrl + '/webhook/' + CFG.replies.webhookPath + (event === 'status' ? '?event=status' : '');\n    const data = url + Object.keys(b).sort().map((k) => k + String(b[k])).join('');\n    const expected = require('crypto').createHmac('sha1', secret).update(data, 'utf8').digest('base64');\n    const got = String((h.headers || {})['x-twilio-signature'] || '');\n    let diff = got.length ^ expected.length;\n    for (let i = 0; i < Math.min(got.length, expected.length); i++) diff |= got.charCodeAt(i) ^ expected.charCodeAt(i);\n    if (!got || diff !== 0) return reject(403, 'invalid Twilio signature');\n  }\n  if (b.AccountSid !== TW.accountSid) return reject(403, 'request is not for this Twilio account');\n  if (event === 'status') {\n    if (!/^(SM|MM)[0-9a-f]{32}$/.test(clean(b.MessageSid))) return reject(400, 'MessageSid is missing');\n    return [{ json: { ok: true, event: 'status', status: { sid: clean(b.MessageSid), status: clean(b.MessageStatus).toLowerCase(), errorCode: clean(b.ErrorCode) || null },\n      formula: \"{Provider Message ID}='\" + formulaText(b.MessageSid) + \"'\" } }];\n  }\n  reply = { from: clean(b.From), text: clean(b.Body), sid: clean(b.MessageSid) || null, demo: false };\n} else reply = { from: clean(b.from), text: clean(b.text), sid: null, demo: b.demo === true };\nconst email = normEmail(reply.from); const phone = normPhone(reply.from);\nconst text = reply.text.slice(0, 2000);\nconst errors = [];\nif (!email && !phone) errors.push('from must be the sender phone number or email address');\nif (!text) errors.push('text is required');\nif (errors.length) return reject(400, errors.join('; '));\nreturn [{ json: { ok: true, event: 'message', reply: { from: email || phone, channel: email ? 'Email' : 'SMS', text: text, sid: reply.sid, demo: reply.demo },\n  contactFormula: email ? \"LOWER({Email})='\" + formulaText(email) + \"'\" : \"{Phone Normalized}='\" + formulaText(phone) + \"'\" } }];"
+      }
+    },
+    {
+      "id": "b6bdf6fd-ad4c-4132-a926-57b7b45849a6",
+      "name": "Request Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        520,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "50c6fa56-cf81-4594-a857-3d4dcde8e6c6",
+      "name": "Respond Reply Rejected",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        780,
+        0
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.response.text }}",
+        "options": {
+          "responseCode": "={{ $json.response.status }}",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "content-type",
+                "value": "text/xml; charset=utf-8"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "08dc4f90-c467-48ad-ab69-0a9b582a6a54",
+      "name": "Delivery Receipt?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        780,
+        180
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.event === 'status' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "5a0f6210-6936-4460-a9c5-35f83d254903",
+      "name": "Find Sent Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1040,
+        0
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.airtable.com/v0/appZZEXAMPLE00001/Plumbing%20Messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filterByFormula",
+              "value": "={{ $json.formula }}"
+            },
+            {
+              "name": "pageSize",
+              "value": "100"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "ZZExampleAirtab1",
+          "name": "ZZ example Airtable token"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "865d2ea3-cd29-42bf-ace6-31827ff927c2",
+      "name": "Apply Delivery Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nconst TABLE_URL = {\"contacts\":\"https://api.airtable.com/v0/appZZEXAMPLE00001/Plumbing%20Contacts\",\"properties\":\"https://api.airtable.com/v0/appZZEXAMPLE00001/Plumbing%20Sites\",\"jobs\":\"https://api.airtable.com/v0/appZZEXAMPLE00001/Plumbing%20Jobs\",\"quotes\":\"https://api.airtable.com/v0/appZZEXAMPLE00001/Plumbing%20Quotes\",\"messages\":\"https://api.airtable.com/v0/appZZEXAMPLE00001/Plumbing%20Messages\",\"alerts\":\"https://api.airtable.com/v0/appZZEXAMPLE00001/Plumbing%20Alerts\"};\nconst NOW = new Date();\nconst iso = (d) => new Date(d).toISOString();\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\nconst chunk = (list, n) => { const out = []; for (let i = 0; i < list.length; i += n) out.push(list.slice(i, i + n)); return out; };\n/** CRM updates ({ table, id, fields }) as Airtable PATCH requests: one per table and 10 records, updates to one record merged. */\nconst patches = (list) => {\n  const by = {};\n  for (const u of list) { const t = (by[u.table] = by[u.table] || {}); t[u.id] = Object.assign(t[u.id] || {}, u.fields); }\n  const items = [];\n  for (const table of Object.keys(by)) for (const part of chunk(Object.keys(by[table]), 10))\n    items.push({ url: TABLE_URL[table], request: { typecast: false, records: part.map((id) => ({ id: id, fields: by[table][id] })) } });\n  return items;\n};\n\nconst s = $('Verify Request').first().json.status;\nconst rows = records($input.first().json, 'find sent message');\nconst list = [];\nconst RANK = { Sending: 0, Unknown: 0, Sent: 1, Delivered: 2, Failed: 2 };\nfor (const r of rows) {\n  const f = r.fields || {};\n  let to = null;\n  if (s.status === 'delivered') to = 'Delivered';\n  else if (s.status === 'failed' || s.status === 'undelivered') to = 'Failed';\n  else if (s.status === 'sent') to = 'Sent';\n  if (!to || (RANK[f.Status] || 0) > RANK[to] || f.Status === to) continue;   // never downgrade (receipts can arrive out of order)\n  const fields = { Status: to };\n  if (to === 'Failed') { fields['Error Code'] = s.errorCode; fields.Reason = 'Twilio: ' + s.status + (s.errorCode ? ' (error ' + s.errorCode + ')' : ''); }\n  list.push({ table: 'messages', id: r.id, fields: fields });\n  if (s.errorCode === '21610' && (f.Contact || [])[0]) list.push({ table: 'contacts', id: f.Contact[0], fields: { 'Opted Out': true, 'Opted Out At': iso(NOW), 'Marketing Opt-In': false } });\n}\nconst items = patches(list);\nreturn items.length ? items.map((x) => ({ json: x })) : [{ json: { none: true } }];"
+      }
+    },
+    {
+      "id": "d25e2bb3-8dea-41d0-a78e-d0e97df1507c",
+      "name": "Status Changes?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1560,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.none !== true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "f570c1da-0809-4fe5-ab8f-051056ba78aa",
+      "name": "Write Delivery Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1820,
+        0
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.request) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "ZZExampleAirtab1",
+          "name": "ZZ example Airtable token"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "850ea895-6585-490e-a673-e22db91cb768",
+      "name": "Status Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n\nif ($('Write Delivery Status').isExecuted) $('Write Delivery Status').all().forEach((i) => records(i.json, 'write delivery status'));\nreturn [{ json: { response: { status: 200, body: { ok: true }, text: '<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>' } } }];"
+      }
+    },
+    {
+      "id": "e5ebcbcd-0d1a-4659-acda-42b92c409175",
+      "name": "Respond Reply Status",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2340,
+        0
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.response.text }}",
+        "options": {
+          "responseCode": "={{ $json.response.status }}",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "content-type",
+                "value": "text/xml; charset=utf-8"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "85f2a6f8-16ba-4fcf-ae1f-58785d0a6869",
+      "name": "Find Sender",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1040,
+        180
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.airtable.com/v0/appZZEXAMPLE00001/Plumbing%20Contacts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filterByFormula",
+              "value": "={{ $json.contactFormula }}"
+            },
+            {
+              "name": "pageSize",
+              "value": "100"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "ZZExampleAirtab1",
+          "name": "ZZ example Airtable token"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "f0b6b5e2-70eb-4f70-ab46-0f24e2213f72",
+      "name": "Sender Jobs Formula",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        180
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nconst clean = (s) => String(s == null ? '' : s).trim();\nconst formulaText = (s) => clean(s).replace(/[\\\\'\"{}]/g, '');\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n\n// The contact's jobs, through Airtable's back-link (Lite Contacts > Lite Jobs): also jobs that staff created by hand.\nconst c = records($input.first().json, 'find sender')[0];\nconst ids = c ? ((c.fields || {})['Lite Jobs'] || []) : [];\nreturn [{ json: { jobFormula: ids.length ? 'OR(' + ids.map((i) => \"RECORD_ID()='\" + formulaText(i) + \"'\").join(',') + ')' : 'FALSE()' } }];"
+      }
+    },
+    {
+      "id": "71c5d204-289e-4fc4-a685-5336957e3ca0",
+      "name": "Find Sender Jobs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1560,
+        180
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.airtable.com/v0/appZZEXAMPLE00001/Plumbing%20Jobs",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filterByFormula",
+              "value": "={{ $json.jobFormula }}"
+            },
+            {
+              "name": "pageSize",
+              "value": "100"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "ZZExampleAirtab1",
+          "name": "ZZ example Airtable token"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "379bb3d2-d02f-4949-a036-4add56b0c4f2",
+      "name": "Classify Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1820,
+        180
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nconst CFG = {\"replies\":{\"webhookPath\":\"zz-plumbing/sms\",\"optOutKeywords\":[\"STOP\",\"STOPALL\",\"UNSUBSCRIBE\",\"OPT OUT\",\"OPTOUT\",\"CANCEL\",\"QUIT\",\"END\",\"REMOVE\"]},\"messaging\":{\"mode\":\"twilio\",\"provider\":\"twilio\",\"twilio\":{\"accountSid\":\"AC00000000000000000000000000000000\",\"from\":\"+61491570006\",\"messagingServiceSid\":null,\"credential\":{\"id\":\"ZZExampleTwilio1\",\"name\":\"ZZ example Twilio API key\"},\"inboundAuth\":\"signature\",\"signatureVariable\":\"LITE_TWILIO_AUTH_TOKEN\",\"inboundCredential\":null,\"allowedRecipients\":[\"+61491570156\",\"+61491570157\",\"+61491570158\",\"+61491570159\",\"+61491570110\"],\"allowAllRecipients\":false}}};\nconst NOW = new Date();\nconst iso = (d) => new Date(d).toISOString();\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\nconst logRef = (prefix) => prefix + '-' + iso(NOW).replace(/[-:TZ.]/g, '').slice(0, 14) + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();\n\nconst R = $('Verify Request').first().json.reply;\nconst contact = records($('Find Sender').first().json, 'find sender')[0] || null;\nconst jobs = records($input.first().json, 'find sender jobs');\nconst words = R.text.toUpperCase().replace(/[^A-Z ]/g, ' ').split(' ').filter(Boolean).join(' ');\nconst optOut = CFG.replies.optOutKeywords.some((k) => words === k || words.indexOf(k + ' ') === 0);\nconst optIn = !optOut && (words === 'START' || words === 'UNSTOP');\nconst recent = (x) => Date.parse((x.fields || {})['Lead Received At'] || '') || 0;\nconst open = jobs.filter((j) => ['Paid', 'Lost', 'Completed', 'Invoiced'].indexOf((j.fields || {}).Stage) < 0).sort((a, b) => recent(b) - recent(a));\nconst job = open[0] || null;\nconst contactUpdate = contact && optOut ? { typecast: false, records: [{ id: contact.id, fields: { 'Opted Out': true, 'Opted Out At': iso(NOW), 'Marketing Opt-In': false } }] } : null;\nconst jf = { 'Last Activity At': iso(NOW) };\nif (job && job.fields.Stage === 'New Lead') jf.Stage = 'Contacted';\nconst jobUpdate = job && contact && !optOut && !optIn ? { typecast: false, records: [{ id: job.id, fields: jf }] } : null;\nconst reason = !contact ? 'sender is not in the CRM' : optOut ? 'contact opted out of all messages'\n  : optIn ? 'asked to receive messages again: staff must confirm and untick Opted Out (Lite never does this automatically)' : 'reply recorded; enquiry reopened for a call';\nconst lf = { 'Log Ref': logRef('IN'), Workflow: 'Inbound Reply', Purpose: 'Inbound', Channel: R.channel, To: 'from ' + R.from, Body: R.text,\n  Status: optOut ? 'Opt-Out' : 'Received', Reason: reason, 'Dedupe Key': 'reply:' + (R.sid || R.from + ':' + iso(NOW)), 'Provider Message ID': R.sid,\n  Provider: CFG.messaging.provider, 'Attempted At': iso(NOW), 'Demo Data': R.demo };\nif (contact) lf.Contact = [contact.id];\nif (job) lf.Job = [job.id];\nreturn [{ json: { known: !!contact, optOut: optOut, contactUpdate: contactUpdate, jobUpdate: jobUpdate, hasContactUpdate: !!contactUpdate, hasJobUpdate: !!jobUpdate,\n  job_ref: job ? job.fields['Job Ref'] : null, log: { typecast: false, records: [{ fields: lf }] } } }];"
+      }
+    },
+    {
+      "id": "fc6ae079-a682-48df-a24a-fc2b6630e925",
+      "name": "Opt Out Contact?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2080,
+        180
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.hasContactUpdate }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "490ab08e-4851-43e6-a880-ff9acc63e78c",
+      "name": "Opt Out Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2340,
+        180
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "https://api.airtable.com/v0/appZZEXAMPLE00001/Plumbing%20Contacts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Classify Reply').first().json.contactUpdate) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "ZZExampleAirtab1",
+          "name": "ZZ example Airtable token"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "b3c14d98-42f4-4d09-a413-2f2a507024a8",
+      "name": "After Contact",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2600,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n\nif ($('Opt Out Contact').isExecuted) records($('Opt Out Contact').first().json, 'opt out contact');\nreturn [{ json: { hasJobUpdate: $('Classify Reply').first().json.hasJobUpdate } }];"
+      }
+    },
+    {
+      "id": "3ec75b8f-e4be-485b-a815-2844a730a734",
+      "name": "Reopen Job?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2860,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.hasJobUpdate }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "ba4bb1c6-142b-4ad1-a8e4-9f97218c44e5",
+      "name": "Reopen Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        3120,
+        0
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "https://api.airtable.com/v0/appZZEXAMPLE00001/Plumbing%20Jobs",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Classify Reply').first().json.jobUpdate) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "ZZExampleAirtab1",
+          "name": "ZZ example Airtable token"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "673d279a-c54c-4486-a6be-298a0d83fde0",
+      "name": "Log Reply Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3380,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n\nif ($('Reopen Job').isExecuted) records($('Reopen Job').first().json, 'reopen job');\nreturn [{ json: { request: $('Classify Reply').first().json.log } }];"
+      }
+    },
+    {
+      "id": "d1c527f5-0697-4b8c-ae60-f61c19aea764",
+      "name": "Write Reply Log",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        3640,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.airtable.com/v0/appZZEXAMPLE00001/Plumbing%20Messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.request) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "ZZExampleAirtab1",
+          "name": "ZZ example Airtable token"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "33b5d816-b4b8-4472-aec2-9c70a05fea41",
+      "name": "Reply Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3900,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n\nrecords($input.first().json, 'write reply log');\nconst c = $('Classify Reply').first().json;\n// Twilio gets an empty TwiML answer (nothing is sent back to the person); other callers get JSON.\nreturn [{ json: { response: { status: 200, body: { ok: true, known_contact: c.known, opted_out: c.optOut, job_ref: c.job_ref },\n  text: '<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>' } } }];"
+      }
+    },
+    {
+      "id": "56464f19-76d5-49e0-acfb-db5b8b942396",
+      "name": "Respond Reply",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        4160,
+        0
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.response.text }}",
+        "options": {
+          "responseCode": "={{ $json.response.status }}",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "content-type",
+                "value": "text/xml; charset=utf-8"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Reply Webhook": {
+      "main": [
+        [
+          {
+            "node": "Verify Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Sent Message": {
+      "main": [
+        [
+          {
+            "node": "Apply Delivery Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Delivery Status": {
+      "main": [
+        [
+          {
+            "node": "Status Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status Changes?": {
+      "main": [
+        [
+          {
+            "node": "Write Delivery Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply Delivery Status": {
+      "main": [
+        [
+          {
+            "node": "Status Changes?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delivery Receipt?": {
+      "main": [
+        [
+          {
+            "node": "Find Sent Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Find Sender",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Sender": {
+      "main": [
+        [
+          {
+            "node": "Sender Jobs Formula",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sender Jobs Formula": {
+      "main": [
+        [
+          {
+            "node": "Find Sender Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Sender Jobs": {
+      "main": [
+        [
+          {
+            "node": "Classify Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Opt Out Contact": {
+      "main": [
+        [
+          {
+            "node": "After Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Opt Out Contact?": {
+      "main": [
+        [
+          {
+            "node": "Opt Out Contact",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "After Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Reply": {
+      "main": [
+        [
+          {
+            "node": "Opt Out Contact?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Request Valid?": {
+      "main": [
+        [
+          {
+            "node": "Delivery Receipt?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Reply Rejected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Request": {
+      "main": [
+        [
+          {
+            "node": "Request Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Reply Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reopen Job": {
+      "main": [
+        [
+          {
+            "node": "Log Reply Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reopen Job?": {
+      "main": [
+        [
+          {
+            "node": "Reopen Job",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Reply Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "After Contact": {
+      "main": [
+        [
+          {
+            "node": "Reopen Job?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Reply Request": {
+      "main": [
+        [
+          {
+            "node": "Write Reply Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Reply Log": {
+      "main": [
+        [
+          {
+            "node": "Reply Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reply Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Australia/Sydney",
+    "saveManualExecutions": true,
+    "errorWorkflow": "ZZExampleMonitr1"
+  },
+  "pinData": {},
+  "tags": [],
+  "meta": {
+    "generatedBy": "lite/build.ts",
+    "templateCredsSetupCompleted": false
+  }
+}

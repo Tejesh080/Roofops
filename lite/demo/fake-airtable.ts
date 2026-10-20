@@ -90,7 +90,11 @@ export class FakeAirtable {
     }
     if (req.method === 'POST') return { statusCode: 200, body: { records: body.records.map((r) => this.insert(key, r.fields)) } };
     if (req.method === 'PATCH') {
-      const recs = body.records.map((r) => { const rec = tab.get(r.id!)!; Object.assign(rec.fields, r.fields); return rec; });
+      const recs = body.records.map((r) => {
+        const rec = tab.get(r.id!)!;
+        rec.fields = Object.fromEntries(Object.entries({ ...rec.fields, ...r.fields }).filter(([, v]) => v !== null && v !== undefined));   // null clears a field, as in Airtable
+        return rec;
+      });
       this.syncInverses();
       return { statusCode: 200, body: { records: recs.map((r) => structuredClone(r)) } };
     }

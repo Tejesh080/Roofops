@@ -34,4 +34,6 @@ lite/dist/other/
 lite/dist/cap/
 lite/demo/output/workflows/
 lite/demo/output/airtable-after.json
+lite/demo/output-twilio/workflows/
+lite/demo/output-twilio/airtable-after.json
 lite/**/*.tmp.ts

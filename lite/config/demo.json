@@ -17,19 +17,42 @@
       "properties": "Lite Properties",
       "jobs": "Lite Jobs",
       "quotes": "Lite Quotes",
-      "messages": "Lite Message Log"
+      "messages": "Lite Message Log",
+      "alerts": "Lite Alerts"
     }
+  },
+  "n8n": {
+    "baseUrl": "https://tejesh08.app.n8n.cloud",
+    "errorWorkflowId": null
   },
   "messaging": {
     "mode": "test-sink",
-    "provider": "lite-test-sink"
+    "provider": "lite-test-sink",
+    "twilio": null
+  },
+  "consent": {
+    "jurisdiction": "AU",
+    "formName": "Website form",
+    "reviewRequests": "express",
+    "wording": {
+      "service": "Contact me about this enquiry and my job.",
+      "reviews": "After the job, send me a link to leave a review.",
+      "marketing": "Send me occasional reminders and offers. I can reply STOP at any time."
+    }
   },
   "leadIntake": {
     "webhookPath": "roofops-lite/lead",
     "dedupeWindowDays": 30,
     "sms": "Hi {firstName}, thanks for contacting {businessName} about {service}. We've got your enquiry and will call you within one business day. Reply STOP to opt out.",
     "emailSubject": "We've received your enquiry - {businessName}",
-    "email": "Hi {firstName},\n\nThanks for getting in touch with {businessName} about {service}. We've received your enquiry and one of our team will contact you within one business day.\n\nIf it's urgent, call us on {businessPhone}.\n\n{signoff}"
+    "email": "Hi {firstName},\n\nThanks for getting in touch with {businessName} about {service}. We've received your enquiry and one of our team will contact you within one business day.\n\nIf it's urgent, call us on {businessPhone}.\n\n{signoff}",
+    "services": [
+      "Roof leak repair",
+      "Roof restoration",
+      "Gutter replacement",
+      "Roof inspection",
+      "Other"
+    ]
   },
   "reviews": {
     "googleReviewUrl": "https://g.page/r/EXAMPLE-REVIEW-ID/review",
@@ -37,7 +60,7 @@
     "maxPerRun": 20,
     "sms": "Hi {firstName}, thanks for choosing {businessName} for your {service}. If you're happy with the work, a quick Google review would really help us: {reviewUrl} Reply STOP to opt out.",
     "emailSubject": "How did we do? - {businessName}",
-    "email": "Hi {firstName},\n\nThanks for choosing {businessName} for your {service}. If you're happy with the result, we'd be grateful for a short Google review:\n{reviewUrl}\n\n{signoff}"
+    "email": "Hi {firstName},\n\nThanks for choosing {businessName} for your {service}. If you are happy with the result, we would be grateful for a short Google review:\n{reviewUrl}\n\n{signoff}\n\nReply STOP to stop these emails."
   },
   "reactivation": {
     "inactivityDays": 90,
@@ -56,13 +79,21 @@
     "webhookPath": "roofops-lite/reply",
     "optOutKeywords": [
       "STOP",
+      "STOPALL",
       "UNSUBSCRIBE",
       "OPT OUT",
       "OPTOUT",
       "CANCEL",
       "QUIT",
-      "END"
+      "END",
+      "REMOVE"
     ]
+  },
+  "monitoring": {
+    "everyHours": 2,
+    "stuckSendingMinutes": 15,
+    "staleLeadHours": 24,
+    "operatorPhone": null
   },
   "webhookAuth": null
 }

@@ -1,4 +1,8 @@
-# RoofOps Lite: cloud demo runbook
+# RoofOps Lite: cloud demo runbook (v1)
+
+> This is the v1 runbook, run and passed on 2026-10-20. v2 (consent evidence, Twilio, Monitor) adds steps and
+> changes some expected numbers: v2 skips contacts without recorded consent. See `cloud-v2-plan.md`; it is not run
+> yet.
 
 The real demonstration of all four Lite automations, against the existing Airtable base (`appMc8V0Wm29tEeHQ`) and
 n8n Cloud, with synthetic data only. It repeats the local demo (`npx tsx lite/demo/run-demo.ts`, report in

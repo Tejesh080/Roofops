@@ -1,0 +1,117 @@
+{
+  "business": {
+    "name": "ZZ Example Plumbing (test client)",
+    "trade": "plumbing",
+    "phone": "1300 000 001",
+    "signoff": "The ZZ Example Plumbing team",
+    "timezone": "Australia/Sydney"
+  },
+  "airtable": {
+    "baseId": "appZZEXAMPLE00001",
+    "credential": {
+      "id": "ZZExampleAirtab1",
+      "name": "ZZ example Airtable token"
+    },
+    "tables": {
+      "contacts": "Plumbing Contacts",
+      "properties": "Plumbing Sites",
+      "jobs": "Plumbing Jobs",
+      "quotes": "Plumbing Quotes",
+      "messages": "Plumbing Messages",
+      "alerts": "Plumbing Alerts"
+    }
+  },
+  "n8n": {
+    "baseUrl": "https://zz-example.app.n8n.cloud",
+    "errorWorkflowId": "ZZExampleMonitr1"
+  },
+  "messaging": {
+    "mode": "twilio",
+    "provider": "twilio",
+    "twilio": {
+      "accountSid": "AC00000000000000000000000000000000",
+      "from": "+61491570006",
+      "messagingServiceSid": null,
+      "credential": {
+        "id": "ZZExampleTwilio1",
+        "name": "ZZ example Twilio API key"
+      },
+      "inboundAuth": "signature",
+      "signatureVariable": "LITE_TWILIO_AUTH_TOKEN",
+      "inboundCredential": null,
+      "allowedRecipients": [
+        "+61491570156",
+        "+61491570157",
+        "+61491570158",
+        "+61491570159",
+        "+61491570110"
+      ],
+      "allowAllRecipients": false
+    }
+  },
+  "consent": {
+    "jurisdiction": "AU",
+    "formName": "Website form",
+    "reviewRequests": "express",
+    "wording": {
+      "service": "Contact me about this enquiry and my job.",
+      "reviews": "After the job, send me a link to leave a review.",
+      "marketing": "Send me occasional reminders and offers. I can reply STOP at any time."
+    }
+  },
+  "leadIntake": {
+    "webhookPath": "zz-plumbing/lead",
+    "dedupeWindowDays": 30,
+    "sms": "Hi {firstName}, thanks for contacting {businessName} about {service}. A plumber will call you today. Reply STOP to opt out.",
+    "emailSubject": "We've received your enquiry - {businessName}",
+    "email": "Hi {firstName},\n\nThanks for getting in touch with {businessName} about {service}. We've received your enquiry and one of our team will contact you within one business day.\n\nIf it's urgent, call us on {businessPhone}.\n\n{signoff}",
+    "services": [
+      "Blocked drain",
+      "Hot water",
+      "Leaking tap",
+      "Other"
+    ]
+  },
+  "reviews": {
+    "googleReviewUrl": "https://g.page/r/ZZ-EXAMPLE-PLUMBING/review",
+    "delayDays": 1,
+    "maxPerRun": 20,
+    "sms": "Hi {firstName}, thanks for choosing {businessName} for your {service}. If you're happy with the work, a quick Google review would really help us: {reviewUrl} Reply STOP to opt out.",
+    "emailSubject": "How did we do? - {businessName}",
+    "email": "Hi {firstName},\n\nThanks for choosing {businessName} for your {service}. If you are happy with the result, we would be grateful for a short Google review:\n{reviewUrl}\n\n{signoff}\n\nReply STOP to stop these emails."
+  },
+  "reactivation": {
+    "inactivityDays": 60,
+    "cooldownDays": 180,
+    "maxPerRun": 20,
+    "stages": [
+      "New Lead",
+      "Contacted",
+      "Quoted"
+    ],
+    "sms": "Hi {firstName}, it's {businessName}. You asked us about {service} a while ago - is it still on your list? Reply YES and we'll call you to book a free inspection. Reply STOP to opt out.",
+    "emailSubject": "Still thinking about your {service}? - {businessName}",
+    "email": "Hi {firstName},\n\nA while ago you asked {businessName} about {service}. If it's still on your list, just reply to this email and we'll book a free inspection at a time that suits you.\n\n{signoff}\n\nDon't want these emails? Reply STOP."
+  },
+  "replies": {
+    "webhookPath": "zz-plumbing/sms",
+    "optOutKeywords": [
+      "STOP",
+      "STOPALL",
+      "UNSUBSCRIBE",
+      "OPT OUT",
+      "OPTOUT",
+      "CANCEL",
+      "QUIT",
+      "END",
+      "REMOVE"
+    ]
+  },
+  "monitoring": {
+    "everyHours": 2,
+    "stuckSendingMinutes": 15,
+    "staleLeadHours": 24,
+    "operatorPhone": "+61491570110"
+  },
+  "webhookAuth": null
+}

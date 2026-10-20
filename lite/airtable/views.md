@@ -1,6 +1,7 @@
 # RoofOps Lite: the Quote-to-Paid CRM in Airtable
 
-The CRM is five Airtable tables (`lite/airtable/schema.json`) plus an Interface and views.
+The CRM is six Airtable tables (`lite/airtable/schema.json`: Contacts, Properties, Jobs, Quotes, Message Log, Alerts)
+plus an Interface and views.
 - **The Interface** ("Quote-to-Paid", below) can be created through the Airtable connector (`create_interface`,
   `create_page`, `publish_interface`). That is how the demo base got one, on 2026-10-20.
 - **Grid and Kanban views inside the tables** cannot be created through the API. Add them by hand if staff prefer
@@ -58,9 +59,10 @@ The demo base has the published Interface **"Lite Quote-to-Paid"** (`pbdAzDJhyiI
 | Overview | dashboard | One section per figure, each with its own record filter. **Numbers:** New leads (count, Stage is New Lead); To invoice (count, Completed and Not Invoiced); Owed (sum of Invoice Amount, Invoice Status Invoiced); Paid (sum, Invoice Status Paid); Logged messages. **Grids:** New leads, Latest messages. |
 | Pipeline | Kanban on Lite Jobs | Stacked by Stage, with a count per stack. Cards: Job Ref, Contact, Service, Last Activity At, Invoice Amount. Newest activity first. |
 | Jobs | grid on Lite Jobs | The nine job views above as tabs, except Pipeline. Row colour by Stage; sum of Invoice Amount. |
-| Message Log | grid | Grouped by Workflow, newest first. Tabs: Problems, Replies and opt-outs. |
-| Contacts | grid | Tabs: Do not contact, Marketing list. |
+| Message Log | grid | Grouped by Workflow, newest first. Columns include Purpose, Status, Error Code, Provider Message ID, Retry Requested (editable). Tabs: **Needs attention** (Status Failed or Unknown), Problems (Failed or Skipped), Replies and opt-outs. |
+| Contacts | grid | Columns include Consent SMS, Review Opt-In, Marketing Opt-In, Consent Source, Consent Recorded At, Opted Out. Tabs: Do not contact, Marketing list (Marketing Opt-In, a Consent Recorded At, not Opted Out), **Consent not recorded** (a box ticked but no Consent Recorded At). |
 | Quotes | grid | Sum of Amount, newest first. |
+| **Alerts** | grid on Lite Alerts | Open first, newest first; Status editable (Open / Resolved). Tabs: Open, Delivery, Leads and jobs, Workflow failures. Add an **Open alerts** number to the Overview. |
 
 A **Record review** page on Lite Jobs, for working through new leads, is a useful extra.
 

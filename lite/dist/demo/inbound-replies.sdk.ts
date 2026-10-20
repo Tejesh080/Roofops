@@ -13,18 +13,18 @@ const n0 = trigger({ type: "n8n-nodes-base.webhook", version: 2, config: {
   }
 } });
 
-// Validate Reply
+// Verify Request
 const n1 = node({ type: "n8n-nodes-base.code", version: 2, config: {
-  "name": "Validate Reply",
+  "name": "Verify Request",
   "parameters": {
     "mode": "runOnceForAllItems",
-    "jsCode": "\nconst clean = (s) => String(s == null ? '' : s).trim();\nconst formulaText = (s) => clean(s).replace(/[\\\\'\"{}]/g, '');\nconst normEmail = (s) => { const e = clean(s).toLowerCase(); return /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(e) ? e : ''; };\nconst normPhone = (s) => { let d = clean(s).replace(/[^0-9+]/g, ''); if (d.startsWith('+61')) d = '0' + d.slice(3); d = d.replace(/[^0-9]/g, ''); return /^0[2-478][0-9]{8}$/.test(d) ? d : ''; };\n\nconst b = ($input.first().json.body) || {};\nconst email = normEmail(b.from); const phone = normPhone(b.from);\nconst text = clean(b.text).slice(0, 2000);\nconst errors = [];\nif (!email && !phone) errors.push('from must be the sender phone number or email address');\nif (!text) errors.push('text is required');\nif (errors.length) return [{ json: { ok: false, response: { status: 400, body: { ok: false, errors: errors } } } }];\nreturn [{ json: { ok: true, reply: { from: email || phone, channel: email ? 'Email' : 'SMS', text: text, demo: b.demo === true },\n  contactFormula: email ? \"LOWER({Email})='\" + formulaText(email) + \"'\" : \"{Phone Normalized}='\" + formulaText(phone) + \"'\" } }];"
+    "jsCode": "\nconst CFG = {\"messaging\":{\"mode\":\"test-sink\",\"provider\":\"lite-test-sink\",\"twilio\":null},\"n8n\":{\"baseUrl\":\"https://tejesh08.app.n8n.cloud\",\"errorWorkflowId\":null},\"replies\":{\"webhookPath\":\"roofops-lite/reply\",\"optOutKeywords\":[\"STOP\",\"STOPALL\",\"UNSUBSCRIBE\",\"OPT OUT\",\"OPTOUT\",\"CANCEL\",\"QUIT\",\"END\",\"REMOVE\"]}};\nconst clean = (s) => String(s == null ? '' : s).trim();\nconst formulaText = (s) => clean(s).replace(/[\\\\'\"{}]/g, '');\nconst normEmail = (s) => { const e = clean(s).toLowerCase(); return /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(e) ? e : ''; };\nconst normPhone = (s) => { let d = clean(s).replace(/[^0-9+]/g, ''); if (d.startsWith('+61')) d = '0' + d.slice(3); d = d.replace(/[^0-9]/g, ''); return /^0[2-478][0-9]{8}$/.test(d) ? d : ''; };\n\nconst h = $input.first().json;\nconst b = h.body || {}; const q = h.query || {};\nconst TW = CFG.messaging.mode === 'twilio' ? CFG.messaging.twilio : null;\nconst reject = (status, why) => [{ json: { ok: false, response: { status: status, body: { ok: false, errors: [why] }, text: why } } }];\nlet reply;\nif (TW) {\n  const event = q.event === 'status' ? 'status' : 'message';\n  if (Object.keys(q).some((k) => k !== 'event')) return reject(403, 'unexpected query parameters');\n  if (TW.inboundAuth === 'signature') {\n    const secret = $vars[TW.signatureVariable];\n    if (!secret) return reject(503, 'Twilio signature secret is not configured (n8n Variable ' + TW.signatureVariable + ')');\n    // Twilio signs the exact URL it calls plus every POST parameter, sorted by name.\n    const url = CFG.n8n.baseUrl + '/webhook/' + CFG.replies.webhookPath + (event === 'status' ? '?event=status' : '');\n    const data = url + Object.keys(b).sort().map((k) => k + String(b[k])).join('');\n    const expected = require('crypto').createHmac('sha1', secret).update(data, 'utf8').digest('base64');\n    const got = String((h.headers || {})['x-twilio-signature'] || '');\n    let diff = got.length ^ expected.length;\n    for (let i = 0; i < Math.min(got.length, expected.length); i++) diff |= got.charCodeAt(i) ^ expected.charCodeAt(i);\n    if (!got || diff !== 0) return reject(403, 'invalid Twilio signature');\n  }\n  if (b.AccountSid !== TW.accountSid) return reject(403, 'request is not for this Twilio account');\n  if (event === 'status') {\n    if (!/^(SM|MM)[0-9a-f]{32}$/.test(clean(b.MessageSid))) return reject(400, 'MessageSid is missing');\n    return [{ json: { ok: true, event: 'status', status: { sid: clean(b.MessageSid), status: clean(b.MessageStatus).toLowerCase(), errorCode: clean(b.ErrorCode) || null },\n      formula: \"{Provider Message ID}='\" + formulaText(b.MessageSid) + \"'\" } }];\n  }\n  reply = { from: clean(b.From), text: clean(b.Body), sid: clean(b.MessageSid) || null, demo: false };\n} else reply = { from: clean(b.from), text: clean(b.text), sid: null, demo: b.demo === true };\nconst email = normEmail(reply.from); const phone = normPhone(reply.from);\nconst text = reply.text.slice(0, 2000);\nconst errors = [];\nif (!email && !phone) errors.push('from must be the sender phone number or email address');\nif (!text) errors.push('text is required');\nif (errors.length) return reject(400, errors.join('; '));\nreturn [{ json: { ok: true, event: 'message', reply: { from: email || phone, channel: email ? 'Email' : 'SMS', text: text, sid: reply.sid, demo: reply.demo },\n  contactFormula: email ? \"LOWER({Email})='\" + formulaText(email) + \"'\" : \"{Phone Normalized}='\" + formulaText(phone) + \"'\" } }];"
   }
 } });
 
-// Reply Valid?
+// Request Valid?
 const n2 = ifElse({ version: 2.3, config: {
-  "name": "Reply Valid?",
+  "name": "Request Valid?",
   "parameters": {
     "conditions": {
       "options": {
@@ -58,8 +58,154 @@ const n3 = node({ type: "n8n-nodes-base.respondToWebhook", version: 1.1, config:
   }
 } });
 
+// Delivery Receipt?
+const n4 = ifElse({ version: 2.3, config: {
+  "name": "Delivery Receipt?",
+  "parameters": {
+    "conditions": {
+      "options": {
+        "caseSensitive": true,
+        "leftValue": "",
+        "typeValidation": "loose"
+      },
+      "conditions": [{
+        "leftValue": expr("{{ $json.event === 'status' }}"),
+        "rightValue": true,
+        "operator": {
+          "type": "boolean",
+          "operation": "true",
+          "singleValue": true
+        }
+      }],
+      "combinator": "and"
+    }
+  }
+} });
+
+// Find Sent Message
+const n5 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
+  "name": "Find Sent Message",
+  "onError": "continueRegularOutput",
+  "parameters": {
+    "method": "GET",
+    "url": "https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Message%20Log",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "airtableTokenApi",
+    "sendQuery": true,
+    "queryParameters": {
+      "parameters": [{
+        "name": "filterByFormula",
+        "value": expr("{{ $json.formula }}")
+      }, {
+        "name": "pageSize",
+        "value": "100"
+      }]
+    },
+    "options": {
+      "response": {
+        "response": {
+          "fullResponse": true,
+          "neverError": true
+        }
+      },
+      "timeout": 20000
+    }
+  },
+  "credentials": {
+    "airtableTokenApi": {
+      "id": "3XbFnHjAd7mFvBD2",
+      "name": "Roofops Airtable Personal Access Token account"
+    }
+  }
+} });
+
+// Apply Delivery Status
+const n6 = node({ type: "n8n-nodes-base.code", version: 2, config: {
+  "name": "Apply Delivery Status",
+  "parameters": {
+    "mode": "runOnceForAllItems",
+    "jsCode": "\nconst TABLE_URL = {\"contacts\":\"https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Contacts\",\"properties\":\"https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Properties\",\"jobs\":\"https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Jobs\",\"quotes\":\"https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Quotes\",\"messages\":\"https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Message%20Log\",\"alerts\":\"https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Alerts\"};\nconst NOW = new Date();\nconst iso = (d) => new Date(d).toISOString();\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\nconst chunk = (list, n) => { const out = []; for (let i = 0; i < list.length; i += n) out.push(list.slice(i, i + n)); return out; };\n/** CRM updates ({ table, id, fields }) as Airtable PATCH requests: one per table and 10 records, updates to one record merged. */\nconst patches = (list) => {\n  const by = {};\n  for (const u of list) { const t = (by[u.table] = by[u.table] || {}); t[u.id] = Object.assign(t[u.id] || {}, u.fields); }\n  const items = [];\n  for (const table of Object.keys(by)) for (const part of chunk(Object.keys(by[table]), 10))\n    items.push({ url: TABLE_URL[table], request: { typecast: false, records: part.map((id) => ({ id: id, fields: by[table][id] })) } });\n  return items;\n};\n\nconst s = $('Verify Request').first().json.status;\nconst rows = records($input.first().json, 'find sent message');\nconst list = [];\nconst RANK = { Sending: 0, Unknown: 0, Sent: 1, Delivered: 2, Failed: 2 };\nfor (const r of rows) {\n  const f = r.fields || {};\n  let to = null;\n  if (s.status === 'delivered') to = 'Delivered';\n  else if (s.status === 'failed' || s.status === 'undelivered') to = 'Failed';\n  else if (s.status === 'sent') to = 'Sent';\n  if (!to || (RANK[f.Status] || 0) > RANK[to] || f.Status === to) continue;   // never downgrade (receipts can arrive out of order)\n  const fields = { Status: to };\n  if (to === 'Failed') { fields['Error Code'] = s.errorCode; fields.Reason = 'Twilio: ' + s.status + (s.errorCode ? ' (error ' + s.errorCode + ')' : ''); }\n  list.push({ table: 'messages', id: r.id, fields: fields });\n  if (s.errorCode === '21610' && (f.Contact || [])[0]) list.push({ table: 'contacts', id: f.Contact[0], fields: { 'Opted Out': true, 'Opted Out At': iso(NOW), 'Marketing Opt-In': false } });\n}\nconst items = patches(list);\nreturn items.length ? items.map((x) => ({ json: x })) : [{ json: { none: true } }];"
+  }
+} });
+
+// Status Changes?
+const n7 = ifElse({ version: 2.3, config: {
+  "name": "Status Changes?",
+  "parameters": {
+    "conditions": {
+      "options": {
+        "caseSensitive": true,
+        "leftValue": "",
+        "typeValidation": "loose"
+      },
+      "conditions": [{
+        "leftValue": expr("{{ $json.none !== true }}"),
+        "rightValue": true,
+        "operator": {
+          "type": "boolean",
+          "operation": "true",
+          "singleValue": true
+        }
+      }],
+      "combinator": "and"
+    }
+  }
+} });
+
+// Write Delivery Status
+const n8 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
+  "name": "Write Delivery Status",
+  "onError": "continueRegularOutput",
+  "parameters": {
+    "method": "PATCH",
+    "url": expr("{{ $json.url }}"),
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "airtableTokenApi",
+    "sendBody": true,
+    "contentType": "json",
+    "specifyBody": "json",
+    "jsonBody": expr("{{ JSON.stringify($json.request) }}"),
+    "options": {
+      "response": {
+        "response": {
+          "fullResponse": true,
+          "neverError": true
+        }
+      },
+      "timeout": 20000
+    }
+  },
+  "credentials": {
+    "airtableTokenApi": {
+      "id": "3XbFnHjAd7mFvBD2",
+      "name": "Roofops Airtable Personal Access Token account"
+    }
+  }
+} });
+
+// Status Response
+const n9 = node({ type: "n8n-nodes-base.code", version: 2, config: {
+  "name": "Status Response",
+  "parameters": {
+    "mode": "runOnceForAllItems",
+    "jsCode": "\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n\nif ($('Write Delivery Status').isExecuted) $('Write Delivery Status').all().forEach((i) => records(i.json, 'write delivery status'));\nreturn [{ json: { response: { status: 200, body: { ok: true }, text: '<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>' } } }];"
+  }
+} });
+
+// Respond Reply Status
+const n10 = node({ type: "n8n-nodes-base.respondToWebhook", version: 1.1, config: {
+  "name": "Respond Reply Status",
+  "parameters": {
+    "respondWith": "json",
+    "responseBody": expr("{{ JSON.stringify($json.response.body) }}"),
+    "options": {
+      "responseCode": expr("{{ $json.response.status }}")
+    }
+  }
+} });
+
 // Find Sender
-const n4 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
+const n11 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
   "name": "Find Sender",
   "onError": "continueRegularOutput",
   "parameters": {
@@ -96,7 +242,7 @@ const n4 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
 } });
 
 // Sender Jobs Formula
-const n5 = node({ type: "n8n-nodes-base.code", version: 2, config: {
+const n12 = node({ type: "n8n-nodes-base.code", version: 2, config: {
   "name": "Sender Jobs Formula",
   "parameters": {
     "mode": "runOnceForAllItems",
@@ -105,7 +251,7 @@ const n5 = node({ type: "n8n-nodes-base.code", version: 2, config: {
 } });
 
 // Find Sender Jobs
-const n6 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
+const n13 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
   "name": "Find Sender Jobs",
   "onError": "continueRegularOutput",
   "parameters": {
@@ -142,16 +288,16 @@ const n6 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
 } });
 
 // Classify Reply
-const n7 = node({ type: "n8n-nodes-base.code", version: 2, config: {
+const n14 = node({ type: "n8n-nodes-base.code", version: 2, config: {
   "name": "Classify Reply",
   "parameters": {
     "mode": "runOnceForAllItems",
-    "jsCode": "\nconst CFG = {\"business\":{\"name\":\"Harbourside Roofing (Lite demo)\",\"trade\":\"roofing\",\"phone\":\"1300 000 000\",\"signoff\":\"The Harbourside Roofing team\",\"timezone\":\"Australia/Brisbane\"},\"airtable\":{\"baseId\":\"appMc8V0Wm29tEeHQ\",\"credential\":{\"id\":\"3XbFnHjAd7mFvBD2\",\"name\":\"Roofops Airtable Personal Access Token account\"},\"tables\":{\"contacts\":\"Lite Contacts\",\"properties\":\"Lite Properties\",\"jobs\":\"Lite Jobs\",\"quotes\":\"Lite Quotes\",\"messages\":\"Lite Message Log\"}},\"messaging\":{\"mode\":\"test-sink\",\"provider\":\"lite-test-sink\"},\"leadIntake\":{\"webhookPath\":\"roofops-lite/lead\",\"dedupeWindowDays\":30,\"sms\":\"Hi {firstName}, thanks for contacting {businessName} about {service}. We've got your enquiry and will call you within one business day. Reply STOP to opt out.\",\"emailSubject\":\"We've received your enquiry - {businessName}\",\"email\":\"Hi {firstName},\\n\\nThanks for getting in touch with {businessName} about {service}. We've received your enquiry and one of our team will contact you within one business day.\\n\\nIf it's urgent, call us on {businessPhone}.\\n\\n{signoff}\"},\"reviews\":{\"googleReviewUrl\":\"https://g.page/r/EXAMPLE-REVIEW-ID/review\",\"delayDays\":2,\"maxPerRun\":20,\"sms\":\"Hi {firstName}, thanks for choosing {businessName} for your {service}. If you're happy with the work, a quick Google review would really help us: {reviewUrl} Reply STOP to opt out.\",\"emailSubject\":\"How did we do? - {businessName}\",\"email\":\"Hi {firstName},\\n\\nThanks for choosing {businessName} for your {service}. If you're happy with the result, we'd be grateful for a short Google review:\\n{reviewUrl}\\n\\n{signoff}\"},\"reactivation\":{\"inactivityDays\":90,\"cooldownDays\":180,\"maxPerRun\":20,\"stages\":[\"New Lead\",\"Contacted\",\"Quoted\"],\"sms\":\"Hi {firstName}, it's {businessName}. You asked us about {service} a while ago - is it still on your list? Reply YES and we'll call you to book a free inspection. Reply STOP to opt out.\",\"emailSubject\":\"Still thinking about your {service}? - {businessName}\",\"email\":\"Hi {firstName},\\n\\nA while ago you asked {businessName} about {service}. If it's still on your list, just reply to this email and we'll book a free inspection at a time that suits you.\\n\\n{signoff}\\n\\nDon't want these emails? Reply STOP.\"},\"replies\":{\"webhookPath\":\"roofops-lite/reply\",\"optOutKeywords\":[\"STOP\",\"UNSUBSCRIBE\",\"OPT OUT\",\"OPTOUT\",\"CANCEL\",\"QUIT\",\"END\"]},\"webhookAuth\":null};\nconst NOW = new Date();\nconst iso = (d) => new Date(d).toISOString();\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\nconst logRef = (prefix) => prefix + '-' + iso(NOW).replace(/[-:TZ.]/g, '').slice(0, 14) + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();\n\nconst R = $('Validate Reply').first().json.reply;\nconst contact = records($('Find Sender').first().json, 'find sender')[0] || null;\nconst jobs = records($input.first().json, 'find sender jobs');\nconst words = R.text.toUpperCase().replace(/[^A-Z ]/g, ' ').split(' ').filter(Boolean).join(' ');\nconst optOut = CFG.replies.optOutKeywords.some((k) => words === k || words.indexOf(k + ' ') === 0);\nconst recent = (x) => Date.parse((x.fields || {})['Lead Received At'] || '') || 0;\nconst open = jobs.filter((j) => ['Paid', 'Lost', 'Completed', 'Invoiced'].indexOf((j.fields || {}).Stage) < 0).sort((a, b) => recent(b) - recent(a));\nconst job = open[0] || null;\nconst contactUpdate = contact && optOut ? { typecast: false, records: [{ id: contact.id, fields: { 'Opted Out': true, 'Opted Out At': iso(NOW), 'Marketing Opt-In': false } }] } : null;\nconst jf = { 'Last Activity At': iso(NOW) };\nif (job && job.fields.Stage === 'New Lead') jf.Stage = 'Contacted';\nconst jobUpdate = job && contact && !optOut ? { typecast: false, records: [{ id: job.id, fields: jf }] } : null;\nconst lf = { 'Log Ref': logRef('IN'), Workflow: 'Inbound Reply', Channel: R.channel, To: 'from ' + R.from, Body: R.text,\n  Status: optOut ? 'Opt-Out' : 'Received', Reason: !contact ? 'sender is not in the CRM' : optOut ? 'contact opted out of all messages' : 'reply recorded; enquiry reopened for a call',\n  'Dedupe Key': 'reply:' + R.from + ':' + iso(NOW), Provider: CFG.messaging.provider, 'Attempted At': iso(NOW), 'Demo Data': R.demo };\nif (contact) lf.Contact = [contact.id];\nif (job) lf.Job = [job.id];\nreturn [{ json: { known: !!contact, optOut: optOut, contactUpdate: contactUpdate, jobUpdate: jobUpdate, hasContactUpdate: !!contactUpdate, hasJobUpdate: !!jobUpdate,\n  job_ref: job ? job.fields['Job Ref'] : null, log: { typecast: false, records: [{ fields: lf }] } } }];"
+    "jsCode": "\nconst CFG = {\"replies\":{\"webhookPath\":\"roofops-lite/reply\",\"optOutKeywords\":[\"STOP\",\"STOPALL\",\"UNSUBSCRIBE\",\"OPT OUT\",\"OPTOUT\",\"CANCEL\",\"QUIT\",\"END\",\"REMOVE\"]},\"messaging\":{\"mode\":\"test-sink\",\"provider\":\"lite-test-sink\",\"twilio\":null}};\nconst NOW = new Date();\nconst iso = (d) => new Date(d).toISOString();\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\nconst logRef = (prefix) => prefix + '-' + iso(NOW).replace(/[-:TZ.]/g, '').slice(0, 14) + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();\n\nconst R = $('Verify Request').first().json.reply;\nconst contact = records($('Find Sender').first().json, 'find sender')[0] || null;\nconst jobs = records($input.first().json, 'find sender jobs');\nconst words = R.text.toUpperCase().replace(/[^A-Z ]/g, ' ').split(' ').filter(Boolean).join(' ');\nconst optOut = CFG.replies.optOutKeywords.some((k) => words === k || words.indexOf(k + ' ') === 0);\nconst optIn = !optOut && (words === 'START' || words === 'UNSTOP');\nconst recent = (x) => Date.parse((x.fields || {})['Lead Received At'] || '') || 0;\nconst open = jobs.filter((j) => ['Paid', 'Lost', 'Completed', 'Invoiced'].indexOf((j.fields || {}).Stage) < 0).sort((a, b) => recent(b) - recent(a));\nconst job = open[0] || null;\nconst contactUpdate = contact && optOut ? { typecast: false, records: [{ id: contact.id, fields: { 'Opted Out': true, 'Opted Out At': iso(NOW), 'Marketing Opt-In': false } }] } : null;\nconst jf = { 'Last Activity At': iso(NOW) };\nif (job && job.fields.Stage === 'New Lead') jf.Stage = 'Contacted';\nconst jobUpdate = job && contact && !optOut && !optIn ? { typecast: false, records: [{ id: job.id, fields: jf }] } : null;\nconst reason = !contact ? 'sender is not in the CRM' : optOut ? 'contact opted out of all messages'\n  : optIn ? 'asked to receive messages again: staff must confirm and untick Opted Out (Lite never does this automatically)' : 'reply recorded; enquiry reopened for a call';\nconst lf = { 'Log Ref': logRef('IN'), Workflow: 'Inbound Reply', Purpose: 'Inbound', Channel: R.channel, To: 'from ' + R.from, Body: R.text,\n  Status: optOut ? 'Opt-Out' : 'Received', Reason: reason, 'Dedupe Key': 'reply:' + (R.sid || R.from + ':' + iso(NOW)), 'Provider Message ID': R.sid,\n  Provider: CFG.messaging.provider, 'Attempted At': iso(NOW), 'Demo Data': R.demo };\nif (contact) lf.Contact = [contact.id];\nif (job) lf.Job = [job.id];\nreturn [{ json: { known: !!contact, optOut: optOut, contactUpdate: contactUpdate, jobUpdate: jobUpdate, hasContactUpdate: !!contactUpdate, hasJobUpdate: !!jobUpdate,\n  job_ref: job ? job.fields['Job Ref'] : null, log: { typecast: false, records: [{ fields: lf }] } } }];"
   }
 } });
 
 // Opt Out Contact?
-const n8 = ifElse({ version: 2.3, config: {
+const n15 = ifElse({ version: 2.3, config: {
   "name": "Opt Out Contact?",
   "parameters": {
     "conditions": {
@@ -175,7 +321,7 @@ const n8 = ifElse({ version: 2.3, config: {
 } });
 
 // Opt Out Contact
-const n9 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
+const n16 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
   "name": "Opt Out Contact",
   "onError": "continueRegularOutput",
   "parameters": {
@@ -206,7 +352,7 @@ const n9 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
 } });
 
 // After Contact
-const n10 = node({ type: "n8n-nodes-base.code", version: 2, config: {
+const n17 = node({ type: "n8n-nodes-base.code", version: 2, config: {
   "name": "After Contact",
   "parameters": {
     "mode": "runOnceForAllItems",
@@ -215,7 +361,7 @@ const n10 = node({ type: "n8n-nodes-base.code", version: 2, config: {
 } });
 
 // Reopen Job?
-const n11 = ifElse({ version: 2.3, config: {
+const n18 = ifElse({ version: 2.3, config: {
   "name": "Reopen Job?",
   "parameters": {
     "conditions": {
@@ -239,7 +385,7 @@ const n11 = ifElse({ version: 2.3, config: {
 } });
 
 // Reopen Job
-const n12 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
+const n19 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
   "name": "Reopen Job",
   "onError": "continueRegularOutput",
   "parameters": {
@@ -270,7 +416,7 @@ const n12 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
 } });
 
 // Log Reply Request
-const n13 = node({ type: "n8n-nodes-base.code", version: 2, config: {
+const n20 = node({ type: "n8n-nodes-base.code", version: 2, config: {
   "name": "Log Reply Request",
   "parameters": {
     "mode": "runOnceForAllItems",
@@ -279,7 +425,7 @@ const n13 = node({ type: "n8n-nodes-base.code", version: 2, config: {
 } });
 
 // Write Reply Log
-const n14 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
+const n21 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
   "name": "Write Reply Log",
   "onError": "continueRegularOutput",
   "parameters": {
@@ -310,16 +456,16 @@ const n14 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
 } });
 
 // Reply Response
-const n15 = node({ type: "n8n-nodes-base.code", version: 2, config: {
+const n22 = node({ type: "n8n-nodes-base.code", version: 2, config: {
   "name": "Reply Response",
   "parameters": {
     "mode": "runOnceForAllItems",
-    "jsCode": "\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n\nrecords($input.first().json, 'write reply log');\nconst c = $('Classify Reply').first().json;\nreturn [{ json: { response: { status: 200, body: { ok: true, known_contact: c.known, opted_out: c.optOut, job_ref: c.job_ref } } } }];"
+    "jsCode": "\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n\nrecords($input.first().json, 'write reply log');\nconst c = $('Classify Reply').first().json;\n// Twilio gets an empty TwiML answer (nothing is sent back to the person); other callers get JSON.\nreturn [{ json: { response: { status: 200, body: { ok: true, known_contact: c.known, opted_out: c.optOut, job_ref: c.job_ref },\n  text: '<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>' } } }];"
   }
 } });
 
 // Respond Reply
-const n16 = node({ type: "n8n-nodes-base.respondToWebhook", version: 1.1, config: {
+const n23 = node({ type: "n8n-nodes-base.respondToWebhook", version: 1.1, config: {
   "name": "Respond Reply",
   "parameters": {
     "respondWith": "json",
@@ -332,17 +478,23 @@ const n16 = node({ type: "n8n-nodes-base.respondToWebhook", version: 1.1, config
 
 export default workflow("roofops-lite-inbound-replies", "[Lite] Inbound Replies")
   .add(n0).to(n1)
-  .add(n4).to(n5)
   .add(n5).to(n6)
+  .add(n8).to(n9)
   .add(n6).to(n7)
-  .add(n9).to(n10)
-  .add(n7).to(n8)
-  .add(n1).to(n2)
+  .add(n11).to(n12)
   .add(n12).to(n13)
-  .add(n10).to(n11)
   .add(n13).to(n14)
+  .add(n16).to(n17)
   .add(n14).to(n15)
-  .add(n15).to(n16)
+  .add(n1).to(n2)
+  .add(n9).to(n10)
+  .add(n19).to(n20)
+  .add(n17).to(n18)
+  .add(n20).to(n21)
+  .add(n21).to(n22)
+  .add(n22).to(n23)
   .add(n2.onTrue(n4).onFalse(n3))
-  .add(n8.onTrue(n9).onFalse(n10))
-  .add(n11.onTrue(n12).onFalse(n13));
+  .add(n4.onTrue(n5).onFalse(n11))
+  .add(n7.onTrue(n8).onFalse(n9))
+  .add(n15.onTrue(n16).onFalse(n17))
+  .add(n18.onTrue(n19).onFalse(n20));

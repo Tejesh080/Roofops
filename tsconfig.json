@@ -34,6 +34,7 @@
     "scripts/phase0-*.mjs",
     "lite/n8n",
     "lite/dist",
-    "lite/demo/output"
+    "lite/demo/output",
+    "lite/demo/output-twilio"
   ]
 }

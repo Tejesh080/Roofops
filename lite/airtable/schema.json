@@ -1,88 +1,483 @@
 {
-  "note": "RoofOps Lite CRM. Five isolated tables, all prefixed 'Lite'; Advanced RoofOps tables and statuses are untouched. Field names are the contract the Lite workflows use. Create with lite/airtable/setup.ts (dry run by default).",
+  "note": "RoofOps Lite CRM. Six isolated tables, all prefixed Lite; Advanced RoofOps tables and statuses are untouched. Field names are the contract the Lite workflows use. Create with lite/airtable/setup.ts (dry run by default; --upgrade adds what an older Lite base lacks).",
   "tables": [
     {
-      "key": "contacts", "name": "Lite Contacts", "description": "People who contacted the business. Consent and opt-out fields gate every message.",
+      "key": "contacts",
+      "name": "Lite Contacts",
+      "description": "People who contacted the business. Consent and opt-out fields gate every message.",
       "fields": [
-        { "name": "Name", "type": "singleLineText", "primary": true },
-        { "name": "First Name", "type": "singleLineText" },
-        { "name": "Email", "type": "email" },
-        { "name": "Phone", "type": "phoneNumber" },
-        { "name": "Phone Normalized", "type": "singleLineText", "description": "Digits only, national format (e.g. 0412345678). Used for de-duplication." },
-        { "name": "Suburb", "type": "singleLineText" },
-        { "name": "Source", "type": "singleSelect", "options": ["Website", "Facebook", "Google", "Referral", "Phone", "Other"] },
-        { "name": "Preferred Channel", "type": "singleSelect", "options": ["SMS", "Email"] },
-        { "name": "Consent SMS", "type": "checkbox", "description": "May receive service SMS (acknowledgements, review requests)." },
-        { "name": "Consent Email", "type": "checkbox", "description": "May receive service email." },
-        { "name": "Marketing Opt-In", "type": "checkbox", "description": "Explicitly agreed to follow-up / marketing messages (required for reactivation)." },
-        { "name": "Opted Out", "type": "checkbox", "description": "Replied STOP or asked not to be contacted. Blocks every message." },
-        { "name": "Opted Out At", "type": "dateTime" },
-        { "name": "Lite Jobs", "type": "multipleRecordLinks", "linksTo": "jobs", "inverseOf": "Contact", "description": "Created by Airtable as the other side of Lite Jobs > Contact (keep this name). The workflows find a contact's jobs through it." },
-        { "name": "Demo Data", "type": "checkbox", "description": "Synthetic record created for the Lite demo." },
-        { "name": "Notes", "type": "multilineText" }
+        {
+          "name": "Name",
+          "type": "singleLineText",
+          "primary": true
+        },
+        {
+          "name": "First Name",
+          "type": "singleLineText"
+        },
+        {
+          "name": "Email",
+          "type": "email"
+        },
+        {
+          "name": "Phone",
+          "type": "phoneNumber"
+        },
+        {
+          "name": "Phone Normalized",
+          "type": "singleLineText",
+          "description": "Digits only, national format (e.g. 0412345678). Used for de-duplication."
+        },
+        {
+          "name": "Suburb",
+          "type": "singleLineText"
+        },
+        {
+          "name": "Source",
+          "type": "singleSelect",
+          "options": [
+            "Website",
+            "Facebook",
+            "Google",
+            "Referral",
+            "Phone",
+            "Other"
+          ]
+        },
+        {
+          "name": "Preferred Channel",
+          "type": "singleSelect",
+          "options": [
+            "SMS",
+            "Email"
+          ]
+        },
+        {
+          "name": "Consent SMS",
+          "type": "checkbox",
+          "description": "May receive service SMS (acknowledgements, review requests)."
+        },
+        {
+          "name": "Consent Email",
+          "type": "checkbox",
+          "description": "May receive service email."
+        },
+        {
+          "name": "Marketing Opt-In",
+          "type": "checkbox",
+          "description": "Explicitly agreed to follow-up / marketing messages (required for reactivation)."
+        },
+        {
+          "name": "Review Opt-In",
+          "type": "checkbox",
+          "description": "Agreed to be asked for a review after a finished job. Needed for review requests when consent.reviewRequests is \"express\" (the Australian default)."
+        },
+        {
+          "name": "Opted Out",
+          "type": "checkbox",
+          "description": "Replied STOP or asked not to be contacted. Blocks every message."
+        },
+        {
+          "name": "Opted Out At",
+          "type": "dateTime"
+        },
+        {
+          "name": "Consent Source",
+          "type": "singleLineText",
+          "description": "Where the consent above was given, e.g. \"Website form (roofops-lite/lead)\" or \"Phone call with Sam\". Review requests and marketing need this and Consent Recorded At."
+        },
+        {
+          "name": "Consent Recorded At",
+          "type": "dateTime",
+          "description": "When the consent boxes were given. Set by Lead Follow-Up; staff set it when they record consent themselves. Never backfill it without evidence."
+        },
+        {
+          "name": "Consent Wording",
+          "type": "multilineText",
+          "description": "The exact wording the person agreed to."
+        },
+        {
+          "name": "Lite Jobs",
+          "type": "multipleRecordLinks",
+          "linksTo": "jobs",
+          "inverseOf": "Contact",
+          "description": "Created by Airtable as the other side of Lite Jobs > Contact (keep this name). The workflows find a contact's jobs through it."
+        },
+        {
+          "name": "Demo Data",
+          "type": "checkbox",
+          "description": "Synthetic record created for the Lite demo."
+        },
+        {
+          "name": "Notes",
+          "type": "multilineText"
+        }
       ]
     },
     {
-      "key": "properties", "name": "Lite Properties", "description": "Job sites.",
+      "key": "properties",
+      "name": "Lite Properties",
+      "description": "Job sites.",
       "fields": [
-        { "name": "Address", "type": "singleLineText", "primary": true },
-        { "name": "Suburb", "type": "singleLineText" },
-        { "name": "Postcode", "type": "singleLineText" },
-        { "name": "Contact", "type": "multipleRecordLinks", "linksTo": "contacts" },
-        { "name": "Demo Data", "type": "checkbox" }
+        {
+          "name": "Address",
+          "type": "singleLineText",
+          "primary": true
+        },
+        {
+          "name": "Suburb",
+          "type": "singleLineText"
+        },
+        {
+          "name": "Postcode",
+          "type": "singleLineText"
+        },
+        {
+          "name": "Contact",
+          "type": "multipleRecordLinks",
+          "linksTo": "contacts"
+        },
+        {
+          "name": "Demo Data",
+          "type": "checkbox"
+        }
       ]
     },
     {
-      "key": "jobs", "name": "Lite Jobs", "description": "One row per enquiry, carried through the whole journey: New Lead -> Contacted -> Quoted -> Accepted -> Job In Progress -> Completed -> Invoiced -> Paid.",
+      "key": "jobs",
+      "name": "Lite Jobs",
+      "description": "One row per enquiry, carried through the whole journey: New Lead -> Contacted -> Quoted -> Accepted -> Job In Progress -> Completed -> Invoiced -> Paid.",
       "fields": [
-        { "name": "Job Ref", "type": "singleLineText", "primary": true },
-        { "name": "Contact", "type": "multipleRecordLinks", "linksTo": "contacts" },
-        { "name": "Property", "type": "multipleRecordLinks", "linksTo": "properties" },
-        { "name": "Stage", "type": "singleSelect", "options": ["New Lead", "Contacted", "Quoted", "Accepted", "Job In Progress", "Completed", "Invoiced", "Paid", "Lost"] },
-        { "name": "Service", "type": "singleLineText" },
-        { "name": "Enquiry Message", "type": "multilineText" },
-        { "name": "Source", "type": "singleSelect", "options": ["Website", "Facebook", "Google", "Referral", "Phone", "Other"] },
-        { "name": "Lead Received At", "type": "dateTime" },
-        { "name": "Last Activity At", "type": "dateTime" },
-        { "name": "Completed At", "type": "dateTime" },
-        { "name": "Invoice Status", "type": "singleSelect", "options": ["Not Invoiced", "Invoiced", "Paid"] },
-        { "name": "Invoice Amount", "type": "currency" },
-        { "name": "Review Status", "type": "singleSelect", "options": ["Sent", "Skipped"] },
-        { "name": "Review Requested At", "type": "dateTime" },
-        { "name": "Review Skip Reason", "type": "singleLineText" },
-        { "name": "Reactivation Sent At", "type": "dateTime" },
-        { "name": "Reactivation Count", "type": "number" },
-        { "name": "Demo Data", "type": "checkbox" }
+        {
+          "name": "Job Ref",
+          "type": "singleLineText",
+          "primary": true
+        },
+        {
+          "name": "Contact",
+          "type": "multipleRecordLinks",
+          "linksTo": "contacts"
+        },
+        {
+          "name": "Property",
+          "type": "multipleRecordLinks",
+          "linksTo": "properties"
+        },
+        {
+          "name": "Stage",
+          "type": "singleSelect",
+          "options": [
+            "New Lead",
+            "Contacted",
+            "Quoted",
+            "Accepted",
+            "Job In Progress",
+            "Completed",
+            "Invoiced",
+            "Paid",
+            "Lost"
+          ]
+        },
+        {
+          "name": "Service",
+          "type": "singleLineText"
+        },
+        {
+          "name": "Enquiry Message",
+          "type": "multilineText"
+        },
+        {
+          "name": "Source",
+          "type": "singleSelect",
+          "options": [
+            "Website",
+            "Facebook",
+            "Google",
+            "Referral",
+            "Phone",
+            "Other"
+          ]
+        },
+        {
+          "name": "Lead Received At",
+          "type": "dateTime"
+        },
+        {
+          "name": "Last Activity At",
+          "type": "dateTime"
+        },
+        {
+          "name": "Completed At",
+          "type": "dateTime"
+        },
+        {
+          "name": "Invoice Status",
+          "type": "singleSelect",
+          "options": [
+            "Not Invoiced",
+            "Invoiced",
+            "Paid"
+          ]
+        },
+        {
+          "name": "Invoice Amount",
+          "type": "currency"
+        },
+        {
+          "name": "Review Status",
+          "type": "singleSelect",
+          "options": [
+            "Sent",
+            "Skipped"
+          ]
+        },
+        {
+          "name": "Review Requested At",
+          "type": "dateTime"
+        },
+        {
+          "name": "Review Skip Reason",
+          "type": "singleLineText"
+        },
+        {
+          "name": "Reactivation Sent At",
+          "type": "dateTime"
+        },
+        {
+          "name": "Reactivation Count",
+          "type": "number"
+        },
+        {
+          "name": "Demo Data",
+          "type": "checkbox"
+        }
       ]
     },
     {
-      "key": "quotes", "name": "Lite Quotes", "description": "Quotations for a job (status tracking only in Lite).",
+      "key": "quotes",
+      "name": "Lite Quotes",
+      "description": "Quotations for a job (status tracking only in Lite).",
       "fields": [
-        { "name": "Quote Ref", "type": "singleLineText", "primary": true },
-        { "name": "Job", "type": "multipleRecordLinks", "linksTo": "jobs" },
-        { "name": "Amount", "type": "currency" },
-        { "name": "Status", "type": "singleSelect", "options": ["Draft", "Sent", "Accepted", "Declined"] },
-        { "name": "Sent At", "type": "dateTime" },
-        { "name": "Accepted At", "type": "dateTime" },
-        { "name": "Demo Data", "type": "checkbox" }
+        {
+          "name": "Quote Ref",
+          "type": "singleLineText",
+          "primary": true
+        },
+        {
+          "name": "Job",
+          "type": "multipleRecordLinks",
+          "linksTo": "jobs"
+        },
+        {
+          "name": "Amount",
+          "type": "currency"
+        },
+        {
+          "name": "Status",
+          "type": "singleSelect",
+          "options": [
+            "Draft",
+            "Sent",
+            "Accepted",
+            "Declined"
+          ]
+        },
+        {
+          "name": "Sent At",
+          "type": "dateTime"
+        },
+        {
+          "name": "Accepted At",
+          "type": "dateTime"
+        },
+        {
+          "name": "Demo Data",
+          "type": "checkbox"
+        }
       ]
     },
     {
-      "key": "messages", "name": "Lite Message Log", "description": "Every attempted, skipped, failed or received message. Lite sends through a test sink: nothing reaches a real phone or inbox.",
+      "key": "messages",
+      "name": "Lite Message Log",
+      "description": "Every attempted, skipped, failed or received message, with its delivery result. A message is written here (Status Sending) before it is sent, so a retry or a second run never sends it twice.",
       "fields": [
-        { "name": "Log Ref", "type": "singleLineText", "primary": true },
-        { "name": "Workflow", "type": "singleSelect", "options": ["Lead Follow-Up", "Review Request", "Reactivation", "Inbound Reply"] },
-        { "name": "Job", "type": "multipleRecordLinks", "linksTo": "jobs" },
-        { "name": "Contact", "type": "multipleRecordLinks", "linksTo": "contacts" },
-        { "name": "Channel", "type": "singleSelect", "options": ["SMS", "Email"] },
-        { "name": "To", "type": "singleLineText" },
-        { "name": "Body", "type": "multilineText" },
-        { "name": "Status", "type": "singleSelect", "options": ["Simulated Sent", "Skipped", "Failed", "Received", "Opt-Out"] },
-        { "name": "Reason", "type": "singleLineText" },
-        { "name": "Dedupe Key", "type": "singleLineText" },
-        { "name": "Provider", "type": "singleLineText" },
-        { "name": "Attempted At", "type": "dateTime" },
-        { "name": "Demo Data", "type": "checkbox" }
+        {
+          "name": "Log Ref",
+          "type": "singleLineText",
+          "primary": true
+        },
+        {
+          "name": "Workflow",
+          "type": "singleSelect",
+          "options": [
+            "Lead Follow-Up",
+            "Review Request",
+            "Reactivation",
+            "Inbound Reply"
+          ]
+        },
+        {
+          "name": "Purpose",
+          "type": "singleSelect",
+          "options": [
+            "Operational",
+            "Review",
+            "Marketing",
+            "Inbound"
+          ],
+          "description": "Operational: reply to an enquiry. Review and Marketing are commercial messages and need express consent. Inbound: a reply from the person."
+        },
+        {
+          "name": "Job",
+          "type": "multipleRecordLinks",
+          "linksTo": "jobs"
+        },
+        {
+          "name": "Contact",
+          "type": "multipleRecordLinks",
+          "linksTo": "contacts"
+        },
+        {
+          "name": "Channel",
+          "type": "singleSelect",
+          "options": [
+            "SMS",
+            "Email"
+          ]
+        },
+        {
+          "name": "To",
+          "type": "singleLineText"
+        },
+        {
+          "name": "Body",
+          "type": "multilineText"
+        },
+        {
+          "name": "Status",
+          "type": "singleSelect",
+          "options": [
+            "Simulated Sent",
+            "Sending",
+            "Sent",
+            "Delivered",
+            "Skipped",
+            "Failed",
+            "Unknown",
+            "Received",
+            "Opt-Out"
+          ]
+        },
+        {
+          "name": "Reason",
+          "type": "singleLineText"
+        },
+        {
+          "name": "Dedupe Key",
+          "type": "singleLineText"
+        },
+        {
+          "name": "Provider",
+          "type": "singleLineText"
+        },
+        {
+          "name": "Provider Message ID",
+          "type": "singleLineText",
+          "description": "Twilio Message SID (SM...), or SIM... for the test sink."
+        },
+        {
+          "name": "Error Code",
+          "type": "singleLineText",
+          "description": "Twilio error code (e.g. 21211 invalid number, 21610 unsubscribed) or http_<status> / timeout."
+        },
+        {
+          "name": "Attempts",
+          "type": "number"
+        },
+        {
+          "name": "Retry Requested",
+          "type": "checkbox",
+          "description": "Staff tick this on a Failed or Unknown message. [Lite] Monitor first checks with Twilio whether it was delivered, and only resends if it was not."
+        },
+        {
+          "name": "Retry Of",
+          "type": "singleLineText",
+          "description": "Log Ref of the message this one retries."
+        },
+        {
+          "name": "On Success",
+          "type": "multilineText",
+          "description": "Written by the workflows: the CRM updates to apply once this message is sent (used by retries). Do not edit."
+        },
+        {
+          "name": "Attempted At",
+          "type": "dateTime"
+        },
+        {
+          "name": "Demo Data",
+          "type": "checkbox"
+        }
+      ]
+    },
+    {
+      "key": "alerts",
+      "name": "Lite Alerts",
+      "description": "Problems for a person to look at: failed workflow runs, failed or unconfirmed messages, leads nobody contacted, finished jobs without a completion date. Raised by [Lite] Monitor.",
+      "fields": [
+        {
+          "name": "Alert Ref",
+          "type": "singleLineText",
+          "primary": true
+        },
+        {
+          "name": "Kind",
+          "type": "singleSelect",
+          "options": [
+            "Workflow Failed",
+            "Delivery Failed",
+            "Delivery Unknown",
+            "Stuck Lead",
+            "Incomplete Job"
+          ]
+        },
+        {
+          "name": "Status",
+          "type": "singleSelect",
+          "options": [
+            "Open",
+            "Resolved"
+          ]
+        },
+        {
+          "name": "Detail",
+          "type": "multilineText"
+        },
+        {
+          "name": "Workflow",
+          "type": "singleLineText"
+        },
+        {
+          "name": "Execution",
+          "type": "singleLineText",
+          "description": "n8n execution id or URL."
+        },
+        {
+          "name": "Record Ref",
+          "type": "singleLineText",
+          "description": "Log Ref or Job Ref the alert is about."
+        },
+        {
+          "name": "Dedupe Key",
+          "type": "singleLineText"
+        },
+        {
+          "name": "Raised At",
+          "type": "dateTime"
+        },
+        {
+          "name": "Demo Data",
+          "type": "checkbox"
+        }
       ]
     }
   ]

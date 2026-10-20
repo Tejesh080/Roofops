@@ -1,65 +1,86 @@
-# RoofOps Lite: deployment guide for a trade business
+# RoofOps Lite: installation guide for a trade business
 
-This guide sets up the four Lite automations for a new client: a roofer, plumber, electrician or any other trade. You get:
-- an Airtable Quote-to-Paid CRM (5 tables and an Interface);
-- the four n8n workflows: Instant Lead Follow-Up, Google Review Requests, Lead Reactivation and Inbound Replies.
+This guide sets up Lite for a new client. Steps marked **(cloud)** change the client's Airtable, n8n or Twilio and are
+done with the client's approval. Steps marked **(live)** send real SMS.
 
-The whole path was run end to end on 2026-10-20 against real Airtable and n8n Cloud. The evidence is in `evidence/lite-cloud-demo-20261020.md`.
+The one-page version is [SETUP-CHECKLIST.md](SETUP-CHECKLIST.md).
 
-**Time:** about 1.5 hours for a new client, plus the go-live items, which depend on the client.
+What gets installed:
+- an Airtable Quote-to-Paid CRM: 6 tables and an Interface;
+- five n8n workflows: Lead Follow-Up, Review Requests, Reactivation, Inbound Replies and Monitor;
+- a website enquiry form;
+- Twilio SMS.
 
-## 0. What you need from the client
+**Time:** about 2 hours, plus the client's Twilio number registration.
+
+## 0. From the client
 
 | Item | Used for |
 |---|---|
-| Business name, trade, phone, sign-off line, timezone | message templates |
-| Google review link (`https://g.page/r/<place-id>/review`) | review requests |
-| The wording they want, or approval of the defaults | all four messages |
-| How leads arrive (website form, Facebook lead ads, phone) | Lead Follow-Up webhook |
-| Their SMS or email provider account, before go-live | real sending (not part of Lite yet) |
-| Who may approve consent and opt-out changes | staff rules in the CRM |
+| Business name, trade, phone, sign-off, timezone | Templates, schedules |
+| Google review link (`https://g.page/r/<id>/review`) | Review requests |
+| Approved message wording and consent wording | Templates, the form, the consent record |
+| Whether review requests need a separate tick (Australia: yes by default) | `consent.reviewRequests` |
+| Who gets alert texts (operator mobile) | `monitoring.operatorPhone` |
+| A Twilio account in the business's name, with an Australian mobile number that can send and receive SMS | Real messaging |
 
-## 1. Accounts and isolation
+## 1. Accounts (cloud)
 
-- **Give every client their own Airtable base.** Don't add Lite tables to a base that other automations watch.
-  - In the RoofOps demo base, every Lite write woke the base-wide webhook of `[RoofOps] 06`. That workflow ignored the writes correctly, but it cost one n8n execution each.
-  - A dedicated base avoids this, and keeps client data apart.
-- **n8n:** use one project per client, or a folder in your own project.
-  - Create an **Airtable Personal Access Token** credential, scoped to the client's base only, with `data.records:read` and `data.records:write`.
-  - Note the credential's ID and name for the config.
-- **Optional, needed before go-live:** an n8n **Header Auth** credential to protect the two webhooks.
+**Airtable: one base for the client.** Don't add Lite to a base other automations watch. In the RoofOps demo base,
+every Lite write woke `[RoofOps] 06`; it ignored them, but each one cost an n8n execution.
 
-## 2. Config and build (your machine)
+**n8n: one project (or folder) for the client.** Create these credentials (Credentials › New):
+
+| Credential | Type | Value | Used by |
+|---|---|---|---|
+| Airtable | Airtable Personal Access Token | A token for the client's base only, with `data.records:read` and `data.records:write` | Every Airtable node |
+| Twilio (outbound) | **Basic Auth** | User: a Twilio **API Key SID** (SK…); password: its **Secret** | Sending SMS and checking delivery |
+| Twilio (inbound), signature mode | **n8n Variable** (Settings › Variables; n8n Cloud Pro or Enterprise) | `LITE_TWILIO_AUTH_TOKEN` = the Twilio account's **Auth Token** | Verifying Twilio's webhook signatures |
+| Twilio (inbound), basic-auth mode | **Basic Auth** | A username and long random password | Plans without Variables: the reply webhook requires this login, and Twilio's webhook URLs carry it |
+
+- **Twilio API key:** create it under Twilio Console › Account › API keys. Using a key keeps the main Auth Token out
+  of n8n's outbound credential.
+- **Secrets:** they live only in n8n credentials and variables. The repository and the generated workflows contain only
+  credential **ids and names**.
+
+**Twilio:**
+1. Buy or port an Australian mobile number. Australian numbers need a regulatory bundle.
+2. Under Messaging, set the number's **"A message comes in"** webhook to the reply URL (step 7). Leave it until then.
+
+## 2. Config (your machine)
 
 ```bash
 cp lite/config/template.json lite/config/acme-plumbing.json
 ```
 
-Edit the new file:
-- business details;
-- `airtable.baseId` and `airtable.credential`;
-- `reviews.googleReviewUrl`;
-- the message templates and thresholds;
-- unique webhook paths, for example `acme-plumbing-lite/lead`.
+Fill in every `<placeholder>`:
+- `business` (with `timezone`) and `airtable.baseId` / `airtable.credential` (id and name of the n8n credential);
+- `n8n.baseUrl`, for example `https://acme.app.n8n.cloud`;
+- `messaging.twilio`: `accountSid`, the sender `from` (+614…), the credential id and name, `inboundAuth` and its
+  secret source, and `allowedRecipients` (the approved test phone);
+- `consent.wording` and `consent.reviewRequests`;
+- `leadIntake.services`, the templates, the timings, and `monitoring`.
 
-Leave `messaging.mode` as `test-sink` until go-live.
+Keep `messaging.mode` at **`"test-sink"`** for now.
 
 ```bash
 npx tsx lite/build.ts lite/config/acme-plumbing.json
 ```
 
-The build refuses any `<placeholder>` left behind, a review message without `{reviewUrl}`, and a reactivation message without STOP. It writes `lite/dist/acme-plumbing/` with four `.sdk.ts` files and four importable `.json` files.
+The build refuses:
+- placeholders left behind;
+- templates without `{businessName}`, review templates without `{reviewUrl}`, review and marketing templates without
+  STOP;
+- an alphanumeric sender;
+- Twilio mode without an allowlist.
 
-## 3. Airtable tables
+It writes `lite/dist/acme-plumbing/`, with five `.json` imports, five `.sdk.ts` files and `lead-form.html`.
 
-Print the plan first. It changes nothing:
+## 3. Airtable tables (cloud)
+
 ```bash
 npx tsx lite/airtable/setup.ts lite/config/acme-plumbing.json
 ```
-
-Then use one of two routes.
-
-**Route A: token.** Create a personal access token for the client's base with `schema.bases:read` and `schema.bases:write`, then:
 ```bash
 LITE_AIRTABLE_TOKEN=... npx tsx lite/airtable/setup.ts lite/config/acme-plumbing.json --apply
 ```
@@ -67,70 +88,102 @@ LITE_AIRTABLE_TOKEN=... npx tsx lite/airtable/setup.ts lite/config/acme-plumbing
 LITE_AIRTABLE_TOKEN=... npx tsx lite/airtable/setup.ts lite/config/acme-plumbing.json --verify
 ```
 
-**Route B: Airtable connector.** This is the route used for the 2026-10-20 demo.
-1. Create the five tables in plan order, with the fields exactly as `fieldSpec` in `setup.ts` builds them.
-2. Then create the six link fields: Properties.Contact, Jobs.Contact, Jobs.Property, Quotes.Job, Messages.Job, Messages.Contact.
-3. Check that **Lite Contacts** now has the back-link **"Lite Jobs"**. The workflows depend on that name.
+- **Order:** the first command is a dry run; `--apply` creates; `--verify` checks.
+- **Token:** use one with `schema.bases:read` + `schema.bases:write` on that base only. Pass it in the environment and
+  never save it.
+- **Names:** tables get the names in `airtable.tables`. The back-link the workflows read is named "Lite Jobs".
+- **Older Lite base:** use `--upgrade`. It adds the missing table and fields only, and lists any select options to
+  add by hand.
+- **No token:** the Airtable connector can make the same calls, in the order the dry run prints.
 
-Either way, the tool only creates. It never changes or deletes an existing table.
+## 4. CRM Interface (cloud, about 10 minutes)
 
-## 4. CRM Interface (about 10 minutes)
+Build the **Quote-to-Paid** Interface as described in [airtable/views.md](airtable/views.md). With the Airtable
+connector, that is `create_interface`, one `create_page` per page, then `publish_interface`. Select choice IDs differ
+per base, so read them first with `get_table_schema`.
 
-Build the **Quote-to-Paid** Interface described in `lite/airtable/views.md`: Overview, Pipeline (Kanban by Stage), Jobs (with tabs), Message Log, Contacts and Quotes.
+## 5. Workflows (cloud, unpublished)
 
-With the Airtable connector this is six `create_page` calls and one `publish_interface`. The demo Interface `pbdAzDJhyiIb7CFZJ` is a working reference; copy its page settings. Choice IDs differ per base, so read them with `get_table_schema` first.
+1. **Import Monitor first:** Workflows › Import from File › `monitor.json`, or `create_workflow_from_code` with
+   `monitor.sdk.ts`. Note its id.
+2. **Rebuild with that id:** put it in `n8n.errorWorkflowId` and rebuild. The other four then name Monitor as their
+   **Error workflow**.
+3. **Import the other four.**
+4. **Check each workflow:**
+   - **Credentials:** every Airtable node shows the Airtable credential, and every Twilio node the Twilio Basic Auth
+     credential.
+   - **Settings:** the timezone is the client's, and four of the five name Monitor as error workflow.
+   - **Unpublished:** all five stay unpublished for now.
 
-## 5. n8n workflows (inactive)
+The import JSON already carries the timezone and the error workflow in its settings. If you create from `.sdk.ts`
+with the MCP tools instead, set them with `update_workflow` (`setWorkflowSettings`).
 
-For each file in `lite/dist/<client>/`, use one of two routes:
-- **n8n MCP tools:** `validate_workflow`, then `create_workflow_from_code` (with `projectId`).
-- **n8n UI:** Workflows › Import from File, using the `.json`.
+## 6. Test without real SMS
 
-Then check each workflow:
-- every Airtable HTTP node shows the client's Airtable credential;
-- the workflow is **unpublished**: `active: false`, no registered triggers.
+1. **Local:** run the client config locally. The test sink exercises every rule:
+   ```bash
+   npx tsx lite/demo/run-demo.ts lite/config/acme-plumbing.json lite/demo/output-acme
+   ```
+2. **(cloud) Test sink on n8n:** follow [demo/cloud-demo-runbook.md](demo/cloud-demo-runbook.md) with `ZZ`-named
+   synthetic people. Use manual executions (`execute_workflow`, `executionMode: manual`). Check the Message Log,
+   Pipeline and Alerts.
+3. **(cloud) Twilio, still without real SMS:** use Twilio **test credentials** (Console › Account › API keys › Test
+   credentials) in a separate n8n Basic Auth credential, with `from: "+15005550006"` (Twilio's magic test sender).
+   Switch the config to `"twilio"`, rebuild and re-import. Then:
+   - Twilio answers like the real API, but sends nothing and charges nothing.
+   - Lite logs the result as Sent.
+   - Delivery checks are not available with test credentials, so a retry check is "postponed". That is the designed
+     safe behaviour.
 
-Ignore the message "credentials must be configured manually" after an MCP create. The credential is set in the code, and the demo confirmed it was kept.
+## 7. First real SMS (live, one at a time, with approval)
 
-## 6. Test with synthetic data (still inactive)
+1. **Agree first:** the sender number, the **one** recipient (a phone the client holds), and the exact test with the
+   client.
+2. **Config:**
+   - real credentials, `from` = the client's Twilio number;
+   - `allowedRecipients = ["+614…the approved phone"]`;
+   - `allowAllRecipients: false`;
+   - mode `"twilio"`.
 
-Follow `lite/demo/cloud-demo-runbook.md`. For a new client, either load the demo records first (`seed-demo.ts`, or the connector route in the same link order), or use your own `ZZ`-named test people.
+   Rebuild and re-import.
+3. **Twilio webhook:** point the number's "A message comes in" at `https://<n8n>/webhook/<replies.webhookPath>`. In
+   basic-auth mode, the URL carries `user:password@`.
+4. **Publish only Inbound Replies.** It must receive Twilio's posts.
+   - Signature mode rejects anything unsigned.
+   - Basic-auth mode rejects anything without the login.
+5. **Send one lead** as a manual execution: the approved person, consent ticked. Check that:
+   - one SMS arrives;
+   - the log row is Sent with a SID;
+   - Delivered follows.
+6. **Reply STOP from that phone.** Check that the contact is Opted Out, then that a new lead from it is not messaged.
+7. **Refused number (optional):** a lead with a number on the allowlist that Twilio refuses gives a Failed row, a
+   Monitor alert, then Retry Requested.
 
-Run each case once as a **manual** execution:
-- n8n `execute_workflow` with `executionMode: manual`;
-- `triggerNodeName: "Lead Webhook"` or `"Reply Webhook"` with `inputs.webhookData.body`;
-- or `"Run Now"` for the scheduled workflows.
+## 8. Go live (client decision)
 
-Check the Message Log and the Pipeline after each case.
+1. **Recipients:** set `allowAllRecipients: true` (and leave the allowlist as a record of the tests). Rebuild and
+   re-import.
+2. **Form:** paste `lead-form.html` into the client's website, or point their form tool at the lead webhook.
+   - The form is public by nature. Validation, the hidden honeypot field and the de-duplication protect it.
+   - `webhookAuth` (Header Auth) is for server-to-server sources such as Zapier or Make, not a public page.
+3. **Publish, in this order:** Monitor, Inbound Replies, Lead Follow-Up, Review Requests, Lead Reactivation. The
+   schedules start in the business timezone: reviews daily at 10:00, reactivation Mondays at 09:00, Monitor every
+   `monitoring.everyHours`.
+4. **Clean up:** remove synthetic data from the Jobs page tab **Demo data**.
 
-**If a run fails:**
-1. Do not re-run it blindly. Open the execution; the error names the step (for example `create job: Airtable HTTP 422`).
-2. Check in Airtable what was already written.
-3. Re-run only once you know what the re-run will do.
-
-## 7. Go-live (client decision, one item at a time)
-
-1. **Real messages.** Choose the provider, for example Twilio for SMS or an email API, and create its n8n credential. Replace `deliver` in `lite/n8n/src/common.part.ts` with the provider call, set `messaging.mode` accordingly, rebuild and re-test. Lite has no live provider yet.
-2. **Webhook protection.** Set `webhookAuth` in the config to the Header Auth credential, then rebuild and replace the workflows. The form and provider must send the header. Never publish an unprotected webhook.
-3. **Review link and wording.** Use the client's real Google link and approved wording.
-4. **Lead source.** Point the website form, or the Facebook/Zapier bridge, at the production URL: `https://<n8n host>/webhook/<leadIntake.webhookPath>`. Point the provider's inbound reply webhook at `/webhook/<replies.webhookPath>`.
-5. **Publish** the four workflows. The schedules start: reviews daily at 10:00, reactivation weekly on Monday at 09:00, in the n8n instance timezone.
-6. **Remove the demo data:** the Jobs page tab **Demo data**.
-
-## 8. Handover to the client
+## 9. Handover
 
 Show staff:
-- the Pipeline, and how to move a job from Quoted to Paid;
-- where to set Completed At (review requests depend on it);
-- the "Do not contact" list.
-
-Their rules:
-- Never untick Opted Out unless the customer asks.
-- Don't rename tables or fields.
-- Consent is three separate boxes.
+- **Pipeline:** move a job Quoted → Paid; set **Completed At** (review requests need it).
+- **Consent:** record consent taken by phone (tick the boxes and fill Source, Recorded At, Wording). Never tick boxes
+  without it.
+- **Alerts:** on the Overview and Alerts pages. Fix the cause, tick **Retry Requested** on the message, then set the
+  alert to Resolved.
+- **Opt-outs:** the "Do not contact" list. Never untick Opted Out unless the person asks.
 
 ## Undo
 
 Nothing is deleted automatically.
-- **Workflows:** unpublish, then archive the four in n8n.
-- **Data:** in Airtable, delete records from the Demo data tab, or delete the five Lite tables and the Interface. A dedicated base can simply be deleted.
+- **n8n:** unpublish, then archive, the five workflows.
+- **Twilio:** remove the webhook URL from the number.
+- **Airtable:** delete the base, or the six tables and the Interface.

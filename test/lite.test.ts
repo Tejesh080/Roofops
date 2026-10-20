@@ -450,7 +450,8 @@ describe('G. Twilio: failed delivery is logged, raised and recoverable', () => {
     tat.insert('messages', { 'Log Ref': 'LM-STUCK', Workflow: 'Review Request', Purpose: 'Review', Status: 'Sending', 'Dedupe Key': 'review:stuck', To: '0400000109', Channel: 'SMS', 'Attempted At': new Date(Date.now() - 3600_000).toISOString() });
     expect(monitor()).toMatchObject({ stuck_sending: 1 });
     expect(tlog().find((x) => x['Log Ref'] === 'LM-STUCK')).toMatchObject({ Status: 'Unknown', 'Error Code': 'stuck' });
-    expect(tat.all('alerts').some((a) => a.fields.Kind === 'Delivery Unknown' && a.fields['Record Ref'] === 'LM-STUCK')).toBe(true);
+    const stuck = tat.all('alerts').find((a) => a.fields.Kind === 'Delivery Unknown' && a.fields['Record Ref'] === 'LM-STUCK');
+    expect(String(stuck?.fields.Detail)).toContain('has no confirmed result: no result recorded 15 minutes after sending started');   // found in the cloud run: the reason was empty
     const failure = { execution: { id: '9001', url: `${TW.n8n.baseUrl}/workflow/x/executions/9001`, lastNodeExecuted: 'Create Job', error: { message: 'create job: Airtable HTTP 503 down' }, mode: 'webhook' },
       workflow: { id: 'wfLead', name: '[Lite] Instant Lead Follow-Up' } };
     runError(twf.monitor, http, failure, { vars: VARS });

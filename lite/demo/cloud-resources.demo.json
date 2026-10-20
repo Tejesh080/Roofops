@@ -364,6 +364,68 @@
         "Consent": "pag0q8vdYb1EV4uBM",
         "Health": "pagOod6PdGcj7QYTE"
       }
+    },
+    "v2BatchB": {
+      "done": "2026-10-21 (AEST)",
+      "addedByHandForTests": {
+        "raceReservation": {
+          "id": "reciqaCGC6M9opyyt",
+          "logRef": "ZZ-RACE-PRE-0400000203",
+          "note": "a Sending reservation for the same Dedupe Key as Leo's acknowledgement, Attempted At 30 minutes earlier; linked to Leo's contact after his run; Retry Requested ticked before Monitor run 2"
+        },
+        "stuckCheckRow": {
+          "id": "rec3ipUyUZqMSByT1",
+          "logRef": "ZZ-STUCK-CHECK-0400000404",
+          "note": "a Sending row left as if a run stopped, to re-check the Monitor fix"
+        },
+        "imported": {
+          "contact": {
+            "name": "ZZ Lite Demo v2 Isla Grant",
+            "id": "reczJmwcreiBAkKZQ"
+          },
+          "job": {
+            "ref": "LJ-DEMO-V2-R2",
+            "id": "recYExbXt6F0CKPpN"
+          },
+          "case": "finished job, Review Opt-In ticked with no record: no review request expected"
+        }
+      },
+      "createdByWorkflows": {
+        "contacts": {
+          "ZZ Lite Demo v2 Chloe Hart": "recHopLza07WfmjNZ",
+          "ZZ Lite Demo v2 Leo Park": "recEHFllHr4jlI4uu"
+        },
+        "properties": [
+          "rec0hwxmqPKttb2SS"
+        ],
+        "jobs": {
+          "LJ-20261020-N5QH": "recETAaVH7atZ3R39",
+          "LJ-20261020-M7YJ": "recJeCoeoEOP5YmP1",
+          "LJ-20261020-VA6R": "recN0ILfSghajgtmj"
+        },
+        "alerts": [
+          "recPVzVdqAEZdyYYl",
+          "recjsLUJEvXcNWNcI",
+          "recrqbpkbF2ISiRt6"
+        ]
+      },
+      "counts": {
+        "before": {
+          "contacts": 17,
+          "properties": 17,
+          "jobs": 18,
+          "messages": 12,
+          "alerts": 0
+        },
+        "after": {
+          "contacts": 20,
+          "properties": 18,
+          "jobs": 22,
+          "messages": 23,
+          "alerts": 3
+        },
+        "advancedRecords": 234
+      }
     }
   },
   "n8n": {
@@ -372,25 +434,50 @@
       "id": "4kSuZdSc0Opp3juv",
       "name": "Roofops"
     },
-    "state": "all unpublished (active false, triggerCount 0)",
+    "state": "v2: five workflows, all unpublished (active false, triggerCount 0). v1: archived 2026-10-21 (reversible).",
     "workflows": {
-      "lead-follow-up": "6GlAPXRMVAEyK9pV",
-      "review-requests": "LdPy36pX3jKJxd2r",
-      "lead-reactivation": "ECE108TYrOoHsTQh",
-      "inbound-replies": "vc4DEkcDxXnEdLmr"
+      "monitor": "Tmk4lj7VrbHix9A9",
+      "lead-follow-up": "9BjHeFBUKqnmQqHl",
+      "review-requests": "WzFUcqFQnpEh309s",
+      "lead-reactivation": "FYc1hpB9RAcwg2SH",
+      "inbound-replies": "3Jeal7RQAhUmgLZ3"
     },
-    "executions": {
-      "3095": "Test 1 new lead",
-      "3100": "Test 2 duplicate",
-      "3102": "invalid lead (400)",
-      "3103": "lead without consent",
-      "3107": "Test 4 review run 1",
-      "3110": "Test 7 review run 2",
-      "3111": "Test 5 reactivation run 1",
-      "3114": "Test 7 reactivation run 2",
-      "3115": "Test 6 reply YES",
-      "3118": "Test 6 reply STOP",
-      "3121": "reactivation run 3 after replies"
+    "settings": "timezone Australia/Brisbane, saveManualExecutions true on all five; error workflow not set (n8n accepts Monitor only once it is published: set at go-live)",
+    "v2Executions": {
+      "3145": "A new lead with consent evidence (Chloe)",
+      "3151": "invalid lead (400)",
+      "3152": "C duplicate enquiry (Chloe again)",
+      "3154": "C race: pre-reserved Dedupe Key wins (Leo)",
+      "3161": "D review run 1",
+      "3165": "D review run 2 (nothing new)",
+      "3166": "E reactivation run",
+      "3170": "F STOP reply (Oscar)",
+      "3173": "F new enquiry after STOP: not acknowledged",
+      "3176": "G monitor run 1: stuck row -> Unknown, 2 alerts",
+      "3179": "G monitor run 2: Retry Requested -> one resend",
+      "3182": "G monitor run 3: nothing new",
+      "3183": "Monitor fix re-check: alert carries the reason"
+    },
+    "v1Archived": {
+      "workflows": {
+        "lead-follow-up": "6GlAPXRMVAEyK9pV",
+        "review-requests": "LdPy36pX3jKJxd2r",
+        "lead-reactivation": "ECE108TYrOoHsTQh",
+        "inbound-replies": "vc4DEkcDxXnEdLmr"
+      },
+      "executions": {
+        "3095": "Test 1 new lead",
+        "3100": "Test 2 duplicate",
+        "3102": "invalid lead (400)",
+        "3103": "lead without consent",
+        "3107": "Test 4 review run 1",
+        "3110": "Test 7 review run 2",
+        "3111": "Test 5 reactivation run 1",
+        "3114": "Test 7 reactivation run 2",
+        "3115": "Test 6 reply YES",
+        "3118": "Test 6 reply STOP",
+        "3121": "reactivation run 3 after replies"
+      }
     }
   }
 }

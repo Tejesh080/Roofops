@@ -40,13 +40,14 @@ const recent = (f, m) => NOW.getTime() - (Date.parse(f['Attempted At'] || m.crea
 const alert = (kind, ref, key, detail, demo, wf) => alerts.push({ 'Alert Ref': logRef('AL'), Kind: kind, Status: 'Open', Detail: detail, Workflow: wf || '', 'Record Ref': clean(ref),
   'Dedupe Key': key, 'Raised At': iso(NOW), 'Demo Data': !!demo });
 for (const m of msgs) {
-  const f = m.fields || {}; let status = f.Status; const ref = f['Log Ref'] || m.id;
+  const f = m.fields || {}; let status = f.Status; let reason = f.Reason; const ref = f['Log Ref'] || m.id;
   if (status === 'Sending' && NOW.getTime() - (Date.parse(f['Attempted At'] || m.createdTime) || 0) > M.stuckSendingMinutes * 60000) {
-    summary.stuck_sending++; status = 'Unknown';
-    updates.push({ table: 'messages', id: m.id, fields: { Status: 'Unknown', 'Error Code': 'stuck', Reason: 'no result recorded ' + M.stuckSendingMinutes + ' minutes after sending started: it may have been sent; check before retrying' } });
+    summary.stuck_sending++; status = 'Unknown';   // the alert below reports the reason written now, not the empty one read
+    reason = 'no result recorded ' + M.stuckSendingMinutes + ' minutes after sending started: it may have been sent; check before retrying';
+    updates.push({ table: 'messages', id: m.id, fields: { Status: 'Unknown', 'Error Code': 'stuck', Reason: reason } });
   }
-  if (status === 'Failed') { summary.failed++; if (recent(f, m)) alert('Delivery Failed', ref, 'msg:' + m.id + ':failed', f.Workflow + ' message to ' + clean(f.To) + ' failed: ' + clean(f.Reason || f['Error Code']) + '. Fix the cause, then tick Retry Requested.', f['Demo Data'], f.Workflow); }
-  if (status === 'Unknown') { summary.unknown++; if (recent(f, m)) alert('Delivery Unknown', ref, 'msg:' + m.id + ':unknown', f.Workflow + ' message to ' + clean(f.To) + ' has no confirmed result: ' + clean(f.Reason) + '. Tick Retry Requested: Lite checks with Twilio before resending.', f['Demo Data'], f.Workflow); }
+  if (status === 'Failed') { summary.failed++; if (recent(f, m)) alert('Delivery Failed', ref, 'msg:' + m.id + ':failed', f.Workflow + ' message to ' + clean(f.To) + ' failed: ' + clean(reason || f['Error Code']) + '. Fix the cause, then tick Retry Requested.', f['Demo Data'], f.Workflow); }
+  if (status === 'Unknown') { summary.unknown++; if (recent(f, m)) alert('Delivery Unknown', ref, 'msg:' + m.id + ':unknown', f.Workflow + ' message to ' + clean(f.To) + ' has no confirmed result: ' + clean(reason || f['Error Code']) + '. Tick Retry Requested: Lite checks with Twilio before resending.', f['Demo Data'], f.Workflow); }
   if (f['Retry Requested']) {
     summary.retry_requests++;
     const c = contacts[(f.Contact || [])[0]];

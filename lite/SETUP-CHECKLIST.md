@@ -28,7 +28,7 @@ Tick each line. Full detail: [DEPLOY.md](DEPLOY.md).
 ## n8n (cloud, all unpublished)
 - [ ] Monitor imported; its id in `n8n.errorWorkflowId`; rebuilt
 - [ ] The other four imported
-- [ ] Every node shows the right credential; timezone and error workflow set
+- [ ] Every node shows the right credential; timezone set (the error workflow comes at go-live: n8n needs Monitor published first)
 
 ## Tests without real SMS (cloud)
 - [ ] Cloud runbook with synthetic `ZZ` people: lead, duplicate, review, reactivation, STOP, monitor
@@ -45,5 +45,6 @@ Tick each line. Full detail: [DEPLOY.md](DEPLOY.md).
 - [ ] `allowAllRecipients: true`; rebuilt and re-imported
 - [ ] Website form live (lead-form.html or the form tool → lead webhook)
 - [ ] Publish: Monitor, Inbound Replies, Lead Follow-Up, Review Requests, Lead Reactivation
+- [ ] Error workflow = [Lite] Monitor on the other four; one deliberate production failure shows a Workflow Failed alert
 - [ ] Demo data removed
 - [ ] Staff shown: pipeline, Completed At, recording consent, alerts and Retry Requested, Do not contact

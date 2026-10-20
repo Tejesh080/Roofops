@@ -1,4 +1,4 @@
-# RoofOps Lite v2: cloud upgrade plan for the demo base (awaiting approval)
+# RoofOps Lite v2: cloud upgrade plan for the demo base (A and B done; C and D awaiting approval)
 
 This plan moves the cloud demo from Lite v1 (verified 2026-10-20, `evidence/lite-cloud-demo-20261020.md`) to v2:
 consent evidence, the send pipeline, Twilio (off by default), delivery receipts, and Monitor.
@@ -10,7 +10,7 @@ It is split into batches so that each can be approved on its own. No step touche
 |---|---|
 | A, B | Approved 2026-10-21 |
 | A | **Done** 2026-10-21 (`evidence/lite-v2-batch-a-20261021.md`). The four Status options were added through the API, using one labelled setup row, instead of by hand. |
-| B | **Waiting:** the n8n connector is disconnected from the working session. Reconnect it, or import the five JSON files by hand (below). |
+| B | **Done** 2026-10-21 (`evidence/lite-v2-batch-b-20261021.md`). Five v2 workflows unpublished; tests A, C, D, E, F and G passed on the test sink; v1 archived. One Monitor defect was found and fixed. The error workflow is set at go-live, because n8n needs Monitor published first. |
 | C, D | Not approved yet. |
 
 ## Batch A: Airtable additions (no messages, additive only)
@@ -46,6 +46,8 @@ Delivered, Unknown**. That takes about 1 minute; `setup.ts --verify` then confir
 
 - **Create** the five v2 workflows from `lite/dist/demo/*.sdk.ts`, unpublished, in the Roofops project. Set the
   timezone to Australia/Brisbane, and Monitor as the error workflow of the other four.
+  - **Found when doing it:** n8n refuses an error workflow that has no published version, so this waits for go-live
+    (`lite/DEPLOY.md` step 8).
 - **Archive** the four v1 Lite workflows (`6GlAPXRMVAEyK9pV`, `LdPy36pX3jKJxd2r`, `ECE108TYrOoHsTQh`,
   `vc4DEkcDxXnEdLmr`) once v2 passes. Archiving is reversible.
 - **Run the cloud acceptance tests as manual executions** (the runbook, extended):
@@ -68,7 +70,8 @@ Delivered, Unknown**. That takes about 1 minute; `setup.ts --verify` then confir
 In n8n (tejesh08.app.n8n.cloud), project Roofops:
 1. **Import Monitor:** Workflows › Import from File › `lite/dist/demo/monitor.json`. Leave it unpublished.
 2. **Import the other four:** `lead-follow-up.json`, `review-requests.json`, `lead-reactivation.json` and
-   `inbound-replies.json`, all unpublished. In each one's Settings, set **Error workflow** to [Lite] Monitor.
+   `inbound-replies.json`, all unpublished. The **Error workflow** setting needs Monitor published, so it is set at
+   go-live.
 3. **Check:** each Airtable node shows "Roofops Airtable Personal Access Token account".
 4. **Hand back:** reconnect the connector, or tell me the five ids. I then run the acceptance tests as manual
    executions (test sink: no SMS).

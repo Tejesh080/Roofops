@@ -107,16 +107,21 @@ per base, so read them first with `get_table_schema`.
 1. **Import Monitor first:** Workflows › Import from File › `monitor.json`, or `create_workflow_from_code` with
    `monitor.sdk.ts`. Note its id.
 2. **Rebuild with that id:** put it in `n8n.errorWorkflowId` and rebuild. The other four then name Monitor as their
-   **Error workflow**.
+   **Error workflow** in their exported settings.
 3. **Import the other four.**
 4. **Check each workflow:**
    - **Credentials:** every Airtable node shows the Airtable credential, and every Twilio node the Twilio Basic Auth
      credential.
-   - **Settings:** the timezone is the client's, and four of the five name Monitor as error workflow.
+   - **Settings:** the timezone is the client's.
    - **Unpublished:** all five stay unpublished for now.
 
-The import JSON already carries the timezone and the error workflow in its settings. If you create from `.sdk.ts`
-with the MCP tools instead, set them with `update_workflow` (`setWorkflowSettings`).
+The import JSON already carries the timezone in its settings. If you create from `.sdk.ts` with the MCP tools instead,
+set it with `update_workflow` (`setWorkflowSettings`).
+
+**The error workflow waits for go-live.** n8n accepts Monitor as another workflow's error workflow only once Monitor
+has a published version (seen in the 2026-10-21 cloud run: `update_workflow` refused it). It makes no difference
+before go-live, because n8n runs error workflows only for production executions. Set it in step 8, right after
+publishing Monitor.
 
 ## 6. Test without real SMS
 
@@ -169,7 +174,11 @@ with the MCP tools instead, set them with `update_workflow` (`setWorkflowSetting
 3. **Publish, in this order:** Monitor, Inbound Replies, Lead Follow-Up, Review Requests, Lead Reactivation. The
    schedules start in the business timezone: reviews daily at 10:00, reactivation Mondays at 09:00, Monitor every
    `monitoring.everyHours`.
-4. **Clean up:** remove synthetic data from the Jobs page tab **Demo data**.
+4. **Error workflow:** once Monitor is published, set **Error workflow** to [Lite] Monitor on the other four (Settings,
+   or `setWorkflowSettings` with `errorWorkflow`). Check it once by making one production run fail on purpose, for
+   example a lead posted while the Airtable credential is disconnected. A Workflow Failed row should appear in Lite
+   Alerts.
+5. **Clean up:** remove synthetic data from the Jobs page tab **Demo data**.
 
 ## 9. Handover
 

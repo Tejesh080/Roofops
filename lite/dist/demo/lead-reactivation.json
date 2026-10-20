@@ -767,7 +767,8 @@
   "settings": {
     "executionOrder": "v1",
     "timezone": "Australia/Brisbane",
-    "saveManualExecutions": true
+    "saveManualExecutions": true,
+    "errorWorkflow": "Tmk4lj7VrbHix9A9"
   },
   "pinData": {},
   "tags": [],

@@ -233,3 +233,22 @@ describe('Airtable setup (lite/airtable/setup.ts), against a scripted Meta API',
     expect((await verify('appZZZZZZZZZZZZZZ', fake(['Customers']))).slice(0, 2)).toEqual(['missing table Lite Contacts', 'missing table Lite Properties']);
   });
 });
+
+describe('demo data for real Airtable (lite/airtable/seed-demo.ts), against the schema-enforcing Airtable', () => {
+  it('creates contacts, properties, jobs and quotes in link order with real ids; refuses a second load before writing', async () => {
+    const { seedDemo } = await import('../lite/airtable/seed-demo.js');
+    const target = new FakeAirtable(config.airtable.baseId, config.airtable.tables);
+    const fetchJson = (path: string, init: { method: string; body?: string }) => {
+      const u = new URL(`https://api.airtable.com${path}`);
+      const r = target.http({ method: init.method, url: `${u.origin}${u.pathname}`, query: Object.fromEntries(u.searchParams), ...(init.body ? { body: JSON.parse(init.body) as unknown } : {}) });
+      return Promise.resolve({ status: r.statusCode, json: r.body });
+    };
+    expect(await seedDemo(config.airtable.baseId, config.airtable.tables, fetchJson, () => undefined)).toEqual({ contacts: 12, properties: 13, jobs: 13, quotes: 2 });
+    expect(target.all('jobs').every((j) => target.get('contacts', (j.fields.Contact as string[])[0]!))).toBe(true);
+    const writes = target.requests.filter((r) => r.method === 'POST').length;
+    await expect(seedDemo(config.airtable.baseId, config.airtable.tables, fetchJson, () => undefined)).rejects.toThrow(/already holds Demo Data/);
+    expect(target.requests.filter((r) => r.method === 'POST').length).toBe(writes);
+    // The workflows then run on it exactly as in the demo.
+    expect(runNow(wf['review-requests']!, target.http).summary).toMatchObject({ sent: 2, skipped: 2, not_due_yet: 1 });
+  });
+});

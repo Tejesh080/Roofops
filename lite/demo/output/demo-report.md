@@ -1,4 +1,4 @@
-# RoofOps Lite demo run (2026-10-20T07:50:31.515Z)
+# RoofOps Lite demo run (2026-10-20T08:15:56.706Z)
 
 Config: `lite/config/demo.json` (Harbourside Roofing (Lite demo)). Messaging: **test-sink**, nothing was sent to a real phone or inbox.
 Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up (25 nodes), [Lite] Google Review Requests (14 nodes), [Lite] Lead Reactivation (14 nodes), [Lite] Inbound Replies (17 nodes).
@@ -13,7 +13,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
  "body": {
   "ok": true,
   "duplicate": false,
-  "job_ref": "LJ-20261020-06IZ",
+  "job_ref": "LJ-20261020-0F81",
   "new_contact": true,
   "stage": "Contacted",
   "acknowledgement": {
@@ -33,7 +33,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
  "body": {
   "ok": true,
   "duplicate": true,
-  "job_ref": "LJ-20261020-06IZ",
+  "job_ref": "LJ-20261020-0F81",
   "message": "We already have this enquiry and will be in touch."
  }
 }
@@ -61,7 +61,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
  "body": {
   "ok": true,
   "duplicate": false,
-  "job_ref": "LJ-20261020-PQCP",
+  "job_ref": "LJ-20261020-A224",
   "new_contact": true,
   "stage": "New Lead",
   "acknowledgement": {
@@ -78,7 +78,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-20T07:50:31.442Z",
+ "ran_at": "2026-10-20T08:15:56.662Z",
  "logged": 4,
  "jobs_updated": 4,
  "finished_jobs": 5,
@@ -99,7 +99,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-20T07:50:31.448Z",
+ "ran_at": "2026-10-20T08:15:56.666Z",
  "logged": 0,
  "jobs_updated": 0,
  "finished_jobs": 1,
@@ -117,7 +117,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-20T07:50:31.461Z",
+ "ran_at": "2026-10-20T08:15:56.673Z",
  "logged": 2,
  "jobs_updated": 2,
  "open_leads": 8,
@@ -138,7 +138,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-20T07:50:31.469Z",
+ "ran_at": "2026-10-20T08:15:56.679Z",
  "logged": 0,
  "jobs_updated": 0,
  "open_leads": 8,
@@ -187,7 +187,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-20T07:50:31.513Z",
+ "ran_at": "2026-10-20T08:15:56.705Z",
  "logged": 0,
  "jobs_updated": 0,
  "open_leads": 8,
@@ -207,8 +207,8 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
 
 | Stage | Jobs |
 |---|---|
-| New Lead | LJ-DEMO-A3, LJ-20261020-PQCP |
-| Contacted | LJ-DEMO-A2, LJ-DEMO-A5, LJ-20261020-06IZ |
+| New Lead | LJ-DEMO-A3, LJ-20261020-A224 |
+| Contacted | LJ-DEMO-A2, LJ-DEMO-A5, LJ-20261020-0F81 |
 | Quoted | LJ-DEMO-A1, LJ-DEMO-A4, LJ-DEMO-A6 |
 | Accepted | LJ-DEMO-P1 |
 | Job In Progress | LJ-DEMO-P2 |
@@ -221,9 +221,9 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
 
 | Workflow | Contact | Job | Channel | Status | Reason / To |
 |---|---|---|---|---|---|
-| Lead Follow-Up | ZZ Lite Demo Emma Walsh | LJ-20261020-06IZ | SMS | Simulated Sent | 0400000201 |
-| Lead Follow-Up | ZZ Lite Demo Emma Walsh | LJ-20261020-06IZ |  | Skipped | repeat enquiry within 30 days of LJ-20261020-06IZ |
-| Lead Follow-Up | ZZ Lite Demo Ethan Cole | LJ-20261020-PQCP |  | Skipped | no consent or no reachable contact detail |
+| Lead Follow-Up | ZZ Lite Demo Emma Walsh | LJ-20261020-0F81 | SMS | Simulated Sent | 0400000201 |
+| Lead Follow-Up | ZZ Lite Demo Emma Walsh | LJ-20261020-0F81 |  | Skipped | repeat enquiry within 30 days of LJ-20261020-0F81 |
+| Lead Follow-Up | ZZ Lite Demo Ethan Cole | LJ-20261020-A224 |  | Skipped | no consent or no reachable contact detail |
 | Review Request | ZZ Lite Demo Olivia Chen | LJ-DEMO-R1 | SMS | Simulated Sent | 0400000101 |
 | Review Request | ZZ Lite Demo Marcus Webb | LJ-DEMO-R2 | Email | Simulated Sent | marcus.webb@example.test |
 | Review Request | ZZ Lite Demo Priya Nair | LJ-DEMO-R3 |  | Skipped | opted out |

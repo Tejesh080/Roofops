@@ -8,7 +8,10 @@
   },
   "airtable": {
     "baseId": "appMc8V0Wm29tEeHQ",
-    "credential": { "id": "3XbFnHjAd7mFvBD2", "name": "Roofops Airtable Personal Access Token account" },
+    "credential": {
+      "id": "3XbFnHjAd7mFvBD2",
+      "name": "Roofops Airtable Personal Access Token account"
+    },
     "tables": {
       "contacts": "Lite Contacts",
       "properties": "Lite Properties",
@@ -40,13 +43,26 @@
     "inactivityDays": 90,
     "cooldownDays": 180,
     "maxPerRun": 20,
-    "stages": ["New Lead", "Contacted", "Quoted"],
+    "stages": [
+      "New Lead",
+      "Contacted",
+      "Quoted"
+    ],
     "sms": "Hi {firstName}, it's {businessName}. You asked us about {service} a while ago - is it still on your list? Reply YES and we'll call you to book a free inspection. Reply STOP to opt out.",
     "emailSubject": "Still thinking about your {service}? - {businessName}",
     "email": "Hi {firstName},\n\nA while ago you asked {businessName} about {service}. If it's still on your list, just reply to this email and we'll book a free inspection at a time that suits you.\n\n{signoff}\n\nDon't want these emails? Reply STOP."
   },
   "replies": {
     "webhookPath": "roofops-lite/reply",
-    "optOutKeywords": ["STOP", "UNSUBSCRIBE", "OPT OUT", "OPTOUT", "CANCEL", "QUIT", "END"]
-  }
+    "optOutKeywords": [
+      "STOP",
+      "UNSUBSCRIBE",
+      "OPT OUT",
+      "OPTOUT",
+      "CANCEL",
+      "QUIT",
+      "END"
+    ]
+  },
+  "webhookAuth": null
 }

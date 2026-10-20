@@ -5,8 +5,8 @@ import { workflow, node, trigger, ifElse, expr } from '@n8n/workflow-sdk';
 // logged as Opt-Out: no Lite workflow will message them again. Any other reply is logged as Received and brings the
 // person's open enquiry back to life (Last Activity now; a New Lead becomes Contacted) so staff can call them.
 
-const hook = trigger({ type: 'n8n-nodes-base.webhook', version: 2, config: { name: 'Reply Webhook',
-  parameters: { httpMethod: 'POST', path: CONFIG.replies.webhookPath, responseMode: 'responseNode', options: {} } }, output: [{ body: {} }] });
+const hook = trigger({ type: 'n8n-nodes-base.webhook', version: 2, config: { name: 'Reply Webhook', ...HOOK_CRED,
+  parameters: { httpMethod: 'POST', path: CONFIG.replies.webhookPath, responseMode: 'responseNode', ...HOOK_AUTH, options: {} } }, output: [{ body: {} }] });
 
 const validate = code('Validate Reply', `
 const b = ($input.first().json.body) || {};

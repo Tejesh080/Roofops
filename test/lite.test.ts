@@ -252,3 +252,24 @@ describe('demo data for real Airtable (lite/airtable/seed-demo.ts), against the 
     expect(runNow(wf['review-requests']!, target.http).summary).toMatchObject({ sent: 2, skipped: 2, not_due_yet: 1 });
   });
 });
+
+describe('webhook protection (go-live)', () => {
+  it('with webhookAuth set, both webhooks require that Header Auth credential; without it they are open (demo)', async () => {
+    const secured = structuredClone(config); secured.webhookAuth = { id: 'HeaderAuthZZZ001', name: 'ZZ Lite webhook key' };
+    const dir = mkdtempSync(join(tmpdir(), 'lite-auth-'));
+    try {
+      const { writeFileSync } = await import('node:fs');
+      writeFileSync(join(dir, 'auth.json'), JSON.stringify(secured));
+      await build(join(dir, 'auth.json'), join(OUT, 'auth'));
+      for (const w of ['lead-follow-up', 'inbound-replies']) {
+        const hook = (JSON.parse(readFileSync(join(OUT, 'auth', `${w}.json`), 'utf8')) as { nodes: R[] }).nodes.find((n) => n.type === 'n8n-nodes-base.webhook')!;
+        expect(hook.parameters, w).toMatchObject({ authentication: 'headerAuth' });
+        expect(hook.credentials, w).toEqual({ httpHeaderAuth: secured.webhookAuth });
+      }
+      const open = (JSON.parse(readFileSync(join(OUT, 'lead-follow-up.json'), 'utf8')) as { nodes: R[] }).nodes.find((n) => n.type === 'n8n-nodes-base.webhook')!;
+      expect(open.parameters).not.toHaveProperty('authentication');
+      const bad = structuredClone(config); bad.webhookAuth = { id: 'x', name: '' };
+      expect(configProblems(bad).join()).toMatch(/webhookAuth/);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});

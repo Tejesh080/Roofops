@@ -10,6 +10,8 @@ export interface LiteConfig {
   reviews: { googleReviewUrl: string; delayDays: number; maxPerRun: number; sms: string; emailSubject: string; email: string };
   reactivation: { inactivityDays: number; cooldownDays: number; maxPerRun: number; stages: string[]; sms: string; emailSubject: string; email: string };
   replies: { webhookPath: string; optOutKeywords: string[] };
+  /** Before go-live: an n8n "Header Auth" credential both webhooks require (the form and the provider send that header). */
+  webhookAuth?: { id: string; name: string } | null;
 }
 
 const STAGES = ['New Lead', 'Contacted', 'Quoted', 'Accepted', 'Job In Progress', 'Completed', 'Invoiced', 'Paid', 'Lost'];
@@ -40,6 +42,7 @@ export function configProblems(input: LiteConfig | Incomplete<LiteConfig>): stri
   text(c.replies?.webhookPath, 'replies.webhookPath');
   const words = c.replies?.optOutKeywords;
   if (!Array.isArray(words) || !words.includes('STOP')) p.push('replies.optOutKeywords must include STOP');
+  if (c.webhookAuth && (!/^[A-Za-z0-9]{16}$/.test(c.webhookAuth.id) || !c.webhookAuth.name)) p.push('webhookAuth must be { id, name } of an n8n Header Auth credential, or null');
   return p;
 }
 

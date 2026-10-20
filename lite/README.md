@@ -88,7 +88,8 @@ The commands here run on your machine. Steps marked **(cloud)** change Airtable 
 4. **(cloud) Put the workflows in n8n**, inactive. Either import each `lite/dist/<client>/*.json` (Workflows ›
    Import from File), or create them from `lite/dist/<client>/*.sdk.ts` with the n8n MCP tools (`validate_workflow`,
    then `create_workflow_from_code`). Check that each Airtable node shows the credential from the config.
-5. **(cloud) Test with synthetic data, still inactive.**
+5. **(cloud) Test with synthetic data, still inactive.** The exact steps, payloads and expected results for the demo
+   base are in [demo/cloud-demo-runbook.md](demo/cloud-demo-runbook.md).
    - In the n8n editor, use "Execute workflow" on a webhook workflow and POST a test lead (the demo's payloads are in
      `lite/demo/run-demo.ts`) to the **test** webhook URL.
    - Run the review and reactivation workflows with "Run Now".
@@ -154,6 +155,8 @@ consent rules are in `lite/n8n/src/` (rebuild afterwards).
 2. **A real SMS or email provider.** Lite only has the test sink. Going live means choosing a provider (for example
    Twilio, or an email API), creating its n8n credential, and replacing the sink in `lite/n8n/src/common.part.ts`
    (`deliver`) with that provider's node. That is a decision and a paid account, so it is not done.
-3. **Webhook protection.** The demo webhooks accept any POST. Before go-live, add Header Auth to both webhook nodes
-   (n8n credential "Header Auth"), and have the form and provider send that header.
+3. **Webhook protection.** The demo webhooks accept any POST. It is built in, but off:
+   1. Create an n8n "Header Auth" credential (for example header `X-Lite-Key`, with a long random value).
+   2. Set `"webhookAuth": { "id": "<credential id>", "name": "<credential name>" }` in the config.
+   3. Rebuild. Both webhook nodes then require that header, and the form and provider must send it.
 4. **The Google review link** in the config is a placeholder until the business provides its own.

@@ -8,7 +8,10 @@
   },
   "airtable": {
     "baseId": "<appXXXXXXXXXXXXXX: the base that holds the Lite tables>",
-    "credential": { "id": "<n8n Airtable credential id>", "name": "<n8n Airtable credential name>" },
+    "credential": {
+      "id": "<n8n Airtable credential id>",
+      "name": "<n8n Airtable credential name>"
+    },
     "tables": {
       "contacts": "Lite Contacts",
       "properties": "Lite Properties",
@@ -17,7 +20,10 @@
       "messages": "Lite Message Log"
     }
   },
-  "messaging": { "mode": "test-sink", "provider": "lite-test-sink" },
+  "messaging": {
+    "mode": "test-sink",
+    "provider": "lite-test-sink"
+  },
   "leadIntake": {
     "webhookPath": "<client>-lite/lead",
     "dedupeWindowDays": 30,
@@ -37,13 +43,26 @@
     "inactivityDays": 90,
     "cooldownDays": 180,
     "maxPerRun": 20,
-    "stages": ["New Lead", "Contacted", "Quoted"],
+    "stages": [
+      "New Lead",
+      "Contacted",
+      "Quoted"
+    ],
     "sms": "Hi {firstName}, it's {businessName}. Is your {service} still on your list? Reply YES and we'll call you. Reply STOP to opt out.",
     "emailSubject": "Still thinking about your {service}? - {businessName}",
     "email": "Hi {firstName},\n\nIs your {service} still on your list? Reply and we'll book a time that suits you.\n\n{signoff}\n\nReply STOP to stop these emails."
   },
   "replies": {
     "webhookPath": "<client>-lite/reply",
-    "optOutKeywords": ["STOP", "UNSUBSCRIBE", "OPT OUT", "OPTOUT", "CANCEL", "QUIT", "END"]
-  }
+    "optOutKeywords": [
+      "STOP",
+      "UNSUBSCRIBE",
+      "OPT OUT",
+      "OPTOUT",
+      "CANCEL",
+      "QUIT",
+      "END"
+    ]
+  },
+  "webhookAuth": null
 }

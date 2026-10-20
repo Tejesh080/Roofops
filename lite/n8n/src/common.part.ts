@@ -4,10 +4,13 @@ const CONFIG = __LITE_CONFIG__;
 // Airtable table URLs (base + URL-encoded table name), computed by lite/build.ts from the config.
 const T = __LITE_TABLE_URLS__;
 const CRED = { airtableTokenApi: { id: CONFIG.airtable.credential.id, name: CONFIG.airtable.credential.name } };
+// Webhook protection (optional until go-live): n8n Header Auth with the configured credential.
+const HOOK_AUTH = CONFIG.webhookAuth ? { authentication: 'headerAuth' } : {};
+const HOOK_CRED = CONFIG.webhookAuth ? { credentials: { httpHeaderAuth: { id: CONFIG.webhookAuth.id, name: CONFIG.webhookAuth.name } } } : {};
 const RAW = { response: { response: { fullResponse: true, neverError: true } }, timeout: 20000 };
 const OK_IF = (name, leftValue) => ifElse({ version: 2.3, config: { name, parameters: { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'loose' },
   conditions: [{ leftValue: expr(leftValue), rightValue: true, operator: { type: 'boolean', operation: 'true', singleValue: true } }], combinator: 'and' } } } });
-const code = (name, js) => node({ type: 'n8n-nodes-base.code', version: 2, config: { name, parameters: { mode: 'runOnceForAllItems', jsCode: LIB + js } }, output: [{ ok: true }] });
+const code = (name, js) => node({ type: 'n8n-nodes-base.code', version: 2, config: { name, parameters: { mode: 'runOnceForAllItems', jsCode: libFor(js) + js } }, output: [{ ok: true }] });
 const airtableList = (name, url, formula) => node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name, onError: 'continueRegularOutput',
   parameters: { method: 'GET', url, authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi', sendQuery: true,
     queryParameters: { parameters: [{ name: 'filterByFormula', value: expr(formula) }, { name: 'pageSize', value: '100' }] }, options: RAW },
@@ -53,3 +56,24 @@ const deliver = (ch, to, subject, body) => ({ status: 'Simulated Sent', provider
 const logRef = (prefix) => prefix + '-' + iso(NOW).replace(/[-:TZ.]/g, '').slice(0, 14) + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
 const chunk = (list, n) => { const out = []; for (let i = 0; i < list.length; i += n) out.push(list.slice(i, i + n)); return out; };
 `;
+
+/** Each Code node gets only the helpers it uses (and theirs): the library above, split at each top-level const. */
+const LIB_PARTS = (() => {
+  const parts = []; let comment = [];
+  for (const line of LIB.split('\n')) {
+    if (!line.trim()) continue;
+    const m = /^const (\w+) =/.exec(line);
+    if (m) { parts.push({ name: m[1], lines: [...comment, line] }); comment = []; }
+    else if (line.startsWith('/**')) comment.push(line);
+    else parts[parts.length - 1].lines.push(line);
+  }
+  return parts.map((p) => ({ name: p.name, text: p.lines.join('\n') }));
+})();
+const uses = (text, name) => new RegExp('(^|[^\\w.$\'])' + name + '([^\\w]|$)').test(text);
+const libFor = (js) => {
+  const need = new Set();
+  const add = (part) => { if (need.has(part.name)) return; need.add(part.name); LIB_PARTS.filter((q) => q !== part && uses(part.text, q.name)).forEach(add); };
+  LIB_PARTS.filter((p) => uses(js, p.name)).forEach(add);
+  return '\n' + LIB_PARTS.filter((p) => need.has(p.name)).map((p) => p.text).join('\n') + '\n';
+};
+

@@ -5,8 +5,8 @@ import { workflow, node, trigger, ifElse, expr } from '@n8n/workflow-sdk';
 // Contact + Property + Job (Stage New Lead), acknowledged on the channel the person consented to (TEST sink: nothing is
 // really sent), logged in the Message Log, and the job moves to Contacted. The caller gets a JSON answer.
 
-const hook = trigger({ type: 'n8n-nodes-base.webhook', version: 2, config: { name: 'Lead Webhook',
-  parameters: { httpMethod: 'POST', path: CONFIG.leadIntake.webhookPath, responseMode: 'responseNode', options: {} } }, output: [{ body: {} }] });
+const hook = trigger({ type: 'n8n-nodes-base.webhook', version: 2, config: { name: 'Lead Webhook', ...HOOK_CRED,
+  parameters: { httpMethod: 'POST', path: CONFIG.leadIntake.webhookPath, responseMode: 'responseNode', ...HOOK_AUTH, options: {} } }, output: [{ body: {} }] });
 
 const validate = code('Validate Lead', `
 const b = ($input.first().json.body) || {};

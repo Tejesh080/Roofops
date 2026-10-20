@@ -1,7 +1,10 @@
 # RoofOps Lite: the Quote-to-Paid CRM in Airtable
 
-The CRM is five Airtable tables (`lite/airtable/schema.json`) plus the views below. The Airtable API cannot create views
-or Interfaces, so they are set up by hand once. That takes about 15 minutes, and then works for every client base.
+The CRM is five Airtable tables (`lite/airtable/schema.json`) plus an Interface and views.
+- **The Interface** ("Quote-to-Paid", below) can be created through the Airtable connector (`create_interface`,
+  `create_page`, `publish_interface`). That is how the demo base got one, on 2026-10-20.
+- **Grid and Kanban views inside the tables** cannot be created through the API. Add them by hand if staff prefer
+  the table view to the Interface; it takes about 15 minutes.
 
 ## The journey
 
@@ -46,15 +49,20 @@ The automations only ever move a job forward to **Contacted**. Every other stage
 - **Problems**: Status is Failed or Skipped.
 - **Replies and opt-outs**: Status is Received or Opt-Out.
 
-## Interface (optional, recommended for the owner)
+## Interface (recommended: this is what the owner and staff use)
 
-Create an Interface named **"Quote-to-Paid"** with these elements:
+The demo base has the published Interface **"Lite Quote-to-Paid"** (`pbdAzDJhyiIb7CFZJ`). Build the same for a client:
 
-- **Number** elements: count of Lite Jobs where Stage is New Lead; to invoice; and the sum of Invoice Amount where Invoice
-  Status is Invoiced (money owed).
-- **Kanban** element on Lite Jobs, stacked by Stage. This is the pipeline.
-- **Grid** element: Lite Message Log, last 20.
-- **Record review** layout on Lite Jobs, for staff working through New leads.
+| Page | Type | Configuration |
+|---|---|---|
+| Overview | dashboard | One section per figure, each with its own record filter. **Numbers:** New leads (count, Stage is New Lead); To invoice (count, Completed and Not Invoiced); Owed (sum of Invoice Amount, Invoice Status Invoiced); Paid (sum, Invoice Status Paid); Logged messages. **Grids:** New leads, Latest messages. |
+| Pipeline | Kanban on Lite Jobs | Stacked by Stage, with a count per stack. Cards: Job Ref, Contact, Service, Last Activity At, Invoice Amount. Newest activity first. |
+| Jobs | grid on Lite Jobs | The nine job views above as tabs, except Pipeline. Row colour by Stage; sum of Invoice Amount. |
+| Message Log | grid | Grouped by Workflow, newest first. Tabs: Problems, Replies and opt-outs. |
+| Contacts | grid | Tabs: Do not contact, Marketing list. |
+| Quotes | grid | Sum of Amount, newest first. |
+
+A **Record review** page on Lite Jobs, for working through new leads, is a useful extra.
 
 ## Rules that keep the automations safe
 

@@ -5,9 +5,18 @@ n8n Cloud, with synthetic data only. It repeats the local demo (`npx tsx lite/de
 `lite/demo/output/demo-report.md`) step for step, so every expected result below has already been produced once by
 the same node code.
 
-**Nothing here has been run yet.** Steps 1 to 3 are cloud changes for the owner to approve together. Messages go to
-the test sink only: each "send" is a row in Lite Message Log with Status `Simulated Sent`. No SMS or email leaves
-n8n.
+**Run on 2026-10-20, with the owner's approval. Every step passed first time, and the results matched this page.**
+- Evidence: `evidence/lite-cloud-demo-20261020.md`.
+- Resource and record IDs: `lite/demo/cloud-resources.demo.json`.
+- The tables and records went in through the Airtable connector, following the same plan as the tools. No token was
+  configured; see `lite/DEPLOY.md` step 3.
+
+Messages go to the test sink only: each "send" is a row in Lite Message Log with Status `Simulated Sent`. No SMS or
+email leaves n8n.
+
+**Shared base:** in the RoofOps base, every Lite write also wakes `[RoofOps] 06 Airtable Changes → Postgres`, which
+listens to the whole base. It ignores tables that aren't its own, so nothing changes, but each wake-up is one n8n
+execution. Give a client its own base.
 
 ## What it touches, and what it does not
 
@@ -167,6 +176,22 @@ Opt-In cleared, and the Message Log gets an `Opt-Out` row.
 
 **7c. Reactivation once more.** Run step 6 again. Expect `sent 0` and `still_active 4` (Daniel is active again),
 with opted out still 1.
+
+## 7d. Quote-to-Paid (staff actions in Airtable)
+
+On Emma's job from 4a, act as staff would:
+1. Create a **Lite Quotes** record (Status Sent, Amount, linked to the job). Set the job's Stage to Quoted.
+2. Set the quote to Accepted (Accepted At), and the Stage to Accepted.
+3. Set the Stage to Job In Progress, then to Completed (set **Completed At**).
+4. Set the Stage to Invoiced, with Invoice Status Invoiced and Invoice Amount.
+5. Set the Stage to Paid, with Invoice Status Paid.
+
+**Expect:**
+- The Pipeline page shows the job in each stage as it moves.
+- At Invoiced, the Overview "Owed" figure includes it.
+- The job keeps its links to the contact, property, quote and messages.
+
+No invoice is created anywhere.
 
 ## 8. Check the result in Airtable (read-only)
 

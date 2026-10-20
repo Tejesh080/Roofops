@@ -60,6 +60,10 @@ Code, and Airtable HTTP reads and writes.
 
 ## Deploy for a business
 
+The full, tested guide is [DEPLOY.md](DEPLOY.md): accounts, isolation, both table routes, the Interface, testing,
+go-live and handover. A recorded demo walkthrough is in [demo/portfolio-demo-script.md](demo/portfolio-demo-script.md).
+The short version follows.
+
 The commands here run on your machine. Steps marked **(cloud)** change Airtable or n8n and need the owner's approval.
 
 1. **Config.** Copy `lite/config/template.json` to `lite/config/<client>.json` and fill it in: the business name,
@@ -151,7 +155,12 @@ consent rules are in `lite/n8n/src/` (rebuild afterwards).
 
 ## Blocked: needs the owner before going live
 
-1. **Lite tables in Airtable** (step 2) and **workflows in n8n** (step 4): cloud changes, not made yet.
+1. **Done for the demo (2026-10-20):**
+   - the Lite tables, demo data, the Quote-to-Paid Interface and the four workflows (unpublished) are in the RoofOps
+     base and n8n project;
+   - all seven acceptance tests passed (`evidence/lite-cloud-demo-20261020.md`).
+
+   For a client, follow [DEPLOY.md](DEPLOY.md), and give them their own base.
 2. **A real SMS or email provider.** Lite only has the test sink. Going live means choosing a provider (for example
    Twilio, or an email API), creating its n8n credential, and replacing the sink in `lite/n8n/src/common.part.ts`
    (`deliver`) with that provider's node. That is a decision and a paid account, so it is not done.

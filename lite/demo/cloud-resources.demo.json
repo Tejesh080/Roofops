@@ -1,0 +1,320 @@
+{
+  "note": "RoofOps Lite cloud demo resources (synthetic data only), created 2026-10-20 with the owner's approval. IDs only, no secrets. Every record has Demo Data ticked and a ZZ Lite Demo name.",
+  "airtable": {
+    "baseId": "appMc8V0Wm29tEeHQ",
+    "tables": {
+      "contacts": "tble7dgq0tl1vvoWs",
+      "properties": "tblO0DR7XBW5tByLI",
+      "jobs": "tbl4iwogMRPz0g6Q5",
+      "quotes": "tblKg4sjiGcrvCjMI",
+      "messages": "tblW8Uq5j5dW0B8RH"
+    },
+    "interface": {
+      "id": "pbdAzDJhyiIb7CFZJ",
+      "name": "Lite Quote-to-Paid",
+      "pages": {
+        "Overview": "pagXFR1yZ7q3TAwXz",
+        "Pipeline": "pagSoRoOHL8eClVBC",
+        "Jobs": "pagweElqH06yKZeXg",
+        "Message Log": "pagXBMMy90Crh9v3Q",
+        "Contacts": "pag03vKa1GUUsao5Y",
+        "Quotes": "pagYpUijUAOhMnXoj"
+      }
+    },
+    "seeded": {
+      "at": "2026-10-20T11:07:16.469Z",
+      "contacts": [
+        {
+          "name": "ZZ Lite Demo Olivia Chen",
+          "id": "rec5BD3IAghAEK2v9"
+        },
+        {
+          "name": "ZZ Lite Demo Marcus Webb",
+          "id": "recOkL7HOP31rqI1t"
+        },
+        {
+          "name": "ZZ Lite Demo Priya Nair",
+          "id": "recUFjzjDqfujA46b"
+        },
+        {
+          "name": "ZZ Lite Demo Tom Fraser",
+          "id": "recvBPSZbxR5LJct6"
+        },
+        {
+          "name": "ZZ Lite Demo Grace Lee",
+          "id": "recDwZPZdCmDiypNG"
+        },
+        {
+          "name": "ZZ Lite Demo Daniel Brooks",
+          "id": "recCxZvx68wNJnufe"
+        },
+        {
+          "name": "ZZ Lite Demo Sophie Turner",
+          "id": "recpjzZPIJMWCTftM"
+        },
+        {
+          "name": "ZZ Lite Demo Liam OBrien",
+          "id": "recnlPFPm96ZRtu1U"
+        },
+        {
+          "name": "ZZ Lite Demo Ava Patel",
+          "id": "recf6CtJl0VTHvkkA"
+        },
+        {
+          "name": "ZZ Lite Demo Noah Kim",
+          "id": "reca2dBNpBQStMAjk"
+        },
+        {
+          "name": "ZZ Lite Demo Mia Rossi",
+          "id": "rec6vWK9Xclp07p0p"
+        },
+        {
+          "name": "ZZ Lite Demo Jack Murray",
+          "id": "reczpYUrGCaJZAlWe"
+        }
+      ],
+      "properties": [
+        {
+          "name": "10 Demo Street",
+          "id": "rec0S0ybb4HbbjX70"
+        },
+        {
+          "name": "11 Demo Street",
+          "id": "recWiaZLiiu17XXi6"
+        },
+        {
+          "name": "12 Demo Street",
+          "id": "receriHWuOFGo8Axb"
+        },
+        {
+          "name": "13 Demo Street",
+          "id": "recpsTZnSxchCo1Nk"
+        },
+        {
+          "name": "14 Demo Street",
+          "id": "recPJL9GTu0etiXeB"
+        },
+        {
+          "name": "15 Demo Street",
+          "id": "recGG2ZPfFyAI7JoX"
+        },
+        {
+          "name": "16 Demo Street",
+          "id": "rec2UGj921KMlfrda"
+        },
+        {
+          "name": "17 Demo Street",
+          "id": "recuWtwtIvQ86LYbP"
+        },
+        {
+          "name": "18 Demo Street",
+          "id": "recBDv7FRSQL5D1iZ"
+        },
+        {
+          "name": "19 Demo Street",
+          "id": "recxRT7eQ3tupIxby"
+        },
+        {
+          "name": "20 Demo Street",
+          "id": "rec2bPGVy9K7CX5eH"
+        },
+        {
+          "name": "21 Demo Street",
+          "id": "recee9UtN51p4omWd"
+        },
+        {
+          "name": "22 Demo Street",
+          "id": "rec2YqKaUPHmTi7Kc"
+        }
+      ],
+      "jobs": [
+        {
+          "name": "LJ-DEMO-R1",
+          "id": "recMV9k1Bvj3kpxNX"
+        },
+        {
+          "name": "LJ-DEMO-R2",
+          "id": "recUJNAvXe0S53NIp"
+        },
+        {
+          "name": "LJ-DEMO-R3",
+          "id": "recDMriUYsKxmTHUA"
+        },
+        {
+          "name": "LJ-DEMO-R4",
+          "id": "recB3p5grVLtSEqe6"
+        },
+        {
+          "name": "LJ-DEMO-R5",
+          "id": "recF089yDd5FNDI3y"
+        },
+        {
+          "name": "LJ-DEMO-A1",
+          "id": "rec9hYJMvfiSfk4B0"
+        },
+        {
+          "name": "LJ-DEMO-A2",
+          "id": "receGYdyDQUXjtfs2"
+        },
+        {
+          "name": "LJ-DEMO-A3",
+          "id": "reckE4YC0dmmDVZmt"
+        },
+        {
+          "name": "LJ-DEMO-A4",
+          "id": "recD1kWD01A6jS5mx"
+        },
+        {
+          "name": "LJ-DEMO-A5",
+          "id": "recZNbVTtHjI5IWHf"
+        },
+        {
+          "name": "LJ-DEMO-A6",
+          "id": "recJqpKHxr9bStwyf"
+        },
+        {
+          "name": "LJ-DEMO-P1",
+          "id": "recMfkoLwePE2165A"
+        },
+        {
+          "name": "LJ-DEMO-P2",
+          "id": "recZkkP3nAmnDmcs3"
+        }
+      ],
+      "quotes": [
+        {
+          "name": "LQ-DEMO-P1",
+          "id": "reckxllL9mGzM94bz"
+        },
+        {
+          "name": "LQ-DEMO-A1",
+          "id": "recG27n7w5jrKwJ7J"
+        }
+      ]
+    },
+    "createdByDemo": {
+      "contacts": [
+        {
+          "name": "ZZ Lite Demo Emma Walsh",
+          "id": "recZ6rfPo4kTnMvA3",
+          "by": "Lead Follow-Up 3095"
+        },
+        {
+          "name": "ZZ Lite Demo Ethan Cole",
+          "id": "recqjNPmHQpnZJMCF",
+          "by": "Lead Follow-Up 3103"
+        }
+      ],
+      "properties": [
+        {
+          "name": "7 Coral Demo Court",
+          "id": "recZUen5DBTFQJGAX",
+          "by": "Lead Follow-Up 3095"
+        }
+      ],
+      "jobs": [
+        {
+          "name": "LJ-20261020-J4MN",
+          "id": "recG8LPTJweKiOhVY",
+          "by": "Lead Follow-Up 3095; stages by staff (Test 3)"
+        },
+        {
+          "name": "LJ-20261020-BESB",
+          "id": "recapEzKEXdMNT7PZ",
+          "by": "Lead Follow-Up 3103"
+        }
+      ],
+      "quotes": [
+        {
+          "name": "LQ-DEMO-EMMA",
+          "id": "rec5Dn3fRDjJhH7iW",
+          "by": "staff (Test 3)"
+        }
+      ],
+      "messages": [
+        {
+          "id": "recBhW1BumGKDY6GR",
+          "what": "Lead Follow-Up, Emma, Simulated Sent SMS",
+          "by": "3095"
+        },
+        {
+          "id": "recTb4K62KgeAGX7g",
+          "what": "Lead Follow-Up, Emma repeat enquiry, Skipped",
+          "by": "3100"
+        },
+        {
+          "id": "recN3KNvtsTIZpsCo",
+          "what": "Lead Follow-Up, Ethan, Skipped (no consent)",
+          "by": "3103"
+        },
+        {
+          "id": "recB69Jj93cPlHQaN",
+          "what": "Review Request, Olivia, Simulated Sent SMS",
+          "by": "3107"
+        },
+        {
+          "id": "receB2nsfIPhzMcdc",
+          "what": "Review Request, Marcus, Simulated Sent Email",
+          "by": "3107"
+        },
+        {
+          "id": "recMZf15lTKnGnn4l",
+          "what": "Review Request, Priya, Skipped (opted out)",
+          "by": "3107"
+        },
+        {
+          "id": "recs5y2d6Ghcwxl9e",
+          "what": "Review Request, Tom, Skipped (no consent)",
+          "by": "3107"
+        },
+        {
+          "id": "recelO7FpNdRE5Y3s",
+          "what": "Reactivation, Mia, Simulated Sent Email",
+          "by": "3111"
+        },
+        {
+          "id": "recKayJlQBrO0OM87",
+          "what": "Reactivation, Daniel, Simulated Sent SMS",
+          "by": "3111"
+        },
+        {
+          "id": "recml8rqSJwswJcpZ",
+          "what": "Inbound Reply, Daniel YES, Received",
+          "by": "3115"
+        },
+        {
+          "id": "rec0Pv8ItckMaHFGP",
+          "what": "Inbound Reply, Olivia STOP, Opt-Out",
+          "by": "3118"
+        }
+      ]
+    }
+  },
+  "n8n": {
+    "host": "tejesh08.app.n8n.cloud",
+    "project": {
+      "id": "4kSuZdSc0Opp3juv",
+      "name": "Roofops"
+    },
+    "state": "all unpublished (active false, triggerCount 0)",
+    "workflows": {
+      "lead-follow-up": "6GlAPXRMVAEyK9pV",
+      "review-requests": "LdPy36pX3jKJxd2r",
+      "lead-reactivation": "ECE108TYrOoHsTQh",
+      "inbound-replies": "vc4DEkcDxXnEdLmr"
+    },
+    "executions": {
+      "3095": "Test 1 new lead",
+      "3100": "Test 2 duplicate",
+      "3102": "invalid lead (400)",
+      "3103": "lead without consent",
+      "3107": "Test 4 review run 1",
+      "3110": "Test 7 review run 2",
+      "3111": "Test 5 reactivation run 1",
+      "3114": "Test 7 reactivation run 2",
+      "3115": "Test 6 reply YES",
+      "3118": "Test 6 reply STOP",
+      "3121": "reactivation run 3 after replies"
+    }
+  }
+}

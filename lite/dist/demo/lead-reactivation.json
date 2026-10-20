@@ -1,0 +1,547 @@
+{
+  "name": "[Lite] Lead Reactivation",
+  "nodes": [
+    {
+      "id": "2d36caf3-882d-432a-abd8-9ce9e2940a29",
+      "name": "Weekly Monday 09:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "334f779a-c6fa-4bad-a4fc-7a1b31a2f0be",
+      "name": "Run Now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        180
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "286f23fa-8d2d-4a45-adab-d73a27f17d62",
+      "name": "Find Quiet Leads",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Jobs",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filterByFormula",
+              "value": "=OR({Stage}='New Lead',{Stage}='Contacted',{Stage}='Quoted')"
+            },
+            {
+              "name": "pageSize",
+              "value": "100"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "3XbFnHjAd7mFvBD2",
+          "name": "Roofops Airtable Personal Access Token account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "03093fb7-6609-4e6a-a6d9-7d6ad01cdb5c",
+      "name": "Contact Formula",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nconst CFG = {\"business\":{\"name\":\"Harbourside Roofing (Lite demo)\",\"trade\":\"roofing\",\"phone\":\"1300 000 000\",\"signoff\":\"The Harbourside Roofing team\",\"timezone\":\"Australia/Brisbane\"},\"airtable\":{\"baseId\":\"appMc8V0Wm29tEeHQ\",\"credential\":{\"id\":\"3XbFnHjAd7mFvBD2\",\"name\":\"Roofops Airtable Personal Access Token account\"},\"tables\":{\"contacts\":\"Lite Contacts\",\"properties\":\"Lite Properties\",\"jobs\":\"Lite Jobs\",\"quotes\":\"Lite Quotes\",\"messages\":\"Lite Message Log\"}},\"messaging\":{\"mode\":\"test-sink\",\"provider\":\"lite-test-sink\"},\"leadIntake\":{\"webhookPath\":\"roofops-lite/lead\",\"dedupeWindowDays\":30,\"sms\":\"Hi {firstName}, thanks for contacting {businessName} about {service}. We've got your enquiry and will call you within one business day. Reply STOP to opt out.\",\"emailSubject\":\"We've received your enquiry - {businessName}\",\"email\":\"Hi {firstName},\\n\\nThanks for getting in touch with {businessName} about {service}. We've received your enquiry and one of our team will contact you within one business day.\\n\\nIf it's urgent, call us on {businessPhone}.\\n\\n{signoff}\"},\"reviews\":{\"googleReviewUrl\":\"https://g.page/r/EXAMPLE-REVIEW-ID/review\",\"delayDays\":2,\"maxPerRun\":20,\"sms\":\"Hi {firstName}, thanks for choosing {businessName} for your {service}. If you're happy with the work, a quick Google review would really help us: {reviewUrl} Reply STOP to opt out.\",\"emailSubject\":\"How did we do? - {businessName}\",\"email\":\"Hi {firstName},\\n\\nThanks for choosing {businessName} for your {service}. If you're happy with the result, we'd be grateful for a short Google review:\\n{reviewUrl}\\n\\n{signoff}\"},\"reactivation\":{\"inactivityDays\":90,\"cooldownDays\":180,\"maxPerRun\":20,\"stages\":[\"New Lead\",\"Contacted\",\"Quoted\"],\"sms\":\"Hi {firstName}, it's {businessName}. You asked us about {service} a while ago - is it still on your list? Reply YES and we'll call you to book a free inspection. Reply STOP to opt out.\",\"emailSubject\":\"Still thinking about your {service}? - {businessName}\",\"email\":\"Hi {firstName},\\n\\nA while ago you asked {businessName} about {service}. If it's still on your list, just reply to this email and we'll book a free inspection at a time that suits you.\\n\\n{signoff}\\n\\nDon't want these emails? Reply STOP.\"},\"replies\":{\"webhookPath\":\"roofops-lite/reply\",\"optOutKeywords\":[\"STOP\",\"UNSUBSCRIBE\",\"OPT OUT\",\"OPTOUT\",\"CANCEL\",\"QUIT\",\"END\"]}};\nconst NOW = new Date();\nconst iso = (d) => new Date(d).toISOString();\nconst days = (n) => n * 24 * 60 * 60 * 1000;\nconst clean = (s) => String(s == null ? '' : s).trim();\nconst formulaText = (s) => clean(s).replace(/[\\\\'\"{}]/g, '');\nconst normEmail = (s) => { const e = clean(s).toLowerCase(); return /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(e) ? e : ''; };\nconst normPhone = (s) => { let d = clean(s).replace(/[^0-9+]/g, ''); if (d.startsWith('+61')) d = '0' + d.slice(3); d = d.replace(/[^0-9]/g, ''); return /^0[2-478][0-9]{8}$/.test(d) ? d : ''; };\nconst firstNameOf = (n) => clean(n).split(/\\s+/)[0] || 'there';\nconst render = (tpl, v) => String(tpl).replace(/\\{(\\w+)\\}/g, (m, k) => (v[k] == null ? m : String(v[k])));\nconst vars = (contact, job) => ({ firstName: contact['First Name'] || firstNameOf(contact.Name), businessName: CFG.business.name, businessPhone: CFG.business.phone,\n  signoff: CFG.business.signoff, service: (job && job.Service) || ('your ' + CFG.business.trade + ' job'), reviewUrl: CFG.reviews.googleReviewUrl });\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n/** Which channel may carry a message to this contact: the preferred one if it is consented and reachable, else the other. */\nconst channelFor = (c) => {\n  if (c['Opted Out']) return { skip: 'opted out' };\n  const can = { SMS: !!c['Consent SMS'] && !!normPhone(c.Phone), Email: !!c['Consent Email'] && !!normEmail(c.Email) };\n  const order = c['Preferred Channel'] === 'Email' ? ['Email', 'SMS'] : ['SMS', 'Email'];\n  const ch = order.find((x) => can[x]);\n  if (!ch) return { skip: 'no consent or no reachable contact detail' };\n  return { channel: ch, to: ch === 'SMS' ? normPhone(c.Phone) : normEmail(c.Email) };\n};\n/** The TEST message sink: records what would be sent. No provider is called; nothing reaches a real phone or inbox. */\nconst deliver = (ch, to, subject, body) => ({ status: 'Simulated Sent', provider: CFG.messaging.provider, channel: ch, to, subject: subject || null, body });\nconst logRef = (prefix) => prefix + '-' + iso(NOW).replace(/[-:TZ.]/g, '').slice(0, 14) + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();\nconst chunk = (list, n) => { const out = []; for (let i = 0; i < list.length; i += n) out.push(list.slice(i, i + n)); return out; };\n\nconst jobs = records($input.first().json, 'find quiet leads');\nconst ids = Array.from(new Set(jobs.map((j) => ((j.fields || {}).Contact || [])[0]).filter(Boolean)));\nreturn [{ json: { contactFormula: ids.length ? 'OR(' + ids.map((i) => \"RECORD_ID()='\" + formulaText(i) + \"'\").join(',') + ')' : 'FALSE()' } }];"
+      }
+    },
+    {
+      "id": "8a50ed13-f4ac-4095-ae6a-022f5b6fc91f",
+      "name": "Find Contacts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        780,
+        0
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Contacts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filterByFormula",
+              "value": "={{ $json.contactFormula }}"
+            },
+            {
+              "name": "pageSize",
+              "value": "100"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "3XbFnHjAd7mFvBD2",
+          "name": "Roofops Airtable Personal Access Token account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "155afdaf-5b3b-4e87-ae3e-1e0dfbaecc50",
+      "name": "Find Sent Reactivations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1040,
+        0
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Message%20Log",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filterByFormula",
+              "value": "=AND({Workflow}='Reactivation',{Status}='Simulated Sent')"
+            },
+            {
+              "name": "pageSize",
+              "value": "100"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "3XbFnHjAd7mFvBD2",
+          "name": "Roofops Airtable Personal Access Token account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "25a16050-3e7f-4f89-ad13-597c6109be80",
+      "name": "Plan Reactivation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nconst CFG = {\"business\":{\"name\":\"Harbourside Roofing (Lite demo)\",\"trade\":\"roofing\",\"phone\":\"1300 000 000\",\"signoff\":\"The Harbourside Roofing team\",\"timezone\":\"Australia/Brisbane\"},\"airtable\":{\"baseId\":\"appMc8V0Wm29tEeHQ\",\"credential\":{\"id\":\"3XbFnHjAd7mFvBD2\",\"name\":\"Roofops Airtable Personal Access Token account\"},\"tables\":{\"contacts\":\"Lite Contacts\",\"properties\":\"Lite Properties\",\"jobs\":\"Lite Jobs\",\"quotes\":\"Lite Quotes\",\"messages\":\"Lite Message Log\"}},\"messaging\":{\"mode\":\"test-sink\",\"provider\":\"lite-test-sink\"},\"leadIntake\":{\"webhookPath\":\"roofops-lite/lead\",\"dedupeWindowDays\":30,\"sms\":\"Hi {firstName}, thanks for contacting {businessName} about {service}. We've got your enquiry and will call you within one business day. Reply STOP to opt out.\",\"emailSubject\":\"We've received your enquiry - {businessName}\",\"email\":\"Hi {firstName},\\n\\nThanks for getting in touch with {businessName} about {service}. We've received your enquiry and one of our team will contact you within one business day.\\n\\nIf it's urgent, call us on {businessPhone}.\\n\\n{signoff}\"},\"reviews\":{\"googleReviewUrl\":\"https://g.page/r/EXAMPLE-REVIEW-ID/review\",\"delayDays\":2,\"maxPerRun\":20,\"sms\":\"Hi {firstName}, thanks for choosing {businessName} for your {service}. If you're happy with the work, a quick Google review would really help us: {reviewUrl} Reply STOP to opt out.\",\"emailSubject\":\"How did we do? - {businessName}\",\"email\":\"Hi {firstName},\\n\\nThanks for choosing {businessName} for your {service}. If you're happy with the result, we'd be grateful for a short Google review:\\n{reviewUrl}\\n\\n{signoff}\"},\"reactivation\":{\"inactivityDays\":90,\"cooldownDays\":180,\"maxPerRun\":20,\"stages\":[\"New Lead\",\"Contacted\",\"Quoted\"],\"sms\":\"Hi {firstName}, it's {businessName}. You asked us about {service} a while ago - is it still on your list? Reply YES and we'll call you to book a free inspection. Reply STOP to opt out.\",\"emailSubject\":\"Still thinking about your {service}? - {businessName}\",\"email\":\"Hi {firstName},\\n\\nA while ago you asked {businessName} about {service}. If it's still on your list, just reply to this email and we'll book a free inspection at a time that suits you.\\n\\n{signoff}\\n\\nDon't want these emails? Reply STOP.\"},\"replies\":{\"webhookPath\":\"roofops-lite/reply\",\"optOutKeywords\":[\"STOP\",\"UNSUBSCRIBE\",\"OPT OUT\",\"OPTOUT\",\"CANCEL\",\"QUIT\",\"END\"]}};\nconst NOW = new Date();\nconst iso = (d) => new Date(d).toISOString();\nconst days = (n) => n * 24 * 60 * 60 * 1000;\nconst clean = (s) => String(s == null ? '' : s).trim();\nconst formulaText = (s) => clean(s).replace(/[\\\\'\"{}]/g, '');\nconst normEmail = (s) => { const e = clean(s).toLowerCase(); return /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(e) ? e : ''; };\nconst normPhone = (s) => { let d = clean(s).replace(/[^0-9+]/g, ''); if (d.startsWith('+61')) d = '0' + d.slice(3); d = d.replace(/[^0-9]/g, ''); return /^0[2-478][0-9]{8}$/.test(d) ? d : ''; };\nconst firstNameOf = (n) => clean(n).split(/\\s+/)[0] || 'there';\nconst render = (tpl, v) => String(tpl).replace(/\\{(\\w+)\\}/g, (m, k) => (v[k] == null ? m : String(v[k])));\nconst vars = (contact, job) => ({ firstName: contact['First Name'] || firstNameOf(contact.Name), businessName: CFG.business.name, businessPhone: CFG.business.phone,\n  signoff: CFG.business.signoff, service: (job && job.Service) || ('your ' + CFG.business.trade + ' job'), reviewUrl: CFG.reviews.googleReviewUrl });\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n/** Which channel may carry a message to this contact: the preferred one if it is consented and reachable, else the other. */\nconst channelFor = (c) => {\n  if (c['Opted Out']) return { skip: 'opted out' };\n  const can = { SMS: !!c['Consent SMS'] && !!normPhone(c.Phone), Email: !!c['Consent Email'] && !!normEmail(c.Email) };\n  const order = c['Preferred Channel'] === 'Email' ? ['Email', 'SMS'] : ['SMS', 'Email'];\n  const ch = order.find((x) => can[x]);\n  if (!ch) return { skip: 'no consent or no reachable contact detail' };\n  return { channel: ch, to: ch === 'SMS' ? normPhone(c.Phone) : normEmail(c.Email) };\n};\n/** The TEST message sink: records what would be sent. No provider is called; nothing reaches a real phone or inbox. */\nconst deliver = (ch, to, subject, body) => ({ status: 'Simulated Sent', provider: CFG.messaging.provider, channel: ch, to, subject: subject || null, body });\nconst logRef = (prefix) => prefix + '-' + iso(NOW).replace(/[-:TZ.]/g, '').slice(0, 14) + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();\nconst chunk = (list, n) => { const out = []; for (let i = 0; i < list.length; i += n) out.push(list.slice(i, i + n)); return out; };\n\nconst jobs = records($('Find Quiet Leads').first().json, 'find quiet leads');\nconst contacts = {}; records($('Find Contacts').first().json, 'find contacts').forEach((c) => { contacts[c.id] = c; });\nconst sent = new Set(records($input.first().json, 'find sent reactivations').map((m) => (m.fields || {})['Dedupe Key']));\nconst logs = []; const updates = [];\nconst summary = { open_leads: jobs.length, sent: 0, still_active: 0, excluded: 0, exclusion_reasons: {}, deferred_to_next_run: 0 };\nconst exclude = (why) => { summary.excluded++; summary.exclusion_reasons[why] = (summary.exclusion_reasons[why] || 0) + 1; };\nconst period = iso(NOW).slice(0, 7);\n// Oldest activity first, so the longest-waiting people are followed up first when the run is capped.\nconst lastOf = (f) => Date.parse(f['Last Activity At'] || f['Lead Received At'] || '');\njobs.sort((a, b) => (lastOf(a.fields || {}) || 0) - (lastOf(b.fields || {}) || 0));\nfor (const j of jobs) {\n  const f = j.fields || {};\n  const last = lastOf(f);\n  if (!last || NOW.getTime() - last < days(CFG.reactivation.inactivityDays)) { summary.still_active++; continue; }\n  const prev = Date.parse(f['Reactivation Sent At'] || '');\n  if (prev && NOW.getTime() - prev < days(CFG.reactivation.cooldownDays)) { exclude('followed up within the cooldown'); continue; }\n  const key = 'reactivation:' + j.id + ':' + period;\n  if (sent.has(key)) { exclude('already followed up this month'); continue; }\n  const c = contacts[(f.Contact || [])[0]] || null;\n  if (!c) { exclude('no contact on the job'); continue; }\n  const cf = c.fields || {};\n  if (cf['Opted Out']) { exclude('opted out'); continue; }\n  if (!cf['Marketing Opt-In']) { exclude('no marketing permission'); continue; }\n  const ch = channelFor(cf);\n  if (ch.skip) { exclude(ch.skip); continue; }\n  if (summary.sent >= CFG.reactivation.maxPerRun) { summary.deferred_to_next_run++; continue; }\n  const v = vars(cf, f);\n  const subject = ch.channel === 'Email' ? render(CFG.reactivation.emailSubject, v) : null;\n  const d = deliver(ch.channel, ch.to, subject, render(ch.channel === 'SMS' ? CFG.reactivation.sms : CFG.reactivation.email, v));\n  summary.sent++;\n  logs.push({ fields: { 'Log Ref': logRef('RA'), Workflow: 'Reactivation', Job: [j.id], Contact: [c.id], Channel: d.channel, To: d.to,\n    Body: (d.subject ? 'Subject: ' + d.subject + '\\n\\n' : '') + d.body, Status: d.status, 'Dedupe Key': key, Provider: d.provider,\n    'Attempted At': iso(NOW), 'Demo Data': !!f['Demo Data'] } });\n  updates.push({ id: j.id, fields: { 'Reactivation Sent At': iso(NOW), 'Reactivation Count': (Number(f['Reactivation Count']) || 0) + 1 } });\n}\nreturn [{ json: { logs: logs, updates: updates, summary: summary } }];"
+      }
+    },
+    {
+      "id": "faaa3533-791a-4fc2-ab8b-2671f0916c69",
+      "name": "Log Batches",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nconst CFG = {\"business\":{\"name\":\"Harbourside Roofing (Lite demo)\",\"trade\":\"roofing\",\"phone\":\"1300 000 000\",\"signoff\":\"The Harbourside Roofing team\",\"timezone\":\"Australia/Brisbane\"},\"airtable\":{\"baseId\":\"appMc8V0Wm29tEeHQ\",\"credential\":{\"id\":\"3XbFnHjAd7mFvBD2\",\"name\":\"Roofops Airtable Personal Access Token account\"},\"tables\":{\"contacts\":\"Lite Contacts\",\"properties\":\"Lite Properties\",\"jobs\":\"Lite Jobs\",\"quotes\":\"Lite Quotes\",\"messages\":\"Lite Message Log\"}},\"messaging\":{\"mode\":\"test-sink\",\"provider\":\"lite-test-sink\"},\"leadIntake\":{\"webhookPath\":\"roofops-lite/lead\",\"dedupeWindowDays\":30,\"sms\":\"Hi {firstName}, thanks for contacting {businessName} about {service}. We've got your enquiry and will call you within one business day. Reply STOP to opt out.\",\"emailSubject\":\"We've received your enquiry - {businessName}\",\"email\":\"Hi {firstName},\\n\\nThanks for getting in touch with {businessName} about {service}. We've received your enquiry and one of our team will contact you within one business day.\\n\\nIf it's urgent, call us on {businessPhone}.\\n\\n{signoff}\"},\"reviews\":{\"googleReviewUrl\":\"https://g.page/r/EXAMPLE-REVIEW-ID/review\",\"delayDays\":2,\"maxPerRun\":20,\"sms\":\"Hi {firstName}, thanks for choosing {businessName} for your {service}. If you're happy with the work, a quick Google review would really help us: {reviewUrl} Reply STOP to opt out.\",\"emailSubject\":\"How did we do? - {businessName}\",\"email\":\"Hi {firstName},\\n\\nThanks for choosing {businessName} for your {service}. If you're happy with the result, we'd be grateful for a short Google review:\\n{reviewUrl}\\n\\n{signoff}\"},\"reactivation\":{\"inactivityDays\":90,\"cooldownDays\":180,\"maxPerRun\":20,\"stages\":[\"New Lead\",\"Contacted\",\"Quoted\"],\"sms\":\"Hi {firstName}, it's {businessName}. You asked us about {service} a while ago - is it still on your list? Reply YES and we'll call you to book a free inspection. Reply STOP to opt out.\",\"emailSubject\":\"Still thinking about your {service}? - {businessName}\",\"email\":\"Hi {firstName},\\n\\nA while ago you asked {businessName} about {service}. If it's still on your list, just reply to this email and we'll book a free inspection at a time that suits you.\\n\\n{signoff}\\n\\nDon't want these emails? Reply STOP.\"},\"replies\":{\"webhookPath\":\"roofops-lite/reply\",\"optOutKeywords\":[\"STOP\",\"UNSUBSCRIBE\",\"OPT OUT\",\"OPTOUT\",\"CANCEL\",\"QUIT\",\"END\"]}};\nconst NOW = new Date();\nconst iso = (d) => new Date(d).toISOString();\nconst days = (n) => n * 24 * 60 * 60 * 1000;\nconst clean = (s) => String(s == null ? '' : s).trim();\nconst formulaText = (s) => clean(s).replace(/[\\\\'\"{}]/g, '');\nconst normEmail = (s) => { const e = clean(s).toLowerCase(); return /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(e) ? e : ''; };\nconst normPhone = (s) => { let d = clean(s).replace(/[^0-9+]/g, ''); if (d.startsWith('+61')) d = '0' + d.slice(3); d = d.replace(/[^0-9]/g, ''); return /^0[2-478][0-9]{8}$/.test(d) ? d : ''; };\nconst firstNameOf = (n) => clean(n).split(/\\s+/)[0] || 'there';\nconst render = (tpl, v) => String(tpl).replace(/\\{(\\w+)\\}/g, (m, k) => (v[k] == null ? m : String(v[k])));\nconst vars = (contact, job) => ({ firstName: contact['First Name'] || firstNameOf(contact.Name), businessName: CFG.business.name, businessPhone: CFG.business.phone,\n  signoff: CFG.business.signoff, service: (job && job.Service) || ('your ' + CFG.business.trade + ' job'), reviewUrl: CFG.reviews.googleReviewUrl });\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n/** Which channel may carry a message to this contact: the preferred one if it is consented and reachable, else the other. */\nconst channelFor = (c) => {\n  if (c['Opted Out']) return { skip: 'opted out' };\n  const can = { SMS: !!c['Consent SMS'] && !!normPhone(c.Phone), Email: !!c['Consent Email'] && !!normEmail(c.Email) };\n  const order = c['Preferred Channel'] === 'Email' ? ['Email', 'SMS'] : ['SMS', 'Email'];\n  const ch = order.find((x) => can[x]);\n  if (!ch) return { skip: 'no consent or no reachable contact detail' };\n  return { channel: ch, to: ch === 'SMS' ? normPhone(c.Phone) : normEmail(c.Email) };\n};\n/** The TEST message sink: records what would be sent. No provider is called; nothing reaches a real phone or inbox. */\nconst deliver = (ch, to, subject, body) => ({ status: 'Simulated Sent', provider: CFG.messaging.provider, channel: ch, to, subject: subject || null, body });\nconst logRef = (prefix) => prefix + '-' + iso(NOW).replace(/[-:TZ.]/g, '').slice(0, 14) + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();\nconst chunk = (list, n) => { const out = []; for (let i = 0; i < list.length; i += n) out.push(list.slice(i, i + n)); return out; };\n\nconst p = $('Plan Reactivation').first().json;\nconst b = chunk(p.logs, 10);\nreturn b.length ? b.map((x) => ({ json: { request: { typecast: false, records: x } } })) : [{ json: { none: true } }];"
+      }
+    },
+    {
+      "id": "b5332ca8-3734-48ce-a3cc-557e63c22b08",
+      "name": "Logs To Write?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1820,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.none !== true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "11db86a7-6ae9-47fc-a72c-238ef14d1183",
+      "name": "Write Log",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2080,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Message%20Log",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.request) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "3XbFnHjAd7mFvBD2",
+          "name": "Roofops Airtable Personal Access Token account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "02ea2530-6225-42c2-aca4-e51dde9c4ca2",
+      "name": "Update Batches",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2340,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nconst CFG = {\"business\":{\"name\":\"Harbourside Roofing (Lite demo)\",\"trade\":\"roofing\",\"phone\":\"1300 000 000\",\"signoff\":\"The Harbourside Roofing team\",\"timezone\":\"Australia/Brisbane\"},\"airtable\":{\"baseId\":\"appMc8V0Wm29tEeHQ\",\"credential\":{\"id\":\"3XbFnHjAd7mFvBD2\",\"name\":\"Roofops Airtable Personal Access Token account\"},\"tables\":{\"contacts\":\"Lite Contacts\",\"properties\":\"Lite Properties\",\"jobs\":\"Lite Jobs\",\"quotes\":\"Lite Quotes\",\"messages\":\"Lite Message Log\"}},\"messaging\":{\"mode\":\"test-sink\",\"provider\":\"lite-test-sink\"},\"leadIntake\":{\"webhookPath\":\"roofops-lite/lead\",\"dedupeWindowDays\":30,\"sms\":\"Hi {firstName}, thanks for contacting {businessName} about {service}. We've got your enquiry and will call you within one business day. Reply STOP to opt out.\",\"emailSubject\":\"We've received your enquiry - {businessName}\",\"email\":\"Hi {firstName},\\n\\nThanks for getting in touch with {businessName} about {service}. We've received your enquiry and one of our team will contact you within one business day.\\n\\nIf it's urgent, call us on {businessPhone}.\\n\\n{signoff}\"},\"reviews\":{\"googleReviewUrl\":\"https://g.page/r/EXAMPLE-REVIEW-ID/review\",\"delayDays\":2,\"maxPerRun\":20,\"sms\":\"Hi {firstName}, thanks for choosing {businessName} for your {service}. If you're happy with the work, a quick Google review would really help us: {reviewUrl} Reply STOP to opt out.\",\"emailSubject\":\"How did we do? - {businessName}\",\"email\":\"Hi {firstName},\\n\\nThanks for choosing {businessName} for your {service}. If you're happy with the result, we'd be grateful for a short Google review:\\n{reviewUrl}\\n\\n{signoff}\"},\"reactivation\":{\"inactivityDays\":90,\"cooldownDays\":180,\"maxPerRun\":20,\"stages\":[\"New Lead\",\"Contacted\",\"Quoted\"],\"sms\":\"Hi {firstName}, it's {businessName}. You asked us about {service} a while ago - is it still on your list? Reply YES and we'll call you to book a free inspection. Reply STOP to opt out.\",\"emailSubject\":\"Still thinking about your {service}? - {businessName}\",\"email\":\"Hi {firstName},\\n\\nA while ago you asked {businessName} about {service}. If it's still on your list, just reply to this email and we'll book a free inspection at a time that suits you.\\n\\n{signoff}\\n\\nDon't want these emails? Reply STOP.\"},\"replies\":{\"webhookPath\":\"roofops-lite/reply\",\"optOutKeywords\":[\"STOP\",\"UNSUBSCRIBE\",\"OPT OUT\",\"OPTOUT\",\"CANCEL\",\"QUIT\",\"END\"]}};\nconst NOW = new Date();\nconst iso = (d) => new Date(d).toISOString();\nconst days = (n) => n * 24 * 60 * 60 * 1000;\nconst clean = (s) => String(s == null ? '' : s).trim();\nconst formulaText = (s) => clean(s).replace(/[\\\\'\"{}]/g, '');\nconst normEmail = (s) => { const e = clean(s).toLowerCase(); return /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(e) ? e : ''; };\nconst normPhone = (s) => { let d = clean(s).replace(/[^0-9+]/g, ''); if (d.startsWith('+61')) d = '0' + d.slice(3); d = d.replace(/[^0-9]/g, ''); return /^0[2-478][0-9]{8}$/.test(d) ? d : ''; };\nconst firstNameOf = (n) => clean(n).split(/\\s+/)[0] || 'there';\nconst render = (tpl, v) => String(tpl).replace(/\\{(\\w+)\\}/g, (m, k) => (v[k] == null ? m : String(v[k])));\nconst vars = (contact, job) => ({ firstName: contact['First Name'] || firstNameOf(contact.Name), businessName: CFG.business.name, businessPhone: CFG.business.phone,\n  signoff: CFG.business.signoff, service: (job && job.Service) || ('your ' + CFG.business.trade + ' job'), reviewUrl: CFG.reviews.googleReviewUrl });\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n/** Which channel may carry a message to this contact: the preferred one if it is consented and reachable, else the other. */\nconst channelFor = (c) => {\n  if (c['Opted Out']) return { skip: 'opted out' };\n  const can = { SMS: !!c['Consent SMS'] && !!normPhone(c.Phone), Email: !!c['Consent Email'] && !!normEmail(c.Email) };\n  const order = c['Preferred Channel'] === 'Email' ? ['Email', 'SMS'] : ['SMS', 'Email'];\n  const ch = order.find((x) => can[x]);\n  if (!ch) return { skip: 'no consent or no reachable contact detail' };\n  return { channel: ch, to: ch === 'SMS' ? normPhone(c.Phone) : normEmail(c.Email) };\n};\n/** The TEST message sink: records what would be sent. No provider is called; nothing reaches a real phone or inbox. */\nconst deliver = (ch, to, subject, body) => ({ status: 'Simulated Sent', provider: CFG.messaging.provider, channel: ch, to, subject: subject || null, body });\nconst logRef = (prefix) => prefix + '-' + iso(NOW).replace(/[-:TZ.]/g, '').slice(0, 14) + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();\nconst chunk = (list, n) => { const out = []; for (let i = 0; i < list.length; i += n) out.push(list.slice(i, i + n)); return out; };\n\nif ($('Write Log').isExecuted) $('Write Log').all().forEach((i) => records(i.json, 'write message log'));\nconst p = $('Plan Reactivation').first().json;\nconst b = chunk(p.updates, 10);\nreturn b.length ? b.map((x) => ({ json: { request: { typecast: false, records: x } } })) : [{ json: { none: true } }];"
+      }
+    },
+    {
+      "id": "5f5c5841-bcda-4875-ac45-a1ac05676927",
+      "name": "Updates To Write?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2600,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.none !== true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "ee2bc018-9d4c-450e-a7c4-fc7153491012",
+      "name": "Update Jobs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2860,
+        0
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Jobs",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.request) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "3XbFnHjAd7mFvBD2",
+          "name": "Roofops Airtable Personal Access Token account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "01144bd8-ca7a-4542-a202-0dcfb6ad71a3",
+      "name": "Reactivation Run Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3120,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nconst CFG = {\"business\":{\"name\":\"Harbourside Roofing (Lite demo)\",\"trade\":\"roofing\",\"phone\":\"1300 000 000\",\"signoff\":\"The Harbourside Roofing team\",\"timezone\":\"Australia/Brisbane\"},\"airtable\":{\"baseId\":\"appMc8V0Wm29tEeHQ\",\"credential\":{\"id\":\"3XbFnHjAd7mFvBD2\",\"name\":\"Roofops Airtable Personal Access Token account\"},\"tables\":{\"contacts\":\"Lite Contacts\",\"properties\":\"Lite Properties\",\"jobs\":\"Lite Jobs\",\"quotes\":\"Lite Quotes\",\"messages\":\"Lite Message Log\"}},\"messaging\":{\"mode\":\"test-sink\",\"provider\":\"lite-test-sink\"},\"leadIntake\":{\"webhookPath\":\"roofops-lite/lead\",\"dedupeWindowDays\":30,\"sms\":\"Hi {firstName}, thanks for contacting {businessName} about {service}. We've got your enquiry and will call you within one business day. Reply STOP to opt out.\",\"emailSubject\":\"We've received your enquiry - {businessName}\",\"email\":\"Hi {firstName},\\n\\nThanks for getting in touch with {businessName} about {service}. We've received your enquiry and one of our team will contact you within one business day.\\n\\nIf it's urgent, call us on {businessPhone}.\\n\\n{signoff}\"},\"reviews\":{\"googleReviewUrl\":\"https://g.page/r/EXAMPLE-REVIEW-ID/review\",\"delayDays\":2,\"maxPerRun\":20,\"sms\":\"Hi {firstName}, thanks for choosing {businessName} for your {service}. If you're happy with the work, a quick Google review would really help us: {reviewUrl} Reply STOP to opt out.\",\"emailSubject\":\"How did we do? - {businessName}\",\"email\":\"Hi {firstName},\\n\\nThanks for choosing {businessName} for your {service}. If you're happy with the result, we'd be grateful for a short Google review:\\n{reviewUrl}\\n\\n{signoff}\"},\"reactivation\":{\"inactivityDays\":90,\"cooldownDays\":180,\"maxPerRun\":20,\"stages\":[\"New Lead\",\"Contacted\",\"Quoted\"],\"sms\":\"Hi {firstName}, it's {businessName}. You asked us about {service} a while ago - is it still on your list? Reply YES and we'll call you to book a free inspection. Reply STOP to opt out.\",\"emailSubject\":\"Still thinking about your {service}? - {businessName}\",\"email\":\"Hi {firstName},\\n\\nA while ago you asked {businessName} about {service}. If it's still on your list, just reply to this email and we'll book a free inspection at a time that suits you.\\n\\n{signoff}\\n\\nDon't want these emails? Reply STOP.\"},\"replies\":{\"webhookPath\":\"roofops-lite/reply\",\"optOutKeywords\":[\"STOP\",\"UNSUBSCRIBE\",\"OPT OUT\",\"OPTOUT\",\"CANCEL\",\"QUIT\",\"END\"]}};\nconst NOW = new Date();\nconst iso = (d) => new Date(d).toISOString();\nconst days = (n) => n * 24 * 60 * 60 * 1000;\nconst clean = (s) => String(s == null ? '' : s).trim();\nconst formulaText = (s) => clean(s).replace(/[\\\\'\"{}]/g, '');\nconst normEmail = (s) => { const e = clean(s).toLowerCase(); return /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(e) ? e : ''; };\nconst normPhone = (s) => { let d = clean(s).replace(/[^0-9+]/g, ''); if (d.startsWith('+61')) d = '0' + d.slice(3); d = d.replace(/[^0-9]/g, ''); return /^0[2-478][0-9]{8}$/.test(d) ? d : ''; };\nconst firstNameOf = (n) => clean(n).split(/\\s+/)[0] || 'there';\nconst render = (tpl, v) => String(tpl).replace(/\\{(\\w+)\\}/g, (m, k) => (v[k] == null ? m : String(v[k])));\nconst vars = (contact, job) => ({ firstName: contact['First Name'] || firstNameOf(contact.Name), businessName: CFG.business.name, businessPhone: CFG.business.phone,\n  signoff: CFG.business.signoff, service: (job && job.Service) || ('your ' + CFG.business.trade + ' job'), reviewUrl: CFG.reviews.googleReviewUrl });\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n/** Which channel may carry a message to this contact: the preferred one if it is consented and reachable, else the other. */\nconst channelFor = (c) => {\n  if (c['Opted Out']) return { skip: 'opted out' };\n  const can = { SMS: !!c['Consent SMS'] && !!normPhone(c.Phone), Email: !!c['Consent Email'] && !!normEmail(c.Email) };\n  const order = c['Preferred Channel'] === 'Email' ? ['Email', 'SMS'] : ['SMS', 'Email'];\n  const ch = order.find((x) => can[x]);\n  if (!ch) return { skip: 'no consent or no reachable contact detail' };\n  return { channel: ch, to: ch === 'SMS' ? normPhone(c.Phone) : normEmail(c.Email) };\n};\n/** The TEST message sink: records what would be sent. No provider is called; nothing reaches a real phone or inbox. */\nconst deliver = (ch, to, subject, body) => ({ status: 'Simulated Sent', provider: CFG.messaging.provider, channel: ch, to, subject: subject || null, body });\nconst logRef = (prefix) => prefix + '-' + iso(NOW).replace(/[-:TZ.]/g, '').slice(0, 14) + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();\nconst chunk = (list, n) => { const out = []; for (let i = 0; i < list.length; i += n) out.push(list.slice(i, i + n)); return out; };\n\nif ($('Update Jobs').isExecuted) $('Update Jobs').all().forEach((i) => records(i.json, 'update jobs'));\nconst p = $('Plan Reactivation').first().json;\nreturn [{ json: Object.assign({ ok: true, ran_at: iso(NOW), logged: p.logs.length, jobs_updated: p.updates.length }, p.summary) }];"
+      }
+    }
+  ],
+  "connections": {
+    "Weekly Monday 09:00": {
+      "main": [
+        [
+          {
+            "node": "Find Quiet Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Now": {
+      "main": [
+        [
+          {
+            "node": "Find Quiet Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Quiet Leads": {
+      "main": [
+        [
+          {
+            "node": "Contact Formula",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contact Formula": {
+      "main": [
+        [
+          {
+            "node": "Find Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Contacts": {
+      "main": [
+        [
+          {
+            "node": "Find Sent Reactivations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Sent Reactivations": {
+      "main": [
+        [
+          {
+            "node": "Plan Reactivation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Reactivation": {
+      "main": [
+        [
+          {
+            "node": "Log Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Log": {
+      "main": [
+        [
+          {
+            "node": "Update Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Logs To Write?": {
+      "main": [
+        [
+          {
+            "node": "Write Log",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Batches": {
+      "main": [
+        [
+          {
+            "node": "Logs To Write?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Jobs": {
+      "main": [
+        [
+          {
+            "node": "Reactivation Run Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Updates To Write?": {
+      "main": [
+        [
+          {
+            "node": "Update Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reactivation Run Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Batches": {
+      "main": [
+        [
+          {
+            "node": "Updates To Write?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "tags": [],
+  "meta": {
+    "generatedBy": "lite/build.ts",
+    "templateCredsSetupCompleted": false
+  }
+}

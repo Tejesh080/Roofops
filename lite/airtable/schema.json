@@ -1,0 +1,89 @@
+{
+  "note": "RoofOps Lite CRM. Five isolated tables, all prefixed 'Lite'; Advanced RoofOps tables and statuses are untouched. Field names are the contract the Lite workflows use. Create with lite/airtable/setup.ts (dry run by default).",
+  "tables": [
+    {
+      "key": "contacts", "name": "Lite Contacts", "description": "People who contacted the business. Consent and opt-out fields gate every message.",
+      "fields": [
+        { "name": "Name", "type": "singleLineText", "primary": true },
+        { "name": "First Name", "type": "singleLineText" },
+        { "name": "Email", "type": "email" },
+        { "name": "Phone", "type": "phoneNumber" },
+        { "name": "Phone Normalized", "type": "singleLineText", "description": "Digits only, national format (e.g. 0412345678). Used for de-duplication." },
+        { "name": "Suburb", "type": "singleLineText" },
+        { "name": "Source", "type": "singleSelect", "options": ["Website", "Facebook", "Google", "Referral", "Phone", "Other"] },
+        { "name": "Preferred Channel", "type": "singleSelect", "options": ["SMS", "Email"] },
+        { "name": "Consent SMS", "type": "checkbox", "description": "May receive service SMS (acknowledgements, review requests)." },
+        { "name": "Consent Email", "type": "checkbox", "description": "May receive service email." },
+        { "name": "Marketing Opt-In", "type": "checkbox", "description": "Explicitly agreed to follow-up / marketing messages (required for reactivation)." },
+        { "name": "Opted Out", "type": "checkbox", "description": "Replied STOP or asked not to be contacted. Blocks every message." },
+        { "name": "Opted Out At", "type": "dateTime" },
+        { "name": "Lite Jobs", "type": "multipleRecordLinks", "linksTo": "jobs", "inverseOf": "Contact", "description": "Created by Airtable as the other side of Lite Jobs > Contact (keep this name). The workflows find a contact's jobs through it." },
+        { "name": "Demo Data", "type": "checkbox", "description": "Synthetic record created for the Lite demo." },
+        { "name": "Notes", "type": "multilineText" }
+      ]
+    },
+    {
+      "key": "properties", "name": "Lite Properties", "description": "Job sites.",
+      "fields": [
+        { "name": "Address", "type": "singleLineText", "primary": true },
+        { "name": "Suburb", "type": "singleLineText" },
+        { "name": "Postcode", "type": "singleLineText" },
+        { "name": "Contact", "type": "multipleRecordLinks", "linksTo": "contacts" },
+        { "name": "Demo Data", "type": "checkbox" }
+      ]
+    },
+    {
+      "key": "jobs", "name": "Lite Jobs", "description": "One row per enquiry, carried through the whole journey: New Lead -> Contacted -> Quoted -> Accepted -> Job In Progress -> Completed -> Invoiced -> Paid.",
+      "fields": [
+        { "name": "Job Ref", "type": "singleLineText", "primary": true },
+        { "name": "Contact", "type": "multipleRecordLinks", "linksTo": "contacts" },
+        { "name": "Property", "type": "multipleRecordLinks", "linksTo": "properties" },
+        { "name": "Stage", "type": "singleSelect", "options": ["New Lead", "Contacted", "Quoted", "Accepted", "Job In Progress", "Completed", "Invoiced", "Paid", "Lost"] },
+        { "name": "Service", "type": "singleLineText" },
+        { "name": "Enquiry Message", "type": "multilineText" },
+        { "name": "Source", "type": "singleSelect", "options": ["Website", "Facebook", "Google", "Referral", "Phone", "Other"] },
+        { "name": "Lead Received At", "type": "dateTime" },
+        { "name": "Last Activity At", "type": "dateTime" },
+        { "name": "Completed At", "type": "dateTime" },
+        { "name": "Invoice Status", "type": "singleSelect", "options": ["Not Invoiced", "Invoiced", "Paid"] },
+        { "name": "Invoice Amount", "type": "currency" },
+        { "name": "Review Status", "type": "singleSelect", "options": ["Sent", "Skipped"] },
+        { "name": "Review Requested At", "type": "dateTime" },
+        { "name": "Review Skip Reason", "type": "singleLineText" },
+        { "name": "Reactivation Sent At", "type": "dateTime" },
+        { "name": "Reactivation Count", "type": "number" },
+        { "name": "Demo Data", "type": "checkbox" }
+      ]
+    },
+    {
+      "key": "quotes", "name": "Lite Quotes", "description": "Quotations for a job (status tracking only in Lite).",
+      "fields": [
+        { "name": "Quote Ref", "type": "singleLineText", "primary": true },
+        { "name": "Job", "type": "multipleRecordLinks", "linksTo": "jobs" },
+        { "name": "Amount", "type": "currency" },
+        { "name": "Status", "type": "singleSelect", "options": ["Draft", "Sent", "Accepted", "Declined"] },
+        { "name": "Sent At", "type": "dateTime" },
+        { "name": "Accepted At", "type": "dateTime" },
+        { "name": "Demo Data", "type": "checkbox" }
+      ]
+    },
+    {
+      "key": "messages", "name": "Lite Message Log", "description": "Every attempted, skipped, failed or received message. Lite sends through a test sink: nothing reaches a real phone or inbox.",
+      "fields": [
+        { "name": "Log Ref", "type": "singleLineText", "primary": true },
+        { "name": "Workflow", "type": "singleSelect", "options": ["Lead Follow-Up", "Review Request", "Reactivation", "Inbound Reply"] },
+        { "name": "Job", "type": "multipleRecordLinks", "linksTo": "jobs" },
+        { "name": "Contact", "type": "multipleRecordLinks", "linksTo": "contacts" },
+        { "name": "Channel", "type": "singleSelect", "options": ["SMS", "Email"] },
+        { "name": "To", "type": "singleLineText" },
+        { "name": "Body", "type": "multilineText" },
+        { "name": "Status", "type": "singleSelect", "options": ["Simulated Sent", "Skipped", "Failed", "Received", "Opt-Out"] },
+        { "name": "Reason", "type": "singleLineText" },
+        { "name": "Dedupe Key", "type": "singleLineText" },
+        { "name": "Provider", "type": "singleLineText" },
+        { "name": "Attempted At", "type": "dateTime" },
+        { "name": "Demo Data", "type": "checkbox" }
+      ]
+    }
+  ]
+}

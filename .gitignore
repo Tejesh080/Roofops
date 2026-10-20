@@ -22,3 +22,16 @@ web/playwright-report/
 # Promptfoo run artefacts (regenerated each run)
 promptfoo/ground-truth.json
 promptfoo/results.json
+
+# Isolated staging (ops/staging/staging.ts): generated output, the staging connection and staging secrets
+ops/staging/out/
+ops/staging/.env.staging
+ops/staging/secrets/
+
+# RoofOps Lite: test builds and demo scratch (the committed export is lite/dist/demo; the demo report is kept)
+lite/dist/.test/
+lite/dist/other/
+lite/dist/cap/
+lite/demo/output/workflows/
+lite/demo/output/airtable-after.json
+lite/**/*.tmp.ts

@@ -7,7 +7,8 @@
       "properties": "tblO0DR7XBW5tByLI",
       "jobs": "tbl4iwogMRPz0g6Q5",
       "quotes": "tblKg4sjiGcrvCjMI",
-      "messages": "tblW8Uq5j5dW0B8RH"
+      "messages": "tblW8Uq5j5dW0B8RH",
+      "alerts": "tblG3Q5k9fe90Mpsi"
     },
     "interface": {
       "id": "pbdAzDJhyiIb7CFZJ",
@@ -288,6 +289,81 @@
           "by": "3118"
         }
       ]
+    },
+    "v2BatchA": {
+      "done": "2026-10-21 (AEST)",
+      "fieldsAdded": {
+        "contacts": {
+          "Review Opt-In": "fldpXZBl4mGZCdfM2",
+          "Consent Source": "fldNT2DZ42flaAupm",
+          "Consent Recorded At": "fldHhf635SQ0FTtlS",
+          "Consent Wording": "fldgYzQNW3S2WweBo"
+        },
+        "messages": {
+          "Purpose": "fldmQOJ4gyF51gu32",
+          "Provider Message ID": "fldFoKLP7UOJ0j3cZ",
+          "Error Code": "fldTdKWHRcbU9rmRJ",
+          "Attempts": "fld4N6ljnIz31tal6",
+          "Retry Requested": "fldM5zoGl7ZXO3Dv3",
+          "Retry Of": "fld36c3Q25DzkR0Nu",
+          "On Success": "fldKpSq7ErC1t93P0"
+        }
+      },
+      "statusOptionsAdded": [
+        "Sending",
+        "Sent",
+        "Delivered",
+        "Unknown"
+      ],
+      "statusSetupRow": {
+        "id": "recq2MOD3R6DztbKb",
+        "logRef": "ZZ-SETUP-STATUS-OPTIONS",
+        "note": "written with typecast to add the four Status options (the API cannot add select choices otherwise); left as Skipped, Demo Data ticked; safe to delete"
+      },
+      "v2TestPeople": {
+        "contacts": [
+          {
+            "name": "ZZ Lite Demo v2 Hannah Reid",
+            "id": "recih096Axk3zCicT",
+            "case": "finished job, Review Opt-In recorded: one review request expected"
+          },
+          {
+            "name": "ZZ Lite Demo v2 Oscar Lane",
+            "id": "rec81PdUB9O4zrET9",
+            "case": "quiet quote, Marketing Opt-In recorded: one follow-up expected"
+          },
+          {
+            "name": "ZZ Lite Demo v2 Ruby Stone",
+            "id": "recIxo4y2YO7PP85a",
+            "case": "quiet quote, Marketing Opt-In ticked, no record: no follow-up expected"
+          }
+        ],
+        "properties": [
+          "recco0HltoDq5xy2d",
+          "rectedSSRBWLb2Xuk",
+          "recoi2N1P3Zsvq92k"
+        ],
+        "jobs": [
+          {
+            "name": "LJ-DEMO-V2-R1",
+            "id": "recZFNb2D5AT63xMi"
+          },
+          {
+            "name": "LJ-DEMO-V2-A1",
+            "id": "rec4EfUbYQCIeLsCp"
+          },
+          {
+            "name": "LJ-DEMO-V2-A2",
+            "id": "recx3FVUYnOX9n6Hj"
+          }
+        ]
+      },
+      "interfacePagesAdded": {
+        "Alerts": "pagTnQWegMPQDGPd2",
+        "Needs Attention": "pagellKOwLBgkC29L",
+        "Consent": "pag0q8vdYb1EV4uBM",
+        "Health": "pagOod6PdGcj7QYTE"
+      }
     }
   },
   "n8n": {

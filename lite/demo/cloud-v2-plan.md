@@ -3,8 +3,15 @@
 This plan moves the cloud demo from Lite v1 (verified 2026-10-20, `evidence/lite-cloud-demo-20261020.md`) to v2:
 consent evidence, the send pipeline, Twilio (off by default), delivery receipts, and Monitor.
 
-**Nothing in this plan has been done.** It is split into batches so that each can be approved on its own. No step
-touches Advanced RoofOps tables, workflows 01–10, Supabase or Xero.
+It is split into batches so that each can be approved on its own. No step touches Advanced RoofOps tables, workflows
+01–10, Supabase or Xero.
+
+| Batch | Status |
+|---|---|
+| A, B | Approved 2026-10-21 |
+| A | **Done** 2026-10-21 (`evidence/lite-v2-batch-a-20261021.md`). The four Status options were added through the API, using one labelled setup row, instead of by hand. |
+| B | **Waiting:** the n8n connector is disconnected from the working session. Reconnect it, or import the five JSON files by hand (below). |
+| C, D | Not approved yet. |
 
 ## Batch A: Airtable additions (no messages, additive only)
 
@@ -55,6 +62,16 @@ Delivered, Unknown**. That takes about 1 minute; `setup.ts --verify` then confir
   Every run uses the test sink, so no SMS is sent.
 - **One gap:** the **Error Trigger** cannot be shown in the cloud while the workflows are unpublished, because n8n runs
   error workflows only for production executions. It is verified locally (test G), and in the cloud at go-live.
+
+### Batch B by hand, if the n8n connector stays disconnected
+
+In n8n (tejesh08.app.n8n.cloud), project Roofops:
+1. **Import Monitor:** Workflows › Import from File › `lite/dist/demo/monitor.json`. Leave it unpublished.
+2. **Import the other four:** `lead-follow-up.json`, `review-requests.json`, `lead-reactivation.json` and
+   `inbound-replies.json`, all unpublished. In each one's Settings, set **Error workflow** to [Lite] Monitor.
+3. **Check:** each Airtable node shows "Roofops Airtable Personal Access Token account".
+4. **Hand back:** reconnect the connector, or tell me the five ids. I then run the acceptance tests as manual
+   executions (test sink: no SMS).
 
 ## Batch C: Twilio without real SMS (needs you)
 

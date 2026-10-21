@@ -52,33 +52,61 @@ The automations only ever move a job forward to **Contacted**. Every other stage
 
 ## Interface (recommended: this is what the owner and staff use)
 
-The demo base has the published Interface **"Lite Quote-to-Paid"** (`pbdAzDJhyiIb7CFZJ`). Build the same for a client:
+The demo base has the published Interface **"Lite Quote-to-Paid"** (`pbdAzDJhyiIb7CFZJ`), rebuilt on 2026-10-21 around
+what an employee does. A first-time owner can follow it in five minutes. The staff guide is
+[../docs/employee-guide.md](../docs/employee-guide.md).
+
+**Build order.** The API cannot reorder or edit pages, and a new page goes to the end of the menu. So:
+1. Add the three display fields below.
+2. Create the two detail pages (Job, Customer).
+3. Create the five menu pages in menu order. Pipeline comes first, which makes it the home page.
+4. Publish.
+
+**Three read-only display fields on Lite Jobs.** These are Interface helpers. The workflows never read or write them,
+and `setup.ts --verify` ignores them:
+
+| Field | Type | Definition |
+|---|---|---|
+| Quote Amount | rollup | Lite Quotes › Amount, `MAX(values)` |
+| Amount | formula | "Paid $1,980" / "Invoiced $1,980" once there is an Invoice Amount, otherwise "Quote $6,400" (thousands separator built in the formula) |
+| Job Name | formula | `IF({Contact}, {Contact} & ' – ' & {Service}, {Service})`, e.g. "Linda Thompson – Gutter replacement" |
+
+**Hiding test data.** Every employee page is scoped to **Demo Data is not checked**. So install tests and synthetic
+records (all ticked Demo Data) never appear to staff. They are listed on the Admin page instead.
+
+**Menu (in this order):**
 
 | Page | Type | Configuration |
 |---|---|---|
-| Overview | dashboard | One section per figure, each with its own record filter. **Numbers:** New leads (count, Stage is New Lead); To invoice (count, Completed and Not Invoiced); Owed (sum of Invoice Amount, Invoice Status Invoiced); Paid (sum, Invoice Status Paid); Logged messages. **Grids:** New leads, Latest messages. |
-| Pipeline | Kanban on Lite Jobs | Stacked by Stage, with a count per stack. Cards: Job Ref, Contact, Service, Last Activity At, Invoice Amount. Newest activity first. **Clicking a card opens the Job detail page** (below): create that page first and pass its id as `recordDetailPageId`. |
-| Job (record detail) | sidesheet on Lite Jobs, editable | Title: Job Ref. Its sections are listed below the table. |
-| Jobs | grid on Lite Jobs | The nine job views above as tabs, except Pipeline. Row colour by Stage; sum of Invoice Amount. |
-| Message Log | grid | Grouped by Workflow, newest first. Columns include Purpose, Status, Error Code, Provider Message ID, Retry Requested (editable). Tabs: **Needs attention** (Status Failed or Unknown), Problems (Failed or Skipped), Replies and opt-outs. |
-| Contacts | grid | Columns include Consent SMS, Review Opt-In, Marketing Opt-In, Consent Source, Consent Recorded At, Opted Out. Tabs: Do not contact, Marketing list (Marketing Opt-In, a Consent Recorded At, not Opted Out), **Consent not recorded** (a box ticked but no Consent Recorded At). |
-| Quotes | grid | Sum of Amount, newest first. |
-| **Alerts** | grid on Lite Alerts | Open first, newest first; Status editable (Open / Resolved). Tabs: Open, Delivery, Leads and jobs, Workflow failures. Add an **Open alerts** number to the Overview. |
+| **Pipeline** (home) | kanban on Lite Jobs | Stacked by Stage, which follows the field's option order: New Lead → Contacted → Quoted → Accepted → Job In Progress → Completed → Invoiced → Paid. **Scope:** not Demo Data, and Stage is not Lost (Lost jobs leave the board; they are listed on Business overview). **Cards:** Contact, Service, Amount, Last Activity At. No Job Ref. Newest activity first, count per stack. A click opens **Job**. |
+| **Business overview** | dashboard | One section per figure, each with its own scope (not Demo Data). **Numbers:** New enquiries to call (with a grid that opens Job); Quotes waiting for a yes; Jobs booked or in progress; Finished, not invoiced yet; Awaiting payment ($); Paid ($). The money figures say "CRM tracking only: the real invoices live in Xero". **Grids:** Latest customer replies; Lost enquiries (opens Job). |
+| **Customers** | grid on Lite Contacts | Name, Phone, Email, Suburb, the four permission boxes, Opted Out. Tabs: **Do not contact**; **Permission not recorded** (a box ticked but no Consent Recorded At). A click opens **Customer**. |
+| **Messages** | grid on Lite Message Log | When, Customer, Type (Workflow), Channel, Status, Message, Reason, Retry Requested. Newest first. Tabs: **Replies from customers** (Received, Opt-Out); **Problems to fix** (Failed, Unknown). |
+| **Admin (owner)** | dashboard | Open alerts (with count), failed or unconfirmed messages (Retry Requested), and test and demo records (Demo Data ticked; delete before go-live). |
 
-**Job detail page sections:**
-1. **Job:** Stage, Service, Enquiry Message, Property, Source, Lead Received At.
-2. **Customer:** the Contact link shown as an embedded grid, with Name, Phone, Email, Opted Out, Consent SMS, Review
-   Opt-In and Marketing Opt-In. Staff see the number to call and the consent at a glance.
-3. **Quotes:** the Lite Quotes link as an embedded grid, with link and unlink allowed. Columns: Quote Ref, Amount,
-   Status, Sent At, Accepted At.
-4. **Finishing and invoicing:** Completed At, Invoice Status, Invoice Amount.
-5. **Messages:** the Message Log link as an embedded grid, newest first. Columns: Attempted At, Workflow, Channel,
-   Status, Body, Reason.
-6. **Set by the automations:** Last Activity At, the Review fields and the Reactivation fields.
+**Job** (record detail, sidesheet, editable). The title is Job Name. Its sections are numbered as the steps of a job:
+1. **Stage:** Stage, Service, Amount, Enquiry Message.
+2. **Customer:** the Contact link as an embedded grid: Name, Phone, Email, Suburb, Opted Out.
+3. **Quotation:** the Lite Quotes link as an embedded grid (+ adds a quote): Quote Ref, Amount, Status, Sent At,
+   Accepted At.
+4. **Invoice and payment: CRM tracking only (not Xero):** Invoice Status, Invoice Amount, Completed At. The
+   description says the real invoice is made in Xero, and that Completed At fills itself in.
+5. **Customer messages (written by Lite):** the Message Log link as an embedded grid, marked read only.
 
-A detail page is either all editable or all read-only. So label section 6 "leave these as they are".
+The automation fields (Review…, Reactivation…, Lead Received At, Last Activity At) are not on this page. A detail page
+is all-editable or all-read-only, so leaving them off is the only way to keep staff from seeing them as inputs.
 
-A **Record review** page on Lite Jobs, for working through new leads, is a useful extra.
+**Customer** (record detail, sidesheet, **read-only**). The title is Name. Sections:
+1. **Contact details:** Phone, Email, Suburb, Notes.
+2. **Jobs:** an embedded grid that opens Job.
+3. **Permission to message:** the four boxes, Opted Out, Consent Source, Recorded At, Wording.
+4. **Messages.**
+
+**Three things only the Interface editor can do (2 minutes):**
+1. Rename the interface after the business.
+2. On the Messages page, make every column read-only except Retry Requested.
+3. Check that kanban cards lead with the customer's name. If Airtable shows Job Ref as the card title, set the title
+   to Job Name in the card settings.
 
 ## Rules that keep the automations safe
 

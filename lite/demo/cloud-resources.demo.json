@@ -14,19 +14,36 @@
       "id": "pbdAzDJhyiIb7CFZJ",
       "name": "Lite Quote-to-Paid",
       "pages": {
-        "Overview": "pagXFR1yZ7q3TAwXz",
-        "Pipeline": "pagLDm2qi1CrHjfZD",
-        "Jobs": "pagweElqH06yKZeXg",
-        "Message Log": "pagXBMMy90Crh9v3Q",
-        "Contacts": "pag03vKa1GUUsao5Y",
-        "Quotes": "pagYpUijUAOhMnXoj"
+        "Pipeline": "pagbV1cC4WOP6GA47",
+        "Business overview": "pagiPwzfYh0ALecLp",
+        "Customers": "pagB8BLe5Xxg5FtZa",
+        "Messages": "pagi5vc7PnRHrdFN4",
+        "Admin (owner)": "pagdrRL8Bm8H22tLu"
       },
       "recordDetailPages": {
-        "Job (Job Detail 2)": "pagwUYRZgQB8QSSp5"
+        "Job (editable)": "pagdHEU4HVuwTOnsk",
+        "Customer (read-only)": "pagrjTP1csMqJeKYK"
       },
       "removed": {
-        "Pipeline (first version, no detail page)": "pagSoRoOHL8eClVBC"
-      }
+        "first version (Overview, Pipeline, Jobs, Message Log, Contacts, Quotes, Alerts, Needs Attention, Consent, Health)": [
+          "pagXFR1yZ7q3TAwXz",
+          "pagSoRoOHL8eClVBC",
+          "pagweElqH06yKZeXg",
+          "pagXBMMy90Crh9v3Q",
+          "pag03vKa1GUUsao5Y",
+          "pagYpUijUAOhMnXoj",
+          "pagTnQWegMPQDGPd2",
+          "pagellKOwLBgkC29L",
+          "pag0q8vdYb1EV4uBM",
+          "pagOod6PdGcj7QYTE"
+        ],
+        "second Pipeline and Job Detail 2": [
+          "pagLDm2qi1CrHjfZD",
+          "pagwUYRZgQB8QSSp5"
+        ]
+      },
+      "rebuilt": "2026-10-21: rebuilt around employee tasks; menu order = creation order (Pipeline first = home)",
+      "scope": "every employee page: Demo Data is not checked (all test records are ticked, so staff see only real customers)"
     },
     "seeded": {
       "at": "2026-10-20T11:07:16.469Z",
@@ -452,6 +469,34 @@
         "LQ-DEMO-PETER": "recDL6XuqFaHB6kGc"
       },
       "note": "created by the real form and the workflows; ticked Demo Data afterwards; Peter time-shifted 120 days for the reactivation step"
+    },
+    "interfaceHelperFields": {
+      "note": "read-only display fields on Lite Jobs; the workflows do not use them; setup --verify ignores extra fields",
+      "Quote Amount": "fldb09OUxQJw6Ghg4",
+      "Amount": "fldVCo7oFkWQ8DLX2",
+      "Job Name": "fldQpJl09l5Kry8mf"
+    },
+    "showcase": {
+      "note": "Realistic synthetic customers for the clean demo view. Demo Data is NOT ticked, so they appear on the employee pages. Fictional names, ACMA fictional numbers, example.com emails; their Notes say \"Showcase customer: synthetic ... Delete before go-live.\" Created through Lead Follow-Up (manual runs 3292-3301, test sink) and two simulated replies (3312, 3313).",
+      "contacts": {
+        "Linda Thompson": "rec5QECi3SETB0qSA",
+        "Michael Harris": "reccR9pFbSCDC08QQ",
+        "Karen O'Brien": "recN6pAP6kp8ARvUi",
+        "Sarah Mitchell": "recp9FXHYtajRrAWd",
+        "David Nguyen": "recJ2Fe1bAyfPUp0l"
+      },
+      "jobs": {
+        "LJ-20261021-TAAU Linda, Paid $1,980": "recHYlg2svsFd0DLM",
+        "LJ-20261021-LPHF Michael, Job In Progress, quote $2,750": "recMT3A0menHmqyMO",
+        "LJ-20261021-AUE3 Karen, Quoted $6,400": "rec6WOZWkY9u8ErGK",
+        "LJ-20261021-6S86 Sarah, Contacted, replied": "recse1xwArvnTJpIF",
+        "LJ-20261021-UON9 David, New Lead (no consent)": "recTJfnTiRE9zKBYH"
+      },
+      "quotes": {
+        "Q-1041": "recxABU6e47TLHY7S",
+        "Q-1039": "recqQohQmWi10F2jf",
+        "Q-1036": "recEjnpTqFteJetJL"
+      }
     }
   },
   "n8n": {

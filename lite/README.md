@@ -98,7 +98,7 @@ lite/demo/                     local demo: in-memory Airtable, fake Twilio, synt
 ```
 
 Install a client: [DEPLOY.md](DEPLOY.md) (full guide) and [SETUP-CHECKLIST.md](SETUP-CHECKLIST.md) (one page).
-Hand it over: [DELIVERY-CHECKLIST.md](DELIVERY-CHECKLIST.md).
+Hand it over: [DELIVERY-CHECKLIST.md](DELIVERY-CHECKLIST.md). Staff guide: [docs/employee-guide.md](docs/employee-guide.md).
 Demo script: [demo/portfolio-demo-script.md](demo/portfolio-demo-script.md).
 
 ## Limits (MVP)

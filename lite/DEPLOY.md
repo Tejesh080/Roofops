@@ -277,11 +277,13 @@ Twilio's text never matches Lite's.
    or `setWorkflowSettings` with `errorWorkflow`). Check it once by making one production run fail on purpose, for
    example a lead posted while the Airtable credential is disconnected. A Workflow Failed row should appear in Lite
    Alerts.
-5. **Clean up:** remove synthetic data from the Jobs page tab **Demo data**.
+5. **Clean up:** delete the synthetic records. The Admin page lists every job ticked Demo Data. Delete them, and their
+   contacts and messages, in the Lite tables, where Airtable can delete in bulk.
 
 ## 9. Handover
 
 Show staff:
+- **The staff guide:** walk them through [docs/employee-guide.md](docs/employee-guide.md), about 10 minutes.
 - **Pipeline:** drag a job from stage to stage, and click a card to open the job (customer phone, quotes, messages).
   Moving it to Completed is enough: Lite records Completed At, and the review request follows.
 - **Imported old jobs:** fill in Completed At, or set Review Status to Skipped. Otherwise Lite treats them as finished

@@ -11,7 +11,7 @@ This list covers what must be true before, at and after handover to a trade busi
 | Five workflows: `[Lite]` Lead Follow-Up, Review Requests, Lead Reactivation, Inbound Replies, Monitor | The client's n8n project |
 | Website enquiry form | `lite/dist/<client>/lead-form.html`, pasted into their site |
 | SMS from the business's own Australian number | The client's Twilio account |
-| Staff guide | DEPLOY.md step 9, plus a recorded walkthrough (script: [demo/portfolio-demo-script.md](demo/portfolio-demo-script.md)) |
+| Staff guide | [docs/employee-guide.md](docs/employee-guide.md) and DEPLOY.md step 9, plus a recorded walkthrough (script: [demo/portfolio-demo-script.md](demo/portfolio-demo-script.md)) |
 | Compliance notes | [docs/compliance-au.md](docs/compliance-au.md) |
 | Their config and build | `lite/config/<client>.local.json` and `lite/dist/<client>.local/`: kept by the installer, never in git |
 
@@ -81,12 +81,12 @@ This list covers what must be true before, at and after handover to a trade busi
       error workflow of the other four.
 - [ ] The number's "A message comes in" points at the reply URL. It is a plain URL; any login comes from the Rule or the
       relay.
-- [ ] **Clean up:** remove the synthetic data (Jobs › Demo data) and the installer's test rows. The test rows hold real
+- [ ] **Clean up:** remove the synthetic data (Admin page › test and demo records) and the installer's test rows. The test rows hold real
       phone numbers.
 
 ## 7. Handover
 
-- [ ] **Staff walkthrough** (DEPLOY.md step 9):
+- [ ] **Staff walkthrough** (DEPLOY.md step 9, following [docs/employee-guide.md](docs/employee-guide.md)):
   - the Pipeline: drag the cards, click one to open the job, and add the quote there;
   - recording consent taken by phone;
   - alerts and Retry Requested;

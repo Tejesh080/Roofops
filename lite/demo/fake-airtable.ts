@@ -2,8 +2,8 @@
  * An in-memory Airtable for the Lite demo and tests: tables from lite/airtable/schema.json, addressed by NAME in the URL
  * (as the Lite workflows do), with list (filterByFormula), create and update. It refuses what real Airtable refuses with
  * typecast:false: unknown fields, a value that is not one of a single-select's options, more than 10 records per write,
- * a link to a record that does not exist. Formulas: AND, OR, NOT, FIND, LOWER, BLANK(), TRUE(), FALSE(), RECORD_ID(),
- * =, !=, >, <, strings, numbers and {Field}.
+ * a link to a record that does not exist. Formulas: AND, OR, NOT, FIND, LOWER, REGEX_REPLACE, BLANK(), TRUE(), FALSE(),
+ * RECORD_ID(), =, !=, >, <, strings (with \' escapes), numbers and {Field}.
  */
 import { readFileSync } from 'node:fs';
 
@@ -141,6 +141,7 @@ function compile(src: string): (r: Rec) => boolean {
         case 'NOT': return (r) => !truthy(args[0]!(r));
         case 'LOWER': return (r) => String(args[0]!(r)).toLowerCase();
         case 'FIND': return (r) => String(args[1]!(r)).indexOf(String(args[0]!(r))) + 1;
+        case 'REGEX_REPLACE': return (r) => String(args[0]!(r)).replace(new RegExp(String(args[1]!(r)), 'g'), String(args[2]!(r)));
         case 'BLANK': return () => '';
         case 'TRUE': return () => true;
         case 'FALSE': return () => false;

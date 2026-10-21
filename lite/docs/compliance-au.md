@@ -64,8 +64,16 @@ needs an upgraded account with the business's own number.
 - A reply of STOP, STOPALL, UNSUBSCRIBE, CANCEL, END, QUIT, OPT OUT, OPTOUT or REMOVE (configurable) does three
   things **at once**: ticks Opted Out, sets Opted Out At, and clears Marketing Opt-In. This is well within 5 working
   days.
+- **Who STOP opts out.** It applies to every contact with that number, including duplicate records of the same person.
+  It also applies to every contact Lite has messaged at that number before, so a number changed in the CRM since
+  cannot make a STOP go unheard. It may opt out more than one record; it never opts out too few.
 - Twilio error 21610 ("unsubscribed recipient") also opts the contact out.
 - An opted-out contact gets **nothing** from Lite again: no acknowledgement, review request, reactivation or retry.
+- **Retries recheck consent.** A retry is sent only if the person still has the permission it needs: SMS consent, and
+  for review requests and offers, that permission recorded.
+- **Form consent covers only what was ticked.** The website form records exactly which boxes were ticked, tagging the
+  wording [reviews] and [marketing]. Service consent on a form never makes an older, unrecorded marketing tick usable.
+  Earlier consent evidence is kept when a returning person ticks a new box.
 - **START** is only logged for staff. Lite never re-subscribes anyone by itself. Staff untick Opted Out only when the
   person clearly asks again, and record that consent.
 - A new form from an opted-out person creates the enquiry but does not message them, and does not undo the opt-out.

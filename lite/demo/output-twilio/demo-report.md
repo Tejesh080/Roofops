@@ -1,7 +1,7 @@
-# RoofOps Lite demo run (2026-10-21T02:35:35.515Z)
+# RoofOps Lite demo run (2026-10-21T06:13:38.584Z)
 
 Config: `lite/config/example-plumbing-twilio.json` (ZZ Example Plumbing (test client)). Messaging: **twilio** against a LOCAL FAKE of the Twilio API (signed webhooks, real error codes): nothing was sent to a real phone or inbox.
-Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Follow-Up (34 nodes), [Lite] Google Review Requests (20 nodes), [Lite] Lead Reactivation (20 nodes), [Lite] Inbound Replies (24 nodes), [Lite] Monitor (35 nodes).
+Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Follow-Up (34 nodes), [Lite] Google Review Requests (20 nodes), [Lite] Lead Reactivation (20 nodes), [Lite] Inbound Replies (29 nodes), [Lite] Monitor (36 nodes).
 
 ## Steps
 
@@ -13,7 +13,7 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
  "body": {
   "ok": true,
   "duplicate": false,
-  "job_ref": "LJ-20261021-UE14",
+  "job_ref": "LJ-20261021-YNX3",
   "new_contact": true,
   "stage": "Contacted",
   "acknowledgement": {
@@ -33,7 +33,7 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
  "body": {
   "ok": true,
   "duplicate": true,
-  "job_ref": "LJ-20261021-UE14",
+  "job_ref": "LJ-20261021-YNX3",
   "message": "We already have this enquiry and will be in touch."
  }
 }
@@ -61,7 +61,7 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
  "body": {
   "ok": true,
   "duplicate": false,
-  "job_ref": "LJ-20261021-RVKI",
+  "job_ref": "LJ-20261021-B0ID",
   "new_contact": true,
   "stage": "New Lead",
   "acknowledgement": {
@@ -78,7 +78,7 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-21T02:35:35.386Z",
+ "ran_at": "2026-10-21T06:13:38.455Z",
  "mode": "twilio",
  "sent": 2,
  "failed": 0,
@@ -106,7 +106,7 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-21T02:35:35.393Z",
+ "ran_at": "2026-10-21T06:13:38.461Z",
  "mode": "twilio",
  "sent": 0,
  "failed": 0,
@@ -130,7 +130,7 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-21T02:35:35.407Z",
+ "ran_at": "2026-10-21T06:13:38.474Z",
  "mode": "twilio",
  "sent": 1,
  "failed": 0,
@@ -157,7 +157,7 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-21T02:35:35.413Z",
+ "ran_at": "2026-10-21T06:13:38.480Z",
  "mode": "twilio",
  "sent": 0,
  "failed": 0,
@@ -202,7 +202,7 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-21T02:35:35.443Z",
+ "ran_at": "2026-10-21T06:13:38.511Z",
  "mode": "twilio",
  "sent": 0,
  "failed": 0,
@@ -240,7 +240,7 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
  "body": {
   "ok": true,
   "duplicate": false,
-  "job_ref": "LJ-20261021-JCK7",
+  "job_ref": "LJ-20261021-X5O0",
   "new_contact": true,
   "stage": "New Lead",
   "acknowledgement": {
@@ -257,7 +257,7 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-21T02:35:35.486Z",
+ "ran_at": "2026-10-21T06:13:38.555Z",
  "mode": "twilio",
  "alerts_raised": 2,
  "problem_messages": 1,
@@ -281,7 +281,7 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-21T02:35:35.503Z",
+ "ran_at": "2026-10-21T06:13:38.572Z",
  "mode": "twilio",
  "alerts_raised": 0,
  "problem_messages": 1,
@@ -305,7 +305,7 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-21T02:35:35.514Z",
+ "ran_at": "2026-10-21T06:13:38.583Z",
  "mode": "twilio",
  "alerts_raised": 0,
  "problem_messages": 1,
@@ -328,8 +328,8 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
 
 | Stage | Jobs |
 |---|---|
-| New Lead | LJ-DEMO-A3, LJ-20261021-RVKI |
-| Contacted | LJ-DEMO-A2, LJ-DEMO-A5, LJ-20261021-UE14, LJ-20261021-JCK7 |
+| New Lead | LJ-DEMO-A3, LJ-20261021-B0ID |
+| Contacted | LJ-DEMO-A2, LJ-DEMO-A5, LJ-20261021-YNX3, LJ-20261021-X5O0 |
 | Quoted | LJ-DEMO-A1, LJ-DEMO-A4, LJ-DEMO-A6, LJ-DEMO-A7 |
 | Accepted | LJ-DEMO-P1 |
 | Job In Progress | LJ-DEMO-P2 |
@@ -342,9 +342,9 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
 
 | Workflow | Purpose | Contact | Job | Channel | Status | Reason / To |
 |---|---|---|---|---|---|---|
-| Lead Follow-Up | Operational | ZZ Lite Demo Emma Walsh | LJ-20261021-UE14 | SMS | Delivered | 0400000201 |
-| Lead Follow-Up | Operational | ZZ Lite Demo Emma Walsh | LJ-20261021-UE14 |  | Skipped | repeat enquiry within 30 days of LJ-20261021-UE14 |
-| Lead Follow-Up | Operational | ZZ Lite Demo Ethan Cole | LJ-20261021-RVKI |  | Skipped | no SMS consent or no mobile number |
+| Lead Follow-Up | Operational | ZZ Lite Demo Emma Walsh | LJ-20261021-YNX3 | SMS | Delivered | 0400000201 |
+| Lead Follow-Up | Operational | ZZ Lite Demo Emma Walsh | LJ-20261021-YNX3 |  | Skipped | repeat enquiry within 30 days of LJ-20261021-YNX3 |
+| Lead Follow-Up | Operational | ZZ Lite Demo Ethan Cole | LJ-20261021-B0ID |  | Skipped | no SMS consent or no mobile number |
 | Review Request | Review | ZZ Lite Demo Marcus Webb | LJ-DEMO-R2 |  | Skipped | no SMS consent or no mobile number |
 | Review Request | Review | ZZ Lite Demo Priya Nair | LJ-DEMO-R3 |  | Skipped | opted out |
 | Review Request | Review | ZZ Lite Demo Tom Fraser | LJ-DEMO-R4 |  | Skipped | no permission for review requests |
@@ -354,14 +354,14 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
 | Reactivation | Marketing | ZZ Lite Demo Daniel Brooks | LJ-DEMO-A1 | SMS | Sent | 0400000106 |
 | Inbound Reply | Inbound | ZZ Lite Demo Daniel Brooks | LJ-DEMO-A1 | SMS | Received | reply recorded; enquiry reopened for a call |
 | Inbound Reply | Inbound | ZZ Lite Demo Olivia Chen | LJ-DEMO-R1 | SMS | Opt-Out | contact opted out of all messages |
-| Lead Follow-Up | Operational | ZZ Lite Demo Sam Typo | LJ-20261021-JCK7 | SMS | Failed | invalid phone number (not sent); resent as attempt 2 |
-| Lead Follow-Up | Operational | ZZ Lite Demo Sam Typo | LJ-20261021-JCK7 | SMS | Sent | 0400000302 |
+| Lead Follow-Up | Operational | ZZ Lite Demo Sam Typo | LJ-20261021-X5O0 | SMS | Failed | invalid phone number (not sent); resent as attempt 2 |
+| Lead Follow-Up | Operational | ZZ Lite Demo Sam Typo | LJ-20261021-X5O0 | SMS | Sent | 0400000302 |
 
 ## Lite Alerts
 
 | Kind | Record | Detail |
 |---|---|---|
-| Delivery Failed | LM-20261021023535-DE97 | Lead Follow-Up message to 0400000301 failed: invalid phone number (not sent). Fix the cause, then tick Retry Requested. |
+| Delivery Failed | LM-20261021061338-YTV3 | Lead Follow-Up message to 0400000301 failed: invalid phone number (not sent). Fix the cause, then tick Retry Requested. |
 | Stuck Lead | LJ-DEMO-A3 | New Lead for more than 24 hours: nobody has contacted them yet. |
 
 ## What the fake Twilio received (accepted messages)

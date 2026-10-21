@@ -2,14 +2,15 @@
  * A local stand-in for the Twilio REST API (Messages) and its webhooks, for the Lite tests and demo. Nothing leaves this
  * machine. It answers what Lite calls: create a message, fetch one by SID, list by recipient. Behaviour per recipient
  * (E.164) can be scripted: refused (Twilio's real error codes), rate-limited, server error, or a timeout, either after
- * Twilio accepted the message ("timeout-after-send") or before ("timeout"). It also builds signed webhook requests
+ * Twilio accepted the message ("timeout-after-send"; "timeout-queued" leaves it queued, with no date_sent) or before
+ * ("timeout"). It also builds signed webhook requests
  * (X-Twilio-Signature: HMAC-SHA1 of URL + sorted parameters with the Auth Token), as Twilio sends them.
  */
 import { createHmac, randomBytes } from 'node:crypto';
 import { TWILIO_TRIAL_TEMPLATES } from '../config/config.js';
 import type { HttpReq } from '../tools/runner.js';
 
-export type Behaviour = 'invalid' | 'landline' | 'unsubscribed' | 'rate-limit' | 'server-error' | 'timeout' | 'timeout-after-send';
+export type Behaviour = 'invalid' | 'landline' | 'unsubscribed' | 'rate-limit' | 'server-error' | 'timeout' | 'timeout-after-send' | 'timeout-queued';
 export interface TwMessage { sid: string; to: string; from: string; body: string; status: string; date_created: string; date_sent: string | null; error_code: number | null }
 /**
  * A trial account: only verified recipients, only Twilio's template keys as Body, no From (Twilio uses its trial
@@ -58,6 +59,7 @@ export class FakeTwilio {
         body: trial ? `Twilio template text (${b.Body ?? ''})` : (b.Body ?? ''), status: 'queued', date_created: new Date().toUTCString(), date_sent: null, error_code: null };
       this.messages.push(m);
       if (rule === 'timeout-after-send') { m.status = 'sent'; m.date_sent = new Date().toUTCString(); throw new Error('ESOCKETTIMEDOUT'); }
+      if (rule === 'timeout-queued') throw new Error('ESOCKETTIMEDOUT');   // accepted and still queued: no date_sent yet
       return { statusCode: 201, body: { ...m } };
     }
     if (req.method === 'GET' && u.pathname.startsWith(`${base}/`)) {

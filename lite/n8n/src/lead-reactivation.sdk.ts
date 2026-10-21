@@ -21,7 +21,10 @@ const findSent = airtableList('Find Earlier Follow-Ups', T.messages, "AND({Workf
 const plan = code('Plan Reactivation', `
 const jobs = records($('Find Quiet Leads').first().json, 'find quiet leads');
 const contacts = {}; records($('Find Contacts').first().json, 'find contacts').forEach((c) => { contacts[c.id] = c; });
-const earlier = {}; records($input.first().json, 'find earlier follow-ups').forEach((m) => { const f = m.fields || {}; if (ATTEMPTED.indexOf(f.Status) >= 0) earlier[f['Dedupe Key']] = f.Status; });
+// Every earlier follow-up for a job counts, whatever month it was in (the Dedupe Key carries the month, the Job link does not).
+const earlier = {}; records($input.first().json, 'find earlier follow-ups').forEach((m) => { const f = m.fields || {}; if (ATTEMPTED.indexOf(f.Status) < 0) return;
+  const jobId = (f.Job || [])[0] || clean(f['Dedupe Key']).split(':')[1]; (earlier[jobId] = earlier[jobId] || []).push(f); });
+const recent = (f) => NOW.getTime() - (Date.parse(f['Attempted At'] || '') || 0) < days(CFG.reactivation.cooldownDays);
 const sends = [];
 const summary = { open_leads: jobs.length, planned: 0, still_active: 0, excluded: 0, exclusion_reasons: {}, deferred_to_next_run: 0 };
 const exclude = (why) => { summary.excluded++; summary.exclusion_reasons[why] = (summary.exclusion_reasons[why] || 0) + 1; };
@@ -35,8 +38,11 @@ for (const j of jobs) {
   if (!last || NOW.getTime() - last < days(CFG.reactivation.inactivityDays)) { summary.still_active++; continue; }
   const prev = Date.parse(f['Reactivation Sent At'] || '');
   if (prev && NOW.getTime() - prev < days(CFG.reactivation.cooldownDays)) { exclude('followed up within the cooldown'); continue; }
+  const before = earlier[j.id] || [];
+  // An attempt with no confirmed outcome (Sending, Unknown) holds the job until someone decides; a failed one, for the cooldown.
+  if (before.some((x) => x.Status === 'Sending' || x.Status === 'Unknown' || (x.Status === 'Failed' && recent(x)))) { exclude('earlier attempt awaits a retry decision'); continue; }
+  if (before.some(recent)) { exclude('followed up within the cooldown'); continue; }
   const key = 'reactivation:' + j.id + ':' + period;
-  if (earlier[key]) { exclude(['Failed', 'Unknown', 'Sending'].indexOf(earlier[key]) >= 0 ? 'earlier attempt awaits a retry decision' : 'already followed up this month'); continue; }
   const c = contacts[(f.Contact || [])[0]] || null;
   if (!c) { exclude('no contact on the job'); continue; }
   const cf = c.fields || {};

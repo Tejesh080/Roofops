@@ -40,7 +40,15 @@ const decisions = p.sends.map((s) => {
   const first = rows.filter((r) => (r.fields || {})['Dedupe Key'] === s.key && (r.fields || {}).Status !== 'Skipped')
     .sort((a, b) => (Date.parse(a.createdTime) - Date.parse(b.createdTime)) || (a.id < b.id ? -1 : 1))[0];
   const d = { key: s.key, logId: mine, channel: s.channel, to: s.to, body: s.body };
-  if (first && first.id !== mine) return Object.assign(d, { action: 'lost', reason: 'duplicate: ' + (first.fields['Log Ref'] || first.id) + ' already handles this message' });
+  if (first && first.id !== mine) {
+    // Two copies of one form reserve within moments of each other. A message reserved long before belongs to an earlier
+    // enquiry: this one is not sent again today, but it is not a duplicate of it either (its job is kept).
+    const me = rows.find((r) => r.id === mine);
+    const together = !me || Math.abs(Date.parse(me.createdTime) - Date.parse(first.createdTime)) <= 10 * 60000;
+    const ref = first.fields['Log Ref'] || first.id;
+    return Object.assign(d, together ? { action: 'lost', reason: 'duplicate: ' + ref + ' already handles this message' }
+      : { action: 'repeat', reason: 'not sent: ' + ref + ' already sent this message earlier today' });
+  }
   if (T && !allowed(toE164(s.to))) return Object.assign(d, { action: 'blocked', reason: 'not sent: ' + toE164(s.to) + ' is not on the live test allowlist' });
   return Object.assign(d, { action: 'deliver', to164: toE164(s.to) });
 });
@@ -78,7 +86,7 @@ for (const d of decisions) {
     if (c.optOut && s.contactId) list.push({ table: 'contacts', id: s.contactId, fields: { 'Opted Out': true, 'Opted Out At': iso(NOW), 'Marketing Opt-In': false } });
     tally.results.push({ key: d.key, status: c.status, reason: c.reason || null, sid: c.sid || null });
   } else {
-    if (d.action === 'lost') { tally.duplicates++; s.onLost.forEach((x) => list.push(x)); } else tally.blocked++;
+    if (d.action === 'lost') { tally.duplicates++; s.onLost.forEach((x) => list.push(x)); } else if (d.action === 'repeat') tally.duplicates++; else tally.blocked++;
     f = { Status: 'Skipped', Reason: d.reason };
     tally.results.push({ key: d.key, status: 'Skipped', reason: d.reason });
   }

@@ -39,8 +39,10 @@ if (TW) {
   if (b.AccountSid !== TW.accountSid) return reject(403, 'request is not for this Twilio account');
   if (event === 'status') {
     if (!/^(SM|MM)[0-9a-f]{32}$/.test(clean(b.MessageSid))) return reject(400, 'MessageSid is missing');
-    return [{ json: { ok: true, event: 'status', status: { sid: clean(b.MessageSid), status: clean(b.MessageStatus).toLowerCase(), errorCode: clean(b.ErrorCode) || null },
-      formula: "{Provider Message ID}='" + formulaText(b.MessageSid) + "'" } }];
+    // The message by its SID; and, for a receipt that overtakes Lite's own record, an Unknown send (no SID) to this number.
+    const to = normPhone(b.To);
+    return [{ json: { ok: true, event: 'status', status: { sid: clean(b.MessageSid), status: clean(b.MessageStatus).toLowerCase(), errorCode: clean(b.ErrorCode) || null, to: to },
+      formula: "OR({Provider Message ID}='" + formulaText(b.MessageSid) + "'" + (to ? ",AND({Status}='Unknown',{Provider Message ID}=BLANK(),{To}='" + formulaText(to) + "')" : '') + ')' } }];
   }
   reply = { from: clean(b.From), text: clean(b.Body), sid: clean(b.MessageSid) || null, demo: false };
 } else reply = { from: clean(b.from), text: clean(b.text), sid: null, demo: b.demo === true };
@@ -50,8 +52,9 @@ const errors = [];
 if (!email && !phone) errors.push('from must be the sender phone number or email address');
 if (!text) errors.push('text is required');
 if (errors.length) return reject(400, errors.join('; '));
-return [{ json: { ok: true, event: 'message', reply: { from: email || phone, channel: email ? 'Email' : 'SMS', text: text, sid: reply.sid, demo: reply.demo },
-  contactFormula: email ? "LOWER({Email})='" + formulaText(email) + "'" : "{Phone Normalized}='" + formulaText(phone) + "'" } }];`);
+return [{ json: { ok: true, event: 'message', reply: { from: email || phone, channel: email ? 'Email' : 'SMS', text: text, sid: reply.sid, demo: reply.demo, phone: phone, email: email },
+  contactFormula: email ? "LOWER({Email})='" + formulaText(email) + "'" : phoneFormula(phone),
+  historyFormula: "{To}='" + formulaText(email || phone) + "'" } }];`);
 const valid = OK_IF('Request Valid?', '{{ $json.ok }}');
 const rejected = respond('Respond Reply Rejected');
 
@@ -60,7 +63,12 @@ const isStatus = OK_IF('Delivery Receipt?', "{{ $json.event === 'status' }}");
 const findSent = airtableList('Find Sent Message', T.messages, '{{ $json.formula }}');
 const applyStatus = code('Apply Delivery Status', `
 const s = $('Verify Request').first().json.status;
-const rows = records($input.first().json, 'find sent message');
+const found = records($input.first().json, 'find sent message');
+// A receipt can overtake Lite's own record of the send. It settles an Unknown send to the same number only when there is
+// exactly one; otherwise a failure is raised as an alert (never dropped), and the message it is about is checked by a person.
+const bySid = found.filter((r) => clean((r.fields || {})['Provider Message ID']) === s.sid);
+const pending = found.filter((r) => !clean((r.fields || {})['Provider Message ID']));
+const rows = bySid.length ? bySid : pending.length === 1 ? pending : [];
 const list = [];
 const RANK = { Sending: 0, Unknown: 0, Sent: 1, Delivered: 2, Failed: 2 };
 for (const r of rows) {
@@ -71,11 +79,22 @@ for (const r of rows) {
   else if (s.status === 'sent') to = 'Sent';
   if (!to || (RANK[f.Status] || 0) > RANK[to] || f.Status === to) continue;   // never downgrade (receipts can arrive out of order)
   const fields = { Status: to };
+  if (!clean(f['Provider Message ID'])) { fields['Provider Message ID'] = s.sid; fields.Reason = 'settled by the Twilio delivery receipt (' + s.status + ')'; }
   if (to === 'Failed') { fields['Error Code'] = s.errorCode; fields.Reason = 'Twilio: ' + s.status + (s.errorCode ? ' (error ' + s.errorCode + ')' : ''); }
   list.push({ table: 'messages', id: r.id, fields: fields });
   if (s.errorCode === '21610' && (f.Contact || [])[0]) list.push({ table: 'contacts', id: f.Contact[0], fields: { 'Opted Out': true, 'Opted Out At': iso(NOW), 'Marketing Opt-In': false } });
 }
-const items = patches(list);
+const failed = s.status === 'failed' || s.status === 'undelivered';
+const alert = !rows.length && failed ? { 'Alert Ref': logRef('AL'), Kind: 'Delivery Failed', Status: 'Open', Workflow: 'Inbound Reply', 'Record Ref': s.sid,
+  Detail: 'Twilio reported a message to ' + (s.to || 'an unknown number') + ' as ' + s.status + (s.errorCode ? ' (error ' + s.errorCode + ')' : '')
+    + ' before Lite had recorded it. Find the latest message to this number in the Message Log; tick Retry Requested if it should be sent again.',
+  'Dedupe Key': 'receipt:' + s.sid + ':' + s.status, 'Raised At': iso(NOW), 'Demo Data': false } : null;
+return [{ json: { items: patches(list), hasAlert: !!alert, alertRequest: alert ? { typecast: false, records: [{ fields: alert }] } : null } }];`);
+const needAlert = OK_IF('Receipt Alert?', '{{ $json.hasAlert }}');
+const saveAlert = airtableWrite('Save Receipt Alert', 'POST', T.alerts, '{{ JSON.stringify($json.alertRequest) }}');
+const receiptUpdates = code('Receipt Updates', `
+if ($('Save Receipt Alert').isExecuted) records($('Save Receipt Alert').first().json, 'save receipt alert');
+const items = $('Apply Delivery Status').first().json.items;
 return items.length ? items.map((x) => ({ json: x })) : [{ json: { none: true } }];`);
 const anyStatus = OK_IF('Status Changes?', '{{ $json.none !== true }}');
 const writeStatus = airtablePatch('Write Delivery Status');
@@ -84,17 +103,26 @@ if ($('Write Delivery Status').isExecuted) $('Write Delivery Status').all().forE
 return [{ json: { response: { status: 200, body: { ok: true }, text: '<?xml version="1.0" encoding="UTF-8"?><Response></Response>' } } }];`);
 const respondStatus = respond('Respond Reply Status');
 
-// Replies.
-const findContact = airtableList('Find Sender', T.contacts, '{{ $json.contactFormula }}');
+// Replies. The sender is every contact with this number or email (duplicates included), and every contact Lite has
+// messaged at it before: a number changed in the CRM since does not make their STOP go unheard.
+const findHistory = airtableList('Find Number History', T.messages, '{{ $json.historyFormula }}');
+const senderFormula = code('Sender Formula', `
+const v = $('Verify Request').first().json;
+const ids = Array.from(new Set(records($input.first().json, 'find number history').map((m) => ((m.fields || {}).Contact || [])[0]).filter(Boolean)));
+return [{ json: { formula: ids.length ? 'OR(' + [v.contactFormula].concat(ids.map((i) => "RECORD_ID()='" + formulaText(i) + "'")).join(',') + ')' : v.contactFormula } }];`);
+const findContact = airtableList('Find Sender', T.contacts, '{{ $json.formula }}');
 const jobsFormula = code('Sender Jobs Formula', `
 // The contact's jobs, through Airtable's back-link (Lite Contacts > Lite Jobs): also jobs that staff created by hand.
-const c = records($input.first().json, 'find sender')[0];
+const R = $('Verify Request').first().json.reply;
+const list = records($input.first().json, 'find sender');
+const c = pickContact(list, R.phone, R.email) || list[0];
 const ids = c ? ((c.fields || {})['Lite Jobs'] || []) : [];
 return [{ json: { jobFormula: ids.length ? 'OR(' + ids.map((i) => "RECORD_ID()='" + formulaText(i) + "'").join(',') + ')' : 'FALSE()' } }];`);
 const findJobs = airtableList('Find Sender Jobs', T.jobs, '{{ $json.jobFormula }}');
 const classify = code('Classify Reply', `
 const R = $('Verify Request').first().json.reply;
-const contact = records($('Find Sender').first().json, 'find sender')[0] || null;
+const senders = records($('Find Sender').first().json, 'find sender');
+const contact = pickContact(senders, R.phone, R.email) || senders[0] || null;
 const jobs = records($input.first().json, 'find sender jobs');
 const words = R.text.toUpperCase().replace(/[^A-Z ]/g, ' ').split(' ').filter(Boolean).join(' ');
 const optOut = CFG.replies.optOutKeywords.some((k) => words === k || words.indexOf(k + ' ') === 0);
@@ -104,7 +132,9 @@ const open = jobs.filter((j) => ['Paid', 'Lost', 'Completed', 'Invoiced'].indexO
 // The reply is logged on their open job, or else on their latest finished one (which is not reopened).
 const job = open[0] || jobs.slice().sort((a, b) => recent(b) - recent(a))[0] || null;
 const reopen = !!job && open.indexOf(job) >= 0;
-const contactUpdate = contact && optOut ? { typecast: false, records: [{ id: contact.id, fields: { 'Opted Out': true, 'Opted Out At': iso(NOW), 'Marketing Opt-In': false } }] } : null;
+// STOP opts out every one of them, so a duplicate record of the same person cannot be messaged either.
+const stopped = senders.filter((c) => !(c.fields || {})['Opted Out']).slice(0, 10);
+const contactUpdate = optOut && stopped.length ? { typecast: false, records: stopped.map((c) => ({ id: c.id, fields: { 'Opted Out': true, 'Opted Out At': iso(NOW), 'Marketing Opt-In': false } })) } : null;
 const jf = { 'Last Activity At': iso(NOW) };
 if (job && job.fields.Stage === 'New Lead') jf.Stage = 'Contacted';
 const jobUpdate = reopen && contact && !optOut && !optIn ? { typecast: false, records: [{ id: job.id, fields: jf }] } : null;
@@ -140,9 +170,10 @@ const respondOk = respond('Respond Reply');
 export default workflow('roofops-lite-inbound-replies', '[Lite] Inbound Replies')
   .add(hook).to(validate).to(valid
     .onTrue(isStatus
-      .onTrue(findSent.to(applyStatus).to(anyStatus.onTrue(writeStatus.to(statusResponse)).onFalse(statusResponse)))
-      .onFalse(findContact.to(jobsFormula).to(findJobs).to(classify).to(needOptOut.onTrue(optOutContact.to(afterContact)).onFalse(afterContact))))
+      .onTrue(findSent.to(applyStatus).to(needAlert.onTrue(saveAlert.to(receiptUpdates)).onFalse(receiptUpdates)))
+      .onFalse(findHistory.to(senderFormula).to(findContact).to(jobsFormula).to(findJobs).to(classify).to(needOptOut.onTrue(optOutContact.to(afterContact)).onFalse(afterContact))))
     .onFalse(rejected))
+  .add(receiptUpdates).to(anyStatus.onTrue(writeStatus.to(statusResponse)).onFalse(statusResponse))
   .add(statusResponse).to(respondStatus)
   .add(afterContact).to(needJob.onTrue(reopenJob.to(logRequest)).onFalse(logRequest))
   .add(logRequest).to(writeLog).to(replyResponse).to(respondOk);

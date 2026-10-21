@@ -27,9 +27,14 @@ return [{ json: { alerts: [{ 'Alert Ref': logRef('AL'), Kind: 'Workflow Failed',
 const findProblems = airtableList('Find Message Problems', T.messages, "OR({Status}='Sending',{Status}='Failed',{Status}='Unknown',{Retry Requested})");
 const contactFormula = code('Retry Contacts Formula', `
 const msgs = records($input.first().json, 'find message problems');
-const ids = Array.from(new Set(msgs.filter((m) => (m.fields || {})['Retry Requested']).map((m) => ((m.fields || {}).Contact || [])[0]).filter(Boolean)));
-return [{ json: { formula: ids.length ? 'OR(' + ids.map((i) => "RECORD_ID()='" + formulaText(i) + "'").join(',') + ')' : 'FALSE()' } }];`);
+const retry = msgs.filter((m) => (m.fields || {})['Retry Requested']);
+const anyOf = (list) => (list.length ? 'OR(' + list.map((i) => "RECORD_ID()='" + formulaText(i) + "'").join(',') + ')' : 'FALSE()');
+const ids = Array.from(new Set(retry.map((m) => ((m.fields || {}).Contact || [])[0]).filter(Boolean)));
+const jobIds = Array.from(new Set(retry.map((m) => ((m.fields || {}).Job || [])[0]).filter(Boolean)));
+return [{ json: { formula: anyOf(ids), jobFormula: anyOf(jobIds) } }];`);
 const findContacts = airtableList('Find Retry Contacts', T.contacts, '{{ $json.formula }}');
+// The current stage of the jobs being retried: a message's CRM updates never move a job backwards.
+const findRetryJobs = airtableList('Find Retry Jobs', T.jobs, "{{ $('Retry Contacts Formula').first().json.jobFormula }}");
 const findJobs = airtableList('Find Stale Jobs', T.jobs, "OR({Stage}='New Lead',AND({Stage}='Completed',{Completed At}=BLANK()))");
 const planHealth = code('Plan Health', `
 const msgs = records($('Find Message Problems').first().json, 'find message problems');
@@ -55,8 +60,14 @@ for (const m of msgs) {
     let why = null;
     if (status !== 'Failed' && status !== 'Unknown') why = 'not retried: the message is ' + status;
     else if (f['Error Code'] === '21610') why = 'not retried: the person unsubscribed from this number (Twilio 21610)';
-    else if (c && (c.fields || {})['Opted Out']) why = 'not retried: the contact has opted out';
+    else if (!c) why = 'not retried: the message has no contact whose permission can be checked';
     else if (CHANNELS.indexOf(f.Channel) < 0 || (f.Channel === 'SMS' && !normPhone(f.To))) why = 'not retried: no usable ' + (f.Channel || 'channel');
+    else {
+      // Consent can be withdrawn after the first attempt: it is checked again, for this message's purpose and channel.
+      const cf = c.fields || {};
+      const lost = permission(cf, f.Purpose || 'Operational') || (f.Channel === 'SMS' && !cf['Consent SMS'] ? 'no SMS consent' : f.Channel === 'Email' && !cf['Consent Email'] ? 'no email consent' : null);
+      if (lost) why = 'not retried: ' + (lost === 'opted out' ? 'the contact has opted out' : lost);
+    }
     if (why) updates.push({ table: 'messages', id: m.id, fields: { 'Retry Requested': false, Reason: why } });
     else retries.push({ id: m.id, ref: ref, fields: f });
   }
@@ -103,16 +114,21 @@ if (!$('Plan Health').isExecuted) return [{ json: { none: true } }];
 const h = $('Plan Health').first().json;
 if (!h.retries.length || CFG.messaging.mode !== 'twilio') return [{ json: { none: true } }];
 const API = 'https://api.twilio.com/2010-04-01/Accounts/' + CFG.messaging.twilio.accountSid;
-// Before any resend, ask Twilio: by Message SID when there is one, else by recipient and date (a timeout leaves no SID).
+// Before any resend, ask Twilio: by Message SID when there is one, else by recipient (a timeout leaves no SID). No
+// DateSent filter: a message Twilio still has queued has no send date yet, and must count as found.
 return h.retries.map((r) => { const f = r.fields; const sid = clean(f['Provider Message ID']);
-  const since = iso(Date.parse(f['Attempted At'] || '') - days(1)).slice(0, 10);
   return { json: { id: r.id, checkUrl: /^(SM|MM)[0-9a-f]{32}$/.test(sid) ? API + '/Messages/' + sid + '.json'
-    : API + '/Messages.json?To=' + encodeURIComponent(toE164(f.To)) + '&DateSent%3E=' + since + '&PageSize=50' } }; });`);
+    : API + '/Messages.json?To=' + encodeURIComponent(toE164(f.To)) + '&PageSize=50' } }; });`);
 const planRetries = code('Plan Retries', `
 const h = $('Plan Health').isExecuted ? $('Plan Health').first().json : { retries: [], updates: [], summary: {} };
 const checks = CFG.messaging.mode === 'twilio' && $('Check Delivery').isExecuted ? $('Check Delivery').all().map((i) => i.json) : [];
 const updates = h.updates.slice(); const sends = [];
 const summary = Object.assign({}, h.summary, { retried: 0, found_already_sent: 0, retry_postponed: 0 });
+// A message's CRM updates were planned when it was first sent; a job that has moved on since (Paid, Lost...) keeps its stage.
+const stageOf = {}; ($('Find Retry Jobs').isExecuted ? records($('Find Retry Jobs').first().json, 'find retry jobs') : []).forEach((j) => { stageOf[j.id] = (j.fields || {}).Stage; });
+const STAGES = ['New Lead', 'Contacted', 'Quoted', 'Accepted', 'Job In Progress', 'Completed', 'Invoiced', 'Paid'];
+const forward = (list) => list.filter((u) => u.table !== 'jobs' || !(u.fields || {}).Stage
+  || (stageOf[u.id] !== 'Lost' && STAGES.indexOf(stageOf[u.id]) < STAGES.indexOf(u.fields.Stage)));
 h.retries.forEach((r, i) => {
   const f = r.fields;
   let found = null;
@@ -134,7 +150,7 @@ h.retries.forEach((r, i) => {
     summary.found_already_sent++;
     updates.push({ table: 'messages', id: r.id, fields: { Status: found.status === 'delivered' ? 'Delivered' : 'Sent', 'Provider Message ID': found.sid, 'Error Code': null,
       'Retry Requested': false, Reason: 'found at Twilio (' + found.status + '): not resent' } });
-    JSON.parse(f['On Success'] || '[]').forEach((u) => updates.push(u));
+    forward(JSON.parse(f['On Success'] || '[]')).forEach((u) => updates.push(u));
     return;
   }
   const attempt = (Number(f.Attempts) || 1) + 1;
@@ -142,7 +158,7 @@ h.retries.forEach((r, i) => {
   updates.push({ table: 'messages', id: r.id, fields: { 'Retry Requested': false, Attempts: attempt, Reason: (f.Reason ? f.Reason + '; ' : '') + 'resent as attempt ' + attempt } });
   const body = String(f.Body || '').replace(/^Subject: [^\\n]*\\n\\n/, '');
   const m = outMessage({ prefix: 'RT', workflow: f.Workflow, purpose: f.Purpose || 'Operational', key: f['Dedupe Key'] + ':retry:' + attempt, jobId: (f.Job || [])[0], contactId: (f.Contact || [])[0],
-    demo: f['Demo Data'], channel: f.Channel, to: f.To, subject: null, body: body, onSuccess: JSON.parse(f['On Success'] || '[]') });
+    demo: f['Demo Data'], channel: f.Channel, to: f.To, subject: null, body: body, onSuccess: forward(JSON.parse(f['On Success'] || '[]')) });
   m.fields['Retry Of'] = r.ref;
   sends.push(m);
 });
@@ -159,7 +175,7 @@ let w = workflow('roofops-lite-monitor', '[Lite] Monitor')
   .add(failed).to(failureAlert).to(alertKeys)
   .add(every).to(findProblems)
   .add(manual).to(findProblems)
-  .add(findProblems).to(contactFormula).to(findContacts).to(findJobs).to(planHealth).to(alertKeys)
+  .add(findProblems).to(contactFormula).to(findContacts).to(findRetryJobs).to(findJobs).to(planHealth).to(alertKeys)
   .add(alertKeys).to(anyKeys.onTrue(findAlerts.to(newAlerts)).onFalse(newAlerts))
   .add(newAlerts).to(anyNew.onTrue(saveAlerts.to(operatorMessage)).onFalse(operatorMessage))
   .add(operatorMessage).to(notify.onTrue(alertOperator.to(retryChecks)).onFalse(retryChecks));

@@ -112,7 +112,7 @@ describe('A. lead intake creates the CRM records (test sink)', () => {
     const c = at.all('contacts').find((x) => x.fields.Email === 'emma.walsh@example.test')!;
     expect(c.fields).toMatchObject({ 'First Name': 'Emma', 'Phone Normalized': '0400000201', 'Consent SMS': true, 'Review Opt-In': true, 'Marketing Opt-In': false, 'Demo Data': true,
       'Consent Source': 'Website form (https://harbourside.example/contact)' });
-    expect(String(c.fields['Consent Wording'])).toBe(`${config.consent.wording.service} [SMS, email]\n${config.consent.wording.reviews}`);
+    expect(String(c.fields['Consent Wording'])).toBe(`${config.consent.wording.service} [SMS, email]\n${config.consent.wording.reviews} [reviews]`);
     expect(Date.now() - Date.parse(String(c.fields['Consent Recorded At']))).toBeLessThan(60_000);
     const j = at.all('jobs').find((x) => (x.fields.Contact as string[])[0] === c.id)!;
     expect(j.fields).toMatchObject({ Stage: 'Contacted', Service: 'roof leak repair', Source: 'Website', 'Invoice Status': 'Not Invoiced' });
@@ -154,8 +154,9 @@ describe('A. lead intake creates the CRM records (test sink)', () => {
   it('a returning person who ticks a new box: the consent is added to their contact with its evidence (nothing is removed)', () => {
     expect(post('lead-follow-up', { name: 'ZZ Lite Demo Sophie Turner', phone: '0400 000 107', consent_sms: true, marketing_opt_in: true, service: 'roof inspection' }))
       .toMatchObject({ body: { new_contact: false, acknowledgement: { status: 'Simulated Sent' } } });
-    expect(at.get('contacts', ids.contacts.sophie!)!.fields).toMatchObject({ 'Consent SMS': true, 'Marketing Opt-In': true, 'Consent Source': `Website form (${config.leadIntake.webhookPath})`,
-      'Consent Wording': `${config.consent.wording.service} [SMS]\n${config.consent.wording.marketing}` });
+    expect(at.get('contacts', ids.contacts.sophie!)!.fields).toMatchObject({ 'Consent SMS': true, 'Marketing Opt-In': true,   // her earlier evidence is kept, this form's is added
+      'Consent Source': `Synthetic demo fixture (website form); Website form (${config.leadIntake.webhookPath})`,
+      'Consent Wording': `service\n${config.consent.wording.service} [SMS]\n${config.consent.wording.marketing} [marketing]` });
   });
 
   it('an Airtable failure fails the run (no false "ok"), and the demo Airtable refuses fields that are not in the Lite schema', () => {
@@ -762,5 +763,181 @@ describe('webhook protection', () => {
     expect(imports('basic', 'inbound-replies').settings).toMatchObject(NO_SAVE);
     expect(imports('basic', 'lead-follow-up').settings).not.toHaveProperty('saveDataSuccessExecution');
     for (const w of WORKFLOWS) expect(imports('demo', w).settings, w).not.toHaveProperty('saveDataSuccessExecution');
+  });
+});
+
+// ---- Factory review (2026-10-21): eleven reproduced runtime defects, each written to fail before its fix --------------
+describe('Factory review: the eleven reproduced defects stay fixed', () => {
+  beforeAll(async () => { if (!(twf as Wfs | undefined)) twf = await buildAll(TW, 'twilio'); }, 60_000);   // also when run on its own (-t)
+  const FROM = () => TW.messaging.twilio!.from!;
+  const tpatch = (table: 'messages' | 'jobs' | 'contacts', id: string, fields: R) => tat.http({ method: 'PATCH',
+    url: `https://api.airtable.com/v0/${TW.airtable.baseId}/${encodeURIComponent(TW.airtable.tables[table])}`, query: {}, body: { records: [{ id, fields }] } });
+  const person = (n: string, o: R = {}) => lead({ name: `ZZ Lite Demo Test ${n}`, first_name: 'Sam', phone: `0400 000 ${n}`, email: `test${n}@example.test`, ...o });
+  const ackOf = (n: string) => tlog().find((x) => String(x['Dedupe Key']) === `lead-ack:0400000${n}:${today()}`)!;
+  const to = (n: string) => tw.sent.filter((m) => m.to === `+61400000${n}`);
+  const jobOf = (row: R) => tat.get('jobs', (row.Job as string[])[0]!)!.fields;
+
+  it('1 (P1). a retry is never sent once the consent it needs has been withdrawn: SMS consent for an acknowledgement, review permission for a review request', () => {
+    tfresh();
+    tw.rules.set('+61400000301', 'invalid');
+    tpost(person('301'));
+    const row = ackOf('301');
+    expect(row).toMatchObject({ Status: 'Failed' });
+    tw.rules.delete('+61400000301');
+    tpatch('contacts', (row.Contact as string[])[0]!, { 'Consent SMS': false });
+    tpatch('messages', row.id, { 'Retry Requested': true });
+    expect(monitor()).toMatchObject({ retried: 0 });
+    expect(to('301')).toHaveLength(0);
+    expect(tlog().find((x) => x.id === row.id)).toMatchObject({ 'Retry Requested': false, Reason: 'not retried: no SMS consent' });
+    tw.rules.set('+61400000101', 'invalid');
+    runNow(twf['review-requests'], http);
+    const rv = tlog().find((x) => x.Workflow === 'Review Request' && x.Status === 'Failed')!;
+    tw.rules.delete('+61400000101');
+    tpatch('contacts', tids.contacts.olivia!, { 'Review Opt-In': false, 'Marketing Opt-In': false });
+    tpatch('messages', rv.id, { 'Retry Requested': true });
+    expect(monitor()).toMatchObject({ retried: 0 });
+    expect(to('101')).toHaveLength(0);
+    expect(tlog().find((x) => x.id === rv.id)).toMatchObject({ Reason: 'not retried: no permission for review requests' });
+  });
+
+  it('2 (P1). service consent on a form never makes marketing usable: an old unrecorded marketing tick stays unusable, and earlier evidence is kept, not overwritten', () => {
+    tfresh();
+    tpost(lead({ name: 'ZZ Lite Demo Zoe Park', first_name: 'Zoe', phone: '0400 000 113', email: 'zoe.park@example.test', consent_sms: true, consent_email: true, marketing_opt_in: false }));
+    expect(tat.get('contacts', tids.contacts.zoe!)!.fields).toMatchObject({ 'Consent Email': true, 'Marketing Opt-In': true });   // the old tick is left as it was
+    expect(to('113')).toHaveLength(1);                                                   // the acknowledgement
+    runNow(twf['lead-reactivation'], http);
+    expect(to('113')).toHaveLength(1);                                                   // no marketing follow-up
+    tpost(lead({ name: 'ZZ Lite Demo Sophie Turner', first_name: 'Sophie', phone: '0400 000 107', email: '', consent_sms: true, consent_reviews: true }));
+    const sophie = tat.get('contacts', tids.contacts.sophie!)!.fields;
+    expect(String(sophie['Consent Wording'])).toMatch(/^service\n/);                     // the earlier record is kept
+    expect(String(sophie['Consent Wording'])).toContain(`${TW.consent.wording.reviews} [reviews]`);
+    expect(String(sophie['Consent Source'])).toMatch(/^Synthetic demo fixture \(website form\); Website form/);
+    // Website-form evidence counts for marketing when it says so ([marketing], even under wording the business has since
+    // changed), and only then: a form that gave service consent alone does not.
+    const quiet = (n: string, wording: string) => {
+      const c = tat.insert('contacts', { Name: `ZZ Lite Demo Form ${n}`, Phone: `0400 000 ${n}`, 'Phone Normalized': `0400000${n}`, 'Consent SMS': true, 'Marketing Opt-In': true,
+        'Consent Source': 'Website form (https://example.test/contact)', 'Consent Recorded At': daysAgo(200), 'Consent Wording': wording, 'Demo Data': true });
+      tat.insert('jobs', { 'Job Ref': `LJ-DEMO-F${n}`, Contact: [c.id], Stage: 'Quoted', 'Lead Received At': daysAgo(200), 'Last Activity At': daysAgo(190), 'Demo Data': true });
+    };
+    quiet('304', 'Contact me about this enquiry. [SMS]\nOld wording: send me specials. [marketing]');
+    quiet('305', 'Contact me about this enquiry. [SMS]');
+    runNow(twf['lead-reactivation'], http);
+    expect(to('304')).toHaveLength(1);
+    expect(to('305')).toHaveLength(0);
+  });
+
+  it('3 (P1). STOP opts out every contact with that number, so a duplicate record cannot be messaged', () => {
+    tfresh();
+    const dup = tat.insert('contacts', { Name: 'ZZ Lite Demo Daniel Brooks (duplicate)', 'First Name': 'Daniel', Phone: '0400 000 106', 'Phone Normalized': '0400000106', 'Consent SMS': true,
+      'Marketing Opt-In': true, 'Consent Source': 'Synthetic demo fixture (website form)', 'Consent Recorded At': daysAgo(130), 'Consent Wording': 'service, marketing', 'Demo Data': true });
+    tat.insert('jobs', { 'Job Ref': 'LJ-DEMO-DUP', Contact: [dup.id], Stage: 'Quoted', 'Lead Received At': daysAgo(150), 'Last Activity At': daysAgo(140), 'Demo Data': true });
+    sms(tw.inbound('+61400000106', FROM(), 'STOP'));
+    expect(tat.get('contacts', tids.contacts.daniel!)!.fields['Opted Out']).toBe(true);
+    expect(tat.get('contacts', dup.id)!.fields['Opted Out']).toBe(true);
+    runNow(twf['lead-reactivation'], http);
+    expect(to('106')).toHaveLength(0);
+  });
+
+  it('4 (P1). after a phone change STOP still works: from the new number (Phone Normalized not updated) and from the old number Lite messaged', () => {
+    tfresh();
+    tpatch('contacts', tids.contacts.daniel!, { Phone: '0400 000 202' });              // edited in the Interface; Phone Normalized keeps the old number
+    sms(tw.inbound('+61400000202', FROM(), 'STOP'));
+    expect(tat.get('contacts', tids.contacts.daniel!)!.fields['Opted Out']).toBe(true);
+    tfresh();
+    runNow(twf['lead-reactivation'], http);
+    expect(to('106')).toHaveLength(1);                                                   // Daniel was messaged at 0400 000 106
+    tpatch('contacts', tids.contacts.daniel!, { Phone: '0400 000 202', 'Phone Normalized': '0400000202' });
+    sms(tw.inbound('+61400000106', FROM(), 'STOP'));                                     // and replies STOP to that message
+    expect(tat.get('contacts', tids.contacts.daniel!)!.fields['Opted Out']).toBe(true);
+  });
+
+  it('5 (P1). a send that timed out while Twilio still had it queued is found by the retry check and not sent again', () => {
+    tfresh();
+    tw.rules.set('+61400000303', 'timeout-queued');
+    expect(tpost(person('303'))).toMatchObject({ body: { acknowledgement: { status: 'Unknown' } } });
+    expect(to('303')).toHaveLength(1);
+    tw.rules.delete('+61400000303');
+    tpatch('messages', ackOf('303').id, { 'Retry Requested': true });
+    expect(monitor()).toMatchObject({ found_already_sent: 1, retried: 0 });
+    expect(to('303')).toHaveLength(1);
+  });
+
+  it('6 (P1). reactivation counts earlier follow-ups from any month: an unresolved attempt holds the job, a sent one keeps its cooldown', () => {
+    tfresh();
+    const period = daysAgo(40).slice(0, 7);
+    tat.insert('messages', { 'Log Ref': 'RA-OLD-UNKNOWN', Workflow: 'Reactivation', Purpose: 'Marketing', Channel: 'SMS', To: '0400000106', Status: 'Unknown',
+      'Dedupe Key': `reactivation:${tids.jobs.A1!}:${period}`, Job: [tids.jobs.A1!], Contact: [tids.contacts.daniel!], 'Attempted At': daysAgo(40), 'Demo Data': true });
+    tat.insert('messages', { 'Log Ref': 'RA-OLD-SENT', Workflow: 'Reactivation', Purpose: 'Marketing', Channel: 'SMS', To: '0400000109', Status: 'Sent',
+      'Dedupe Key': `reactivation:${tids.jobs.A4!}:${period}`, Job: [tids.jobs.A4!], Contact: [tids.contacts.ava!], 'Attempted At': daysAgo(40), 'Demo Data': true });
+    tpatch('jobs', tids.jobs.A4!, { 'Reactivation Sent At': null });                     // its CRM update never landed
+    expect(runNow(twf['lead-reactivation'], http).summary).toMatchObject({ exclusion_reasons: expect.objectContaining({ 'earlier attempt awaits a retry decision': 1, 'followed up within the cooldown': 1 }) as unknown });
+    expect(to('106')).toHaveLength(0);
+    expect(to('109')).toHaveLength(0);
+  });
+
+  it('7 (P1). a delivery receipt that arrives before Lite has recorded the message is not dropped: an Unknown send is resolved, otherwise an alert is raised', () => {
+    tfresh();
+    tw.rules.set('+61400000303', 'timeout-after-send');
+    tpost(person('303'));
+    const unknown = ackOf('303');
+    expect(unknown).toMatchObject({ Status: 'Unknown' });
+    const sid = to('303')[0]!.sid;
+    expect(sms(tw.statusCallback(sid, 'delivered'), { status: true })).toMatchObject({ status: 200 });
+    expect(tlog().find((x) => x.id === unknown.id)).toMatchObject({ Status: 'Delivered', 'Provider Message ID': sid });
+    tpost(person('201'));
+    const sent = ackOf('201');
+    const sid2 = String(sent['Provider Message ID']);
+    tpatch('messages', sent.id, { Status: 'Sending', 'Provider Message ID': null });      // as if the receipt overtook the "Sent" write
+    expect(sms(tw.statusCallback(sid2, 'undelivered', '30003'), { status: true })).toMatchObject({ status: 200 });
+    expect(tat.all('alerts').map((a) => a.fields).find((a) => a['Record Ref'] === sid2)).toMatchObject({ Kind: 'Delivery Failed', Status: 'Open' });
+  });
+
+  it('8 (P2). reconciling or resending an old acknowledgement never moves a Paid job back to Contacted', () => {
+    tfresh();
+    tw.rules.set('+61400000303', 'timeout-after-send');
+    tpost(person('303'));
+    const row = ackOf('303');
+    tpatch('jobs', (row.Job as string[])[0]!, { Stage: 'Paid', 'Invoice Status': 'Paid' });
+    tpatch('messages', row.id, { 'Retry Requested': true });
+    expect(monitor()).toMatchObject({ found_already_sent: 1 });
+    expect(jobOf(row).Stage).toBe('Paid');
+    tw.rules.set('+61400000304', 'server-error');
+    tpost(person('304'));
+    const r4 = ackOf('304');
+    tw.rules.delete('+61400000304');
+    tpatch('jobs', (r4.Job as string[])[0]!, { Stage: 'Paid', 'Invoice Status': 'Paid' });
+    tpatch('messages', r4.id, { 'Retry Requested': true });
+    expect(monitor()).toMatchObject({ retried: 1, resent: 1 });
+    expect(jobOf(r4).Stage).toBe('Paid');
+  });
+
+  it('9 (P2). a new enquiry from a past customer on the day of an earlier acknowledgement stays a New Lead; it is not marked Lost', () => {
+    tfresh();
+    tpost(lead());
+    const first = ackOf('201');
+    tat.get('messages', first.id)!.createdTime = new Date(Date.now() - 3 * 3600_000).toISOString();   // this morning
+    tpatch('jobs', (first.Job as string[])[0]!, { Stage: 'Paid', 'Invoice Status': 'Paid' });
+    expect(tpost(lead({ service: 'gutter replacement', message: 'A new job: the gutters this time' }))).toMatchObject({ status: 200, body: { duplicate: false, stage: 'New Lead' } });
+    const second = tlog().filter((x) => String(x['Dedupe Key']) === `lead-ack:0400000201:${today()}`).find((x) => x.id !== first.id)!;
+    expect(second).toMatchObject({ Status: 'Skipped' });
+    expect(jobOf(second).Stage).toBe('New Lead');
+    expect(to('201')).toHaveLength(1);
+  });
+
+  it("10 (P2). an apostrophe in an email address matches exactly that address, never a similar one", () => {
+    fresh();
+    at.insert('contacts', { Name: 'ZZ Lite Demo Ryan OBrien', Email: 'ryan.obrien@example.test', 'Consent Email': true, 'Demo Data': true });
+    expect(post('lead-follow-up', lead({ name: "ZZ Lite Demo Ryan O'Brien", first_name: 'Ryan', phone: '', email: "ryan.o'brien@example.test" }))).toMatchObject({ status: 200, body: { new_contact: true } });
+    expect(post('inbound-replies', { from: "Ryan.O'Brien@example.test", text: 'Thanks' })).toMatchObject({ body: { known_contact: true } });
+    expect(messages('Inbound Reply').at(-1)!.Contact).toEqual([at.all('contacts').find((c) => c.fields.Email === "ryan.o'brien@example.test")!.id]);
+  });
+
+  it('11 (P2). consent given with a new phone number goes with that number: the acknowledgement goes to the new number only, and the existing record is not changed by a web form', () => {
+    tfresh();
+    expect(tpost(lead({ name: 'ZZ Lite Demo Olivia Chen', first_name: 'Olivia', phone: '0400 000 202', email: 'olivia.chen@example.test', consent_sms: true })))
+      .toMatchObject({ body: { acknowledgement: { status: 'Sent' } } });
+    expect(to('202')).toHaveLength(1);
+    expect(to('101')).toHaveLength(0);
+    expect(tat.get('contacts', tids.contacts.olivia!)!.fields.Phone).toBe('0400 000 101');
   });
 });

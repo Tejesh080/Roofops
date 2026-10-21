@@ -62,27 +62,37 @@ what an employee does. A first-time owner can follow it in five minutes. The sta
 3. Create the five menu pages in menu order. Pipeline comes first, which makes it the home page.
 4. Publish.
 
-**Three read-only display fields on Lite Jobs.** These are Interface helpers. The workflows never read or write them,
-and `setup.ts --verify` ignores them:
+**Read-only display fields.** These are Interface helpers. The workflows never read or write them, and
+`setup.ts --verify` ignores them:
 
-| Field | Type | Definition |
-|---|---|---|
-| Quote Amount | rollup | Lite Quotes › Amount, `MAX(values)` |
-| Amount | formula | "Paid $1,980" / "Invoiced $1,980" once there is an Invoice Amount, otherwise "Quote $6,400" (thousands separator built in the formula) |
-| Job Name | formula | `IF({Contact}, {Contact} & ' – ' & {Service}, {Service})`, e.g. "Linda Thompson – Gutter replacement" |
+| Table | Field | Type | Definition |
+|---|---|---|---|
+| Lite Jobs | Quote Amount | rollup | Lite Quotes › Amount, `MAX(values)` |
+| Lite Jobs | Amount | formula | "Paid $1,980" / "Invoiced $1,980" once there is an Invoice Amount, otherwise "Quote $6,400" (thousands separator built in the formula) |
+| Lite Jobs | Job Name | formula | `IF({Demo Data}, '[Demo] ', '') & IF({Contact}, {Contact} & ' – ' & {Service}, {Service})`, e.g. "Linda Thompson – Gutter replacement" |
+| Lite Jobs, Lite Message Log | Record Type | formula | `IF({Demo Data}, IF(AND({Contact}, FIND('ZZ ', {Contact} & '') != 1), 'Demo', 'Test'), 'Real')` |
+| Lite Contacts | Record Type | formula | `IF({Demo Data}, IF(FIND('ZZ ', {Name} & '') = 1, 'Test', 'Demo'), 'Real')` |
 
-**Hiding test data.** Every employee page is scoped to **Demo Data is not checked**. So install tests and synthetic
-records (all ticked Demo Data) never appear to staff. They are listed on the Admin page instead.
+**Real, demo and test records.**
+- **Every synthetic record has Demo Data ticked.** That includes showcase customers.
+- **Record Type** splits synthetic records in two:
+  - **Test:** synthetic test people, named "ZZ …" (the fixtures convention). Hidden from every employee page; listed on
+    Admin.
+  - **Demo:** synthetic showcase customers with realistic names. Shown to staff, labelled "[Demo]" through Job Name
+    and the Record Type column.
+- **Employee pages** are scoped to **Record Type is not Test**.
+- **In a client's base** there are only Real records, and install tests are Test. Delete both kinds of synthetic record
+  before go-live.
 
 **Menu (in this order):**
 
 | Page | Type | Configuration |
 |---|---|---|
-| **Pipeline** (home) | kanban on Lite Jobs | Stacked by Stage, which follows the field's option order: New Lead → Contacted → Quoted → Accepted → Job In Progress → Completed → Invoiced → Paid. **Scope:** not Demo Data, and Stage is not Lost (Lost jobs leave the board; they are listed on Business overview). **Cards:** Contact, Service, Amount, Last Activity At. No Job Ref. Newest activity first, count per stack. A click opens **Job**. |
-| **Business overview** | dashboard | One section per figure, each with its own scope (not Demo Data). **Numbers:** New enquiries to call (with a grid that opens Job); Quotes waiting for a yes; Jobs booked or in progress; Finished, not invoiced yet; Awaiting payment ($); Paid ($). The money figures say "CRM tracking only: the real invoices live in Xero". **Grids:** Latest customer replies; Lost enquiries (opens Job). |
-| **Customers** | grid on Lite Contacts | Name, Phone, Email, Suburb, the four permission boxes, Opted Out. Tabs: **Do not contact**; **Permission not recorded** (a box ticked but no Consent Recorded At). A click opens **Customer**. |
-| **Messages** | grid on Lite Message Log | When, Customer, Type (Workflow), Channel, Status, Message, Reason, Retry Requested. Newest first. Tabs: **Replies from customers** (Received, Opt-Out); **Problems to fix** (Failed, Unknown). |
-| **Admin (owner)** | dashboard | Open alerts (with count), failed or unconfirmed messages (Retry Requested), and test and demo records (Demo Data ticked; delete before go-live). |
+| **Pipeline** (home) | kanban on Lite Jobs | Stacked by Stage, which follows the field's option order: New Lead → Contacted → Quoted → Accepted → Job In Progress → Completed → Invoiced → Paid. **Scope:** Record Type is not Test, and Stage is not Lost (Lost jobs leave the board; they are listed on Business overview). **Cards:** Job Name (customer – service, "[Demo]" for showcase data), Amount, Last Activity At. No Job Ref. Newest activity first, count per stack. A click opens **Job**. |
+| **Business overview** | dashboard | One section per figure, each with its own scope (Record Type is not Test). **Numbers:** New enquiries to call (with a grid that opens Job); Quotes waiting for a yes; Jobs booked or in progress; Finished, not invoiced yet; Awaiting payment ($); Paid ($). The money figures say "CRM tracking only: the real invoices live in Xero". **Grids:** Latest customer replies; Lost enquiries (opens Job). |
+| **Customers** | grid on Lite Contacts | Scope: Record Type is not Test. Name, Record Type, Phone, Email, Suburb, the four permission boxes, Opted Out. Tabs: **Do not contact**; **Permission not recorded** (a box ticked but no Consent Recorded At). A click opens **Customer**. |
+| **Messages** | grid on Lite Message Log | Scope: Record Type is not Test. When, Customer, Record Type, Type (Workflow), Channel, Status, Message, Reason, Retry Requested. Newest first. Tabs: **Replies from customers** (Received, Opt-Out); **Problems to fix** (Failed, Unknown). |
+| **Admin (owner)** | dashboard | Open alerts (with count), failed or unconfirmed messages (Retry Requested), and every synthetic job (Demo Data ticked) with its Record Type (delete all before go-live). |
 
 **Job** (record detail, sidesheet, editable). The title is Job Name. Its sections are numbered as the steps of a job:
 1. **Stage:** Stage, Service, Amount, Enquiry Message.

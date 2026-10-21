@@ -26,10 +26,12 @@ if (errors.length) return [{ json: { ok: false, response: { status: 400, body: {
 const SOURCES = ['Website', 'Facebook', 'Google', 'Referral', 'Phone', 'Other'];
 const source = SOURCES.find((s) => s.toLowerCase() === clean(b.source).toLowerCase()) || 'Website';
 const consent = { sms: yes(b.consent_sms), email: yes(b.consent_email), reviews: yes(b.consent_reviews), marketing: yes(b.marketing_opt_in) };
-// The exact words shown on the form for each box ticked (lite/dist/<client>/lead-form.html shows the same).
+// The exact words shown on the form for each box ticked (lite/dist/<client>/lead-form.html shows the same), each tagged
+// with what it covers, so the record keeps saying so even if the wording in the config is changed later.
 const by = [consent.sms ? 'SMS' : '', consent.email ? 'email' : ''].filter(Boolean);
-const wording = [by.length ? CFG.consent.wording.service + ' [' + by.join(', ') + ']' : '', consent.reviews ? CFG.consent.wording.reviews : '', consent.marketing ? CFG.consent.wording.marketing : ''].filter(Boolean);
-const contactConds = [email ? "LOWER({Email})='" + formulaText(email) + "'" : '', phone ? "{Phone Normalized}='" + formulaText(phone) + "'" : ''].filter(Boolean);
+const wording = [by.length ? CFG.consent.wording.service + ' [' + by.join(', ') + ']' : '', consent.reviews ? CFG.consent.wording.reviews + ' [reviews]' : '',
+  consent.marketing ? CFG.consent.wording.marketing + ' [marketing]' : ''].filter(Boolean);
+const contactConds = [email ? "LOWER({Email})='" + formulaText(email) + "'" : '', phone ? phoneFormula(phone) : ''].filter(Boolean);
 return [{ json: { ok: true,
   lead: { name: name, firstName: clean(b.first_name).slice(0, 60) || firstNameOf(name), email: email, phone: phone, suburb: clean(b.suburb).slice(0, 80), address: clean(b.address).slice(0, 200),
     postcode: clean(b.postcode).slice(0, 10), service: clean(b.service).slice(0, 120), message: clean(b.message).slice(0, 2000), source: source,
@@ -42,7 +44,8 @@ const rejected = respond('Respond Rejected');
 const findContact = airtableList('Find Contact', T.contacts, '{{ $json.contactFormula }}');
 const jobsFormula = code('Contact Jobs Formula', `
 // The contact's jobs, through Airtable's back-link (Lite Contacts > Lite Jobs): also jobs that staff created by hand.
-const c = records($input.first().json, 'find contact')[0];
+const L = $('Validate Lead').first().json.lead;
+const c = pickContact(records($input.first().json, 'find contact'), L.phone, L.email);
 const ids = c ? ((c.fields || {})['Lite Jobs'] || []) : [];
 return [{ json: { jobFormula: ids.length ? 'OR(' + ids.map((i) => "RECORD_ID()='" + formulaText(i) + "'").join(',') + ')' : 'FALSE()' } }];`);
 const findJobs = airtableList('Find Recent Jobs', T.jobs, '{{ $json.jobFormula }}');
@@ -52,7 +55,7 @@ const contacts = records($('Find Contact').first().json, 'find contact');
 const jobs = records($input.first().json, 'find recent jobs');
 const since = NOW.getTime() - days(CFG.leadIntake.dedupeWindowDays);
 const open = jobs.filter((j) => { const f = j.fields || {}; return Date.parse(f['Lead Received At'] || '') >= since && ['Paid', 'Lost'].indexOf(f.Stage) < 0; });
-const contact = contacts[0] || null;
+const contact = pickContact(contacts, L.phone, L.email);
 if (open.length) {
   const j = open[0];
   const log = skipLog({ prefix: 'LM', workflow: 'Lead Follow-Up', purpose: 'Operational', key: 'lead-repeat:' + j.id + ':' + iso(NOW).slice(0, 10), jobId: j.id, contactId: contact ? contact.id : null,
@@ -72,10 +75,14 @@ if (!contact) {
   write = { method: 'POST', url: TABLE_URL.contacts, request: { typecast: false, records: [{ fields: fields }] } };
 } else {
   // A returning person: new consent is added (never removed). An opt-out stands until staff confirm the person wants messages again.
+  // The earlier evidence is kept: this form's source and wording are added to it, never written over it.
   const cf = contact.fields || {};
   const added = Object.keys(given).filter((k) => given[k] && !cf[k]);
   if (added.length && !cf['Opted Out']) {
-    const fields = Object.assign({}, evidence); added.forEach((k) => { fields[k] = true; });
+    const join = (was, now, sep) => { const w = clean(was); return !w ? now : w.indexOf(now) >= 0 ? w : w + sep + now; };
+    const fields = L.consentWording ? { 'Consent Source': join(cf['Consent Source'], L.consentSource, '; '), 'Consent Recorded At': iso(NOW),
+      'Consent Wording': join(cf['Consent Wording'], L.consentWording, '\\n') } : {};
+    added.forEach((k) => { fields[k] = true; });
     write = { method: 'PATCH', url: TABLE_URL.contacts, request: { typecast: false, records: [{ id: contact.id, fields: fields }] } };
   }
 }

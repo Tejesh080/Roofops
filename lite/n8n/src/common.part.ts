@@ -61,11 +61,20 @@ const NOW = new Date();
 const iso = (d) => new Date(d).toISOString();
 const days = (n) => n * 24 * 60 * 60 * 1000;
 const clean = (s) => String(s == null ? '' : s).trim();
-const formulaText = (s) => clean(s).replace(/[\\\\'"{}]/g, '');
+/** Text inside a single-quoted Airtable formula string: quotes and backslashes are escaped, never dropped (an address
+ * like o'brien@ must not turn into obrien@ and match someone else). */
+const formulaText = (s) => clean(s).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, "\\\\'");
 const normEmail = (s) => { const e = clean(s).toLowerCase(); return /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(e) ? e : ''; };
 const normPhone = (s) => { let d = clean(s).replace(/[^0-9+]/g, ''); if (d.startsWith('+61')) d = '0' + d.slice(3); d = d.replace(/[^0-9]/g, ''); return /^0[2-478][0-9]{8}$/.test(d) ? d : ''; };
 /** Australian national number (04xx xxx xxx) to E.164 (+614xxxxxxxx), as Twilio needs it. */
 const toE164 = (s) => { const n = normPhone(s); return n ? '+61' + n.slice(1) : ''; };
+/** Contacts with this number (Airtable formula): the normalized copy, or the Phone field itself however staff typed it,
+ * so a number edited in the Interface (Phone Normalized not updated) still matches. */
+const phoneFormula = (n) => { const d = formulaText(n); return "OR({Phone Normalized}='" + d + "',REGEX_REPLACE({Phone},'[^0-9]','')='" + d + "',REGEX_REPLACE({Phone},'[^0-9]','')='61" + d.slice(1) + "')"; };
+/** The contact a form or a reply comes from: the one whose current phone is this number, else one with this email and no
+ * other number on file. A different number on file is not merged by a web form: messages never follow it to another phone. */
+const pickContact = (list, phone, email) => list.find((c) => phone && normPhone((c.fields || {}).Phone) === phone)
+  || list.find((c) => email && normEmail((c.fields || {}).Email) === email && (!phone || !normPhone((c.fields || {}).Phone))) || null;
 const firstNameOf = (n) => clean(n).split(/\\s+/)[0] || 'there';
 const render = (tpl, v) => String(tpl).replace(/\\{(\\w+)\\}/g, (m, k) => (v[k] == null ? m : String(v[k])));
 const vars = (contact, job) => ({ firstName: contact['First Name'] || firstNameOf(contact.Name), businessName: CFG.business.name, businessPhone: CFG.business.phone,
@@ -96,13 +105,20 @@ const permission = (c, purpose) => {
   if (c['Opted Out']) return 'opted out';
   if (purpose === 'Operational') return null;
   const evidence = !!(c['Consent Recorded At'] && clean(c['Consent Source']));
+  // Evidence written by the website form lists each box ticked (its wording, tagged [reviews] / [marketing]), so it vouches
+  // only for those purposes: service consent given on a form never makes an older, unrecorded marketing tick usable.
+  const formOnly = clean(c['Consent Source']).split('; ').every((s) => s.indexOf(CFG.consent.formName) === 0);
+  const covers = (tag, w) => { const said = clean(c['Consent Wording']); return !formOnly || said.indexOf('[' + tag + ']') >= 0 || said.indexOf(clean(w)) >= 0; };
   if (purpose === 'Review') {
     if (CFG.consent.reviewRequests === 'service') return null;
     if (!c['Review Opt-In'] && !c['Marketing Opt-In']) return 'no permission for review requests';
-    return evidence ? null : 'consent not recorded (source and date)';
+    if (!evidence) return 'consent not recorded (source and date)';
+    return (c['Review Opt-In'] && covers('reviews', CFG.consent.wording.reviews)) || (c['Marketing Opt-In'] && covers('marketing', CFG.consent.wording.marketing)) ? null
+      : 'review permission is not in the recorded consent wording';
   }
   if (!c['Marketing Opt-In']) return 'no marketing permission';
-  return evidence ? null : 'consent not recorded (source and date)';
+  if (!evidence) return 'consent not recorded (source and date)';
+  return covers('marketing', CFG.consent.wording.marketing) ? null : 'marketing permission is not in the recorded consent wording';
 };
 const logRef = (prefix) => prefix + '-' + iso(NOW).replace(/[-:TZ.]/g, '').slice(0, 14) + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
 const chunk = (list, n) => { const out = []; for (let i = 0; i < list.length; i += n) out.push(list.slice(i, i + n)); return out; };

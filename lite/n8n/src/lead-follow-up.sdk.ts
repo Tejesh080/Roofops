@@ -5,8 +5,9 @@ import { workflow, node, trigger, ifElse, expr } from '@n8n/workflow-sdk';
 // webhook. It is validated, de-duplicated against the CRM (same email or phone with an open enquiry inside the window),
 // saved as Contact (with the consent given, its source, time and wording) + Property + Job (Stage New Lead), and
 // acknowledged once by SMS (or email in test-sink mode) if the person consented. The acknowledgement goes through the
-// shared send pipeline: logged first, sent at most once per person per day (a double-clicked form sends one message),
-// and the job moves to Contacted when it went out. The caller gets a JSON answer.
+// shared send pipeline: logged first, sent at most once per enquiry per day (a double-clicked form sends one message;
+// a different enquiry from the same person gets its own), and the job moves to Contacted when it went out. The caller
+// gets a JSON answer.
 
 const hook = trigger({ type: 'n8n-nodes-base.webhook', version: 2, config: { name: 'Lead Webhook', ...HOOK_CRED,
   parameters: { httpMethod: 'POST', path: CONFIG.leadIntake.webhookPath, responseMode: 'responseNode', ...HOOK_AUTH, options: {} } }, output: [{ body: {} }] });
@@ -75,13 +76,21 @@ if (!contact) {
   write = { method: 'POST', url: TABLE_URL.contacts, request: { typecast: false, records: [{ fields: fields }] } };
 } else {
   // A returning person: new consent is added (never removed). An opt-out stands until staff confirm the person wants messages again.
-  // The earlier evidence is kept: this form's source and wording are added to it, never written over it.
+  // Earlier evidence with a source and a date is kept (its date written beside its source) and this form's is added to it.
+  // Earlier evidence without both is not: this form's date must not make it look recorded. It moves to Notes, word for word.
   const cf = contact.fields || {};
   const added = Object.keys(given).filter((k) => given[k] && !cf[k]);
   if (added.length && !cf['Opted Out']) {
     const join = (was, now, sep) => { const w = clean(was); return !w ? now : w.indexOf(now) >= 0 ? w : w + sep + now; };
-    const fields = L.consentWording ? { 'Consent Source': join(cf['Consent Source'], L.consentSource, '; '), 'Consent Recorded At': iso(NOW),
-      'Consent Wording': join(cf['Consent Wording'], L.consentWording, '\\n') } : {};
+    const was = { source: clean(cf['Consent Source']), at: clean(cf['Consent Recorded At']), wording: clean(cf['Consent Wording']) };
+    const complete = !!(was.source && was.at);
+    const dated = was.source.split('; ').map((s) => (s.indexOf('(recorded ') >= 0 ? s : s + ' (recorded ' + was.at + ')')).join('; ');
+    const fields = !L.consentWording ? {} : complete
+      ? { 'Consent Source': join(dated, L.consentSource, '; '), 'Consent Recorded At': iso(NOW), 'Consent Wording': join(was.wording, L.consentWording, '\\n') }
+      : { 'Consent Source': L.consentSource, 'Consent Recorded At': iso(NOW), 'Consent Wording': L.consentWording };
+    if (L.consentWording && !complete && (was.source || was.wording))
+      fields.Notes = join(cf.Notes, 'Earlier consent record, not used (it had no ' + (was.source ? 'date' : 'source') + '), moved here on ' + iso(NOW).slice(0, 10)
+        + ': source "' + was.source + '", wording "' + was.wording + '"', '\\n');
     added.forEach((k) => { fields[k] = true; });
     write = { method: 'PATCH', url: TABLE_URL.contacts, request: { typecast: false, records: [{ id: contact.id, fields: fields }] } };
   }
@@ -128,8 +137,12 @@ const L = $('Validate Lead').first().json.lead;
 const v = vars(cf, job.fields || {});
 const ch = channelFor(cf);
 const why = permission(cf, 'Operational') || ch.skip;
-// One acknowledgement per person per day: a form sent twice at once still sends one message.
-const key = 'lead-ack:' + (L.phone || L.email) + ':' + iso(NOW).slice(0, 10);
+// One acknowledgement per enquiry per day: the same form sent twice at once still sends one message (and the copy's job
+// is marked Lost as a duplicate). A different enquiry from the same person (another service, message or address) is its
+// own: its own acknowledgement, its job kept. The enquiry's fingerprint (FNV-1a) is part of the key.
+const enquiry = [L.service, L.message, L.address, L.postcode].map((x) => clean(x).toLowerCase().replace(/\\s+/g, ' ')).join('|');
+let fp = 0x811c9dc5; for (let i = 0; i < enquiry.length; i++) { fp ^= enquiry.charCodeAt(i); fp = Math.imul(fp, 0x01000193) >>> 0; }
+const key = 'lead-ack:' + (L.phone || L.email) + ':' + iso(NOW).slice(0, 10) + ':' + fp.toString(36);
 const base = { prefix: 'LM', workflow: 'Lead Follow-Up', purpose: 'Operational', key: key, jobId: job.id, contactId: contact.id, demo: L.demo };
 if (why) return [{ json: { job: job, sends: [], logs: [skipLog(Object.assign({ reason: why }, base))], updates: [], skipReason: why } }];
 const subject = ch.channel === 'Email' ? render(CFG.leadIntake.emailSubject, v) : null;

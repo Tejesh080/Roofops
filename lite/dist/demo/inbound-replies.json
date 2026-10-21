@@ -29,7 +29,7 @@
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "\nconst CFG = {\"messaging\":{\"mode\":\"test-sink\",\"provider\":\"lite-test-sink\",\"twilio\":null}};\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** Text inside a single-quoted Airtable formula string: quotes and backslashes are escaped, never dropped (an address\n * like o'brien@ must not turn into obrien@ and match someone else). */\nconst formulaText = (s) => clean(s).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"\\\\'\");\nconst normEmail = (s) => { const e = clean(s).toLowerCase(); return /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(e) ? e : ''; };\nconst normPhone = (s) => { let d = clean(s).replace(/[^0-9+]/g, ''); if (d.startsWith('+61')) d = '0' + d.slice(3); d = d.replace(/[^0-9]/g, ''); return /^0[2-478][0-9]{8}$/.test(d) ? d : ''; };\n/** Contacts with this number (Airtable formula): the normalized copy, or the Phone field itself however staff typed it,\n * so a number edited in the Interface (Phone Normalized not updated) still matches. */\nconst phoneFormula = (n) => { const d = formulaText(n); return \"OR({Phone Normalized}='\" + d + \"',REGEX_REPLACE({Phone},'[^0-9]','')='\" + d + \"',REGEX_REPLACE({Phone},'[^0-9]','')='61\" + d.slice(1) + \"')\"; };\n\nconst h = $input.first().json;\nconst b = h.body || {}; const q = h.query || {};\nconst TW = CFG.messaging.mode === 'twilio' ? CFG.messaging.twilio : null;\nconst reject = (status, why) => [{ json: { ok: false, response: { status: status, body: { ok: false, errors: [why] }, text: why } } }];\nlet reply;\nif (TW) {\n  const event = q.event === 'status' ? 'status' : 'message';\n  if (Object.keys(q).some((k) => k !== 'event')) return reject(403, 'unexpected query parameters');\n  // n8n's Basic Auth let this request in.\n  if (b.AccountSid !== TW.accountSid) return reject(403, 'request is not for this Twilio account');\n  if (event === 'status') {\n    if (!/^(SM|MM)[0-9a-f]{32}$/.test(clean(b.MessageSid))) return reject(400, 'MessageSid is missing');\n    // The message by its SID; and, for a receipt that overtakes Lite's own record, an Unknown send (no SID) to this number.\n    const to = normPhone(b.To);\n    return [{ json: { ok: true, event: 'status', status: { sid: clean(b.MessageSid), status: clean(b.MessageStatus).toLowerCase(), errorCode: clean(b.ErrorCode) || null, to: to },\n      formula: \"OR({Provider Message ID}='\" + formulaText(b.MessageSid) + \"'\" + (to ? \",AND({Status}='Unknown',{Provider Message ID}=BLANK(),{To}='\" + formulaText(to) + \"')\" : '') + ')' } }];\n  }\n  reply = { from: clean(b.From), text: clean(b.Body), sid: clean(b.MessageSid) || null, demo: false };\n} else reply = { from: clean(b.from), text: clean(b.text), sid: null, demo: b.demo === true };\nconst email = normEmail(reply.from); const phone = normPhone(reply.from);\nconst text = reply.text.slice(0, 2000);\nconst errors = [];\nif (!email && !phone) errors.push('from must be the sender phone number or email address');\nif (!text) errors.push('text is required');\nif (errors.length) return reject(400, errors.join('; '));\nreturn [{ json: { ok: true, event: 'message', reply: { from: email || phone, channel: email ? 'Email' : 'SMS', text: text, sid: reply.sid, demo: reply.demo, phone: phone, email: email },\n  contactFormula: email ? \"LOWER({Email})='\" + formulaText(email) + \"'\" : phoneFormula(phone),\n  historyFormula: \"{To}='\" + formulaText(email || phone) + \"'\" } }];"
+        "jsCode": "\nconst CFG = {\"messaging\":{\"mode\":\"test-sink\",\"provider\":\"lite-test-sink\",\"twilio\":null}};\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** Text inside a single-quoted Airtable formula string: quotes and backslashes are escaped, never dropped (an address\n * like o'brien@ must not turn into obrien@ and match someone else). */\nconst formulaText = (s) => clean(s).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"\\\\'\");\nconst normEmail = (s) => { const e = clean(s).toLowerCase(); return /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(e) ? e : ''; };\nconst normPhone = (s) => { let d = clean(s).replace(/[^0-9+]/g, ''); if (d.startsWith('+61')) d = '0' + d.slice(3); d = d.replace(/[^0-9]/g, ''); return /^0[2-478][0-9]{8}$/.test(d) ? d : ''; };\n/** Contacts with this number (Airtable formula): the normalized copy, or the Phone field itself however staff typed it,\n * so a number edited in the Interface (Phone Normalized not updated) still matches. */\nconst phoneFormula = (n) => { const d = formulaText(n); return \"OR({Phone Normalized}='\" + d + \"',REGEX_REPLACE({Phone},'[^0-9]','')='\" + d + \"',REGEX_REPLACE({Phone},'[^0-9]','')='61\" + d.slice(1) + \"')\"; };\n\nconst h = $input.first().json;\nconst b = h.body || {}; const q = h.query || {};\nconst TW = CFG.messaging.mode === 'twilio' ? CFG.messaging.twilio : null;\nconst reject = (status, why) => [{ json: { ok: false, response: { status: status, body: { ok: false, errors: [why] }, text: why } } }];\nlet reply;\nif (TW) {\n  const event = q.event === 'status' ? 'status' : 'message';\n  if (Object.keys(q).some((k) => k !== 'event')) return reject(403, 'unexpected query parameters');\n  // n8n's Basic Auth let this request in.\n  if (b.AccountSid !== TW.accountSid) return reject(403, 'request is not for this Twilio account');\n  if (event === 'status') {\n    if (!/^(SM|MM)[0-9a-f]{32}$/.test(clean(b.MessageSid))) return reject(400, 'MessageSid is missing');\n    // The message by its SID; and Unknown sends (no SID) to this number, only to say in an alert that one may be it.\n    const to = normPhone(b.To);\n    return [{ json: { ok: true, event: 'status', status: { sid: clean(b.MessageSid), status: clean(b.MessageStatus).toLowerCase(), errorCode: clean(b.ErrorCode) || null, to: to },\n      formula: \"OR({Provider Message ID}='\" + formulaText(b.MessageSid) + \"'\" + (to ? \",AND({Status}='Unknown',{Provider Message ID}=BLANK(),{To}='\" + formulaText(to) + \"')\" : '') + ')' } }];\n  }\n  reply = { from: clean(b.From), text: clean(b.Body), sid: clean(b.MessageSid) || null, demo: false };\n} else reply = { from: clean(b.from), text: clean(b.text), sid: null, demo: b.demo === true };\nconst email = normEmail(reply.from); const phone = normPhone(reply.from);\nconst text = reply.text.slice(0, 2000);\nconst errors = [];\nif (!email && !phone) errors.push('from must be the sender phone number or email address');\nif (!text) errors.push('text is required');\nif (errors.length) return reject(400, errors.join('; '));\nreturn [{ json: { ok: true, event: 'message', reply: { from: email || phone, channel: email ? 'Email' : 'SMS', text: text, sid: reply.sid, demo: reply.demo, phone: phone, email: email },\n  contactFormula: email ? \"LOWER({Email})='\" + formulaText(email) + \"'\" : phoneFormula(phone),\n  historyFormula: \"{To}='\" + formulaText(email || phone) + \"'\" } }];"
       }
     },
     {
@@ -167,7 +167,7 @@
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "\nconst TABLE_URL = {\"contacts\":\"https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Contacts\",\"properties\":\"https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Properties\",\"jobs\":\"https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Jobs\",\"quotes\":\"https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Quotes\",\"messages\":\"https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Message%20Log\",\"alerts\":\"https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Alerts\"};\nconst NOW = new Date();\nconst iso = (d) => new Date(d).toISOString();\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\nconst logRef = (prefix) => prefix + '-' + iso(NOW).replace(/[-:TZ.]/g, '').slice(0, 14) + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();\nconst chunk = (list, n) => { const out = []; for (let i = 0; i < list.length; i += n) out.push(list.slice(i, i + n)); return out; };\n/** CRM updates ({ table, id, fields }) as Airtable PATCH requests: one per table and 10 records, updates to one record merged. */\nconst patches = (list) => {\n  const by = {};\n  for (const u of list) { const t = (by[u.table] = by[u.table] || {}); t[u.id] = Object.assign(t[u.id] || {}, u.fields); }\n  const items = [];\n  for (const table of Object.keys(by)) for (const part of chunk(Object.keys(by[table]), 10))\n    items.push({ url: TABLE_URL[table], request: { typecast: false, records: part.map((id) => ({ id: id, fields: by[table][id] })) } });\n  return items;\n};\n\nconst s = $('Verify Request').first().json.status;\nconst found = records($input.first().json, 'find sent message');\n// A receipt can overtake Lite's own record of the send. It settles an Unknown send to the same number only when there is\n// exactly one; otherwise a failure is raised as an alert (never dropped), and the message it is about is checked by a person.\nconst bySid = found.filter((r) => clean((r.fields || {})['Provider Message ID']) === s.sid);\nconst pending = found.filter((r) => !clean((r.fields || {})['Provider Message ID']));\nconst rows = bySid.length ? bySid : pending.length === 1 ? pending : [];\nconst list = [];\nconst RANK = { Sending: 0, Unknown: 0, Sent: 1, Delivered: 2, Failed: 2 };\nfor (const r of rows) {\n  const f = r.fields || {};\n  let to = null;\n  if (s.status === 'delivered') to = 'Delivered';\n  else if (s.status === 'failed' || s.status === 'undelivered') to = 'Failed';\n  else if (s.status === 'sent') to = 'Sent';\n  if (!to || (RANK[f.Status] || 0) > RANK[to] || f.Status === to) continue;   // never downgrade (receipts can arrive out of order)\n  const fields = { Status: to };\n  if (!clean(f['Provider Message ID'])) { fields['Provider Message ID'] = s.sid; fields.Reason = 'settled by the Twilio delivery receipt (' + s.status + ')'; }\n  if (to === 'Failed') { fields['Error Code'] = s.errorCode; fields.Reason = 'Twilio: ' + s.status + (s.errorCode ? ' (error ' + s.errorCode + ')' : ''); }\n  list.push({ table: 'messages', id: r.id, fields: fields });\n  if (s.errorCode === '21610' && (f.Contact || [])[0]) list.push({ table: 'contacts', id: f.Contact[0], fields: { 'Opted Out': true, 'Opted Out At': iso(NOW), 'Marketing Opt-In': false } });\n}\nconst failed = s.status === 'failed' || s.status === 'undelivered';\nconst alert = !rows.length && failed ? { 'Alert Ref': logRef('AL'), Kind: 'Delivery Failed', Status: 'Open', Workflow: 'Inbound Reply', 'Record Ref': s.sid,\n  Detail: 'Twilio reported a message to ' + (s.to || 'an unknown number') + ' as ' + s.status + (s.errorCode ? ' (error ' + s.errorCode + ')' : '')\n    + ' before Lite had recorded it. Find the latest message to this number in the Message Log; tick Retry Requested if it should be sent again.',\n  'Dedupe Key': 'receipt:' + s.sid + ':' + s.status, 'Raised At': iso(NOW), 'Demo Data': false } : null;\nreturn [{ json: { items: patches(list), hasAlert: !!alert, alertRequest: alert ? { typecast: false, records: [{ fields: alert }] } : null } }];"
+        "jsCode": "\nconst TABLE_URL = {\"contacts\":\"https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Contacts\",\"properties\":\"https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Properties\",\"jobs\":\"https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Jobs\",\"quotes\":\"https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Quotes\",\"messages\":\"https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Message%20Log\",\"alerts\":\"https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Alerts\"};\nconst NOW = new Date();\nconst iso = (d) => new Date(d).toISOString();\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\nconst logRef = (prefix) => prefix + '-' + iso(NOW).replace(/[-:TZ.]/g, '').slice(0, 14) + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();\nconst chunk = (list, n) => { const out = []; for (let i = 0; i < list.length; i += n) out.push(list.slice(i, i + n)); return out; };\n/** CRM updates ({ table, id, fields }) as Airtable PATCH requests: one per table and 10 records, updates to one record merged. */\nconst patches = (list) => {\n  const by = {};\n  for (const u of list) { const t = (by[u.table] = by[u.table] || {}); t[u.id] = Object.assign(t[u.id] || {}, u.fields); }\n  const items = [];\n  for (const table of Object.keys(by)) for (const part of chunk(Object.keys(by[table]), 10))\n    items.push({ url: TABLE_URL[table], request: { typecast: false, records: part.map((id) => ({ id: id, fields: by[table][id] })) } });\n  return items;\n};\n\nconst s = $('Verify Request').first().json.status;\nconst found = records($input.first().json, 'find sent message');\n// A receipt changes only the message with its exact Message SID. One that overtakes Lite's own record of the send, or\n// belongs to no message Lite knows, changes nothing: a failure, or any receipt while an unconfirmed message to the same\n// number exists, is raised as an alert for a person instead. Matching it by number could settle or fail the wrong message.\nconst bySid = found.filter((r) => clean((r.fields || {})['Provider Message ID']) === s.sid);\nconst pending = found.filter((r) => !clean((r.fields || {})['Provider Message ID']));\nconst rows = bySid;\nconst list = [];\nconst RANK = { Sending: 0, Unknown: 0, Sent: 1, Delivered: 2, Failed: 2 };\nfor (const r of rows) {\n  const f = r.fields || {};\n  let to = null;\n  if (s.status === 'delivered') to = 'Delivered';\n  else if (s.status === 'failed' || s.status === 'undelivered') to = 'Failed';\n  else if (s.status === 'sent') to = 'Sent';\n  if (!to || (RANK[f.Status] || 0) > RANK[to] || f.Status === to) continue;   // never downgrade (receipts can arrive out of order)\n  const fields = { Status: to };\n  if (to === 'Failed') { fields['Error Code'] = s.errorCode; fields.Reason = 'Twilio: ' + s.status + (s.errorCode ? ' (error ' + s.errorCode + ')' : ''); }\n  list.push({ table: 'messages', id: r.id, fields: fields });\n  if (s.errorCode === '21610' && (f.Contact || [])[0]) list.push({ table: 'contacts', id: f.Contact[0], fields: { 'Opted Out': true, 'Opted Out At': iso(NOW), 'Marketing Opt-In': false } });\n}\nconst failed = s.status === 'failed' || s.status === 'undelivered';\nconst alert = !rows.length && (failed || pending.length) ? { 'Alert Ref': logRef('AL'), Kind: failed ? 'Delivery Failed' : 'Delivery Unknown', Status: 'Open', Workflow: 'Inbound Reply', 'Record Ref': s.sid,\n  Detail: 'Twilio reported message ' + s.sid + ' to ' + (s.to || 'an unknown number') + ' as ' + s.status + (s.errorCode ? ' (error ' + s.errorCode + ')' : '')\n    + ', but no message in the Message Log has this Message SID (it may not have been recorded yet), so Lite changed nothing.'\n    + (pending.length ? ' ' + pending.length + ' unconfirmed message(s) to this number may or may not be this one.' : '')\n    + ' Check this SID in Twilio against the Message Log before ticking Retry Requested on anything.',\n  'Dedupe Key': 'receipt:' + s.sid + ':' + s.status, 'Raised At': iso(NOW), 'Demo Data': false } : null;\nreturn [{ json: { items: patches(list), hasAlert: !!alert, alertRequest: alert ? { typecast: false, records: [{ fields: alert }] } : null } }];"
       }
     },
     {
@@ -383,7 +383,26 @@
               "neverError": true
             }
           },
-          "timeout": 20000
+          "timeout": 20000,
+          "pagination": {
+            "pagination": {
+              "paginationMode": "updateAParameterInEachRequest",
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "qs",
+                    "name": "offset",
+                    "value": "={{ $response.body.offset }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body || !$response.body.offset }}",
+              "limitPagesFetched": true,
+              "maxRequests": 20,
+              "requestInterval": 200
+            }
+          }
         }
       },
       "credentials": {
@@ -405,7 +424,7 @@
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** Text inside a single-quoted Airtable formula string: quotes and backslashes are escaped, never dropped (an address\n * like o'brien@ must not turn into obrien@ and match someone else). */\nconst formulaText = (s) => clean(s).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"\\\\'\");\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n\nconst v = $('Verify Request').first().json;\nconst ids = Array.from(new Set(records($input.first().json, 'find number history').map((m) => ((m.fields || {}).Contact || [])[0]).filter(Boolean)));\nreturn [{ json: { formula: ids.length ? 'OR(' + [v.contactFormula].concat(ids.map((i) => \"RECORD_ID()='\" + formulaText(i) + \"'\")).join(',') + ')' : v.contactFormula } }];"
+        "jsCode": "\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** Text inside a single-quoted Airtable formula string: quotes and backslashes are escaped, never dropped (an address\n * like o'brien@ must not turn into obrien@ and match someone else). */\nconst formulaText = (s) => clean(s).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"\\\\'\");\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n/** Every record of a paginated list (one item per page). An Error if a page failed or the page limit cut it short. */\nconst allRecords = (items, step) => {\n  const out = [];\n  items.forEach((i) => { records(i.json, step).forEach((r) => out.push(r)); });\n  const last = items.length ? items[items.length - 1].json : null;\n  if (last && last.body && last.body.offset) throw new Error(step + ': more than ' + out.length + ' records; the list could not be read completely');\n  return out;\n};\n\nconst v = $('Verify Request').first().json;\nconst ids = Array.from(new Set(allRecords($input.all(), 'find number history').map((m) => ((m.fields || {}).Contact || [])[0]).filter(Boolean)));\nif (ids.length > 100) throw new Error('find number history: Lite has messaged ' + ids.length + ' contacts at ' + v.reply.from + ', more than one reply can handle (100); deal with this reply by hand');\nreturn [{ json: { formula: ids.length ? 'OR(' + [v.contactFormula].concat(ids.map((i) => \"RECORD_ID()='\" + formulaText(i) + \"'\")).join(',') + ')' : v.contactFormula } }];"
       }
     },
     {
@@ -442,7 +461,26 @@
               "neverError": true
             }
           },
-          "timeout": 20000
+          "timeout": 20000,
+          "pagination": {
+            "pagination": {
+              "paginationMode": "updateAParameterInEachRequest",
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "qs",
+                    "name": "offset",
+                    "value": "={{ $response.body.offset }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body || !$response.body.offset }}",
+              "limitPagesFetched": true,
+              "maxRequests": 20,
+              "requestInterval": 200
+            }
+          }
         }
       },
       "credentials": {
@@ -464,7 +502,7 @@
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** Text inside a single-quoted Airtable formula string: quotes and backslashes are escaped, never dropped (an address\n * like o'brien@ must not turn into obrien@ and match someone else). */\nconst formulaText = (s) => clean(s).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"\\\\'\");\nconst normEmail = (s) => { const e = clean(s).toLowerCase(); return /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(e) ? e : ''; };\nconst normPhone = (s) => { let d = clean(s).replace(/[^0-9+]/g, ''); if (d.startsWith('+61')) d = '0' + d.slice(3); d = d.replace(/[^0-9]/g, ''); return /^0[2-478][0-9]{8}$/.test(d) ? d : ''; };\n/** The contact a form or a reply comes from: the one whose current phone is this number, else one with this email and no\n * other number on file. A different number on file is not merged by a web form: messages never follow it to another phone. */\nconst pickContact = (list, phone, email) => list.find((c) => phone && normPhone((c.fields || {}).Phone) === phone)\n  || list.find((c) => email && normEmail((c.fields || {}).Email) === email && (!phone || !normPhone((c.fields || {}).Phone))) || null;\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n\n// The contact's jobs, through Airtable's back-link (Lite Contacts > Lite Jobs): also jobs that staff created by hand.\nconst R = $('Verify Request').first().json.reply;\nconst list = records($input.first().json, 'find sender');\nconst c = pickContact(list, R.phone, R.email) || list[0];\nconst ids = c ? ((c.fields || {})['Lite Jobs'] || []) : [];\nreturn [{ json: { jobFormula: ids.length ? 'OR(' + ids.map((i) => \"RECORD_ID()='\" + formulaText(i) + \"'\").join(',') + ')' : 'FALSE()' } }];"
+        "jsCode": "\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** Text inside a single-quoted Airtable formula string: quotes and backslashes are escaped, never dropped (an address\n * like o'brien@ must not turn into obrien@ and match someone else). */\nconst formulaText = (s) => clean(s).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"\\\\'\");\nconst normEmail = (s) => { const e = clean(s).toLowerCase(); return /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(e) ? e : ''; };\nconst normPhone = (s) => { let d = clean(s).replace(/[^0-9+]/g, ''); if (d.startsWith('+61')) d = '0' + d.slice(3); d = d.replace(/[^0-9]/g, ''); return /^0[2-478][0-9]{8}$/.test(d) ? d : ''; };\n/** The contact a form or a reply comes from: the one whose current phone is this number, else one with this email and no\n * other number on file. A different number on file is not merged by a web form: messages never follow it to another phone. */\nconst pickContact = (list, phone, email) => list.find((c) => phone && normPhone((c.fields || {}).Phone) === phone)\n  || list.find((c) => email && normEmail((c.fields || {}).Email) === email && (!phone || !normPhone((c.fields || {}).Phone))) || null;\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n/** Every record of a paginated list (one item per page). An Error if a page failed or the page limit cut it short. */\nconst allRecords = (items, step) => {\n  const out = [];\n  items.forEach((i) => { records(i.json, step).forEach((r) => out.push(r)); });\n  const last = items.length ? items[items.length - 1].json : null;\n  if (last && last.body && last.body.offset) throw new Error(step + ': more than ' + out.length + ' records; the list could not be read completely');\n  return out;\n};\n\n// The contact's jobs, through Airtable's back-link (Lite Contacts > Lite Jobs): also jobs that staff created by hand.\nconst R = $('Verify Request').first().json.reply;\nconst list = allRecords($input.all(), 'find sender');\nconst c = pickContact(list, R.phone, R.email) || list[0];\nconst ids = c ? ((c.fields || {})['Lite Jobs'] || []) : [];\nreturn [{ json: { jobFormula: ids.length ? 'OR(' + ids.map((i) => \"RECORD_ID()='\" + formulaText(i) + \"'\").join(',') + ')' : 'FALSE()' } }];"
       }
     },
     {
@@ -523,7 +561,7 @@
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "\nconst CFG = {\"replies\":{\"webhookPath\":\"roofops-lite/reply\",\"optOutKeywords\":[\"STOP\",\"STOPALL\",\"UNSUBSCRIBE\",\"OPT OUT\",\"OPTOUT\",\"CANCEL\",\"QUIT\",\"END\",\"REMOVE\"]},\"messaging\":{\"mode\":\"test-sink\",\"provider\":\"lite-test-sink\",\"twilio\":null}};\nconst NOW = new Date();\nconst iso = (d) => new Date(d).toISOString();\nconst clean = (s) => String(s == null ? '' : s).trim();\nconst normEmail = (s) => { const e = clean(s).toLowerCase(); return /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(e) ? e : ''; };\nconst normPhone = (s) => { let d = clean(s).replace(/[^0-9+]/g, ''); if (d.startsWith('+61')) d = '0' + d.slice(3); d = d.replace(/[^0-9]/g, ''); return /^0[2-478][0-9]{8}$/.test(d) ? d : ''; };\n/** The contact a form or a reply comes from: the one whose current phone is this number, else one with this email and no\n * other number on file. A different number on file is not merged by a web form: messages never follow it to another phone. */\nconst pickContact = (list, phone, email) => list.find((c) => phone && normPhone((c.fields || {}).Phone) === phone)\n  || list.find((c) => email && normEmail((c.fields || {}).Email) === email && (!phone || !normPhone((c.fields || {}).Phone))) || null;\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\nconst logRef = (prefix) => prefix + '-' + iso(NOW).replace(/[-:TZ.]/g, '').slice(0, 14) + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();\n\nconst R = $('Verify Request').first().json.reply;\nconst senders = records($('Find Sender').first().json, 'find sender');\nconst contact = pickContact(senders, R.phone, R.email) || senders[0] || null;\nconst jobs = records($input.first().json, 'find sender jobs');\nconst words = R.text.toUpperCase().replace(/[^A-Z ]/g, ' ').split(' ').filter(Boolean).join(' ');\nconst optOut = CFG.replies.optOutKeywords.some((k) => words === k || words.indexOf(k + ' ') === 0);\nconst optIn = !optOut && (words === 'START' || words === 'UNSTOP');\nconst recent = (x) => Date.parse((x.fields || {})['Lead Received At'] || '') || 0;\nconst open = jobs.filter((j) => ['Paid', 'Lost', 'Completed', 'Invoiced'].indexOf((j.fields || {}).Stage) < 0).sort((a, b) => recent(b) - recent(a));\n// The reply is logged on their open job, or else on their latest finished one (which is not reopened).\nconst job = open[0] || jobs.slice().sort((a, b) => recent(b) - recent(a))[0] || null;\nconst reopen = !!job && open.indexOf(job) >= 0;\n// STOP opts out every one of them, so a duplicate record of the same person cannot be messaged either.\nconst stopped = senders.filter((c) => !(c.fields || {})['Opted Out']).slice(0, 10);\nconst contactUpdate = optOut && stopped.length ? { typecast: false, records: stopped.map((c) => ({ id: c.id, fields: { 'Opted Out': true, 'Opted Out At': iso(NOW), 'Marketing Opt-In': false } })) } : null;\nconst jf = { 'Last Activity At': iso(NOW) };\nif (job && job.fields.Stage === 'New Lead') jf.Stage = 'Contacted';\nconst jobUpdate = reopen && contact && !optOut && !optIn ? { typecast: false, records: [{ id: job.id, fields: jf }] } : null;\nconst reason = !contact ? 'sender is not in the CRM' : optOut ? 'contact opted out of all messages'\n  : optIn ? 'asked to receive messages again: staff must confirm and untick Opted Out (Lite never does this automatically)'\n  : job && !reopen ? 'reply recorded on the finished job (not reopened)' : 'reply recorded; enquiry reopened for a call';\nconst lf = { 'Log Ref': logRef('IN'), Workflow: 'Inbound Reply', Purpose: 'Inbound', Channel: R.channel, To: 'from ' + R.from, Body: R.text,\n  Status: optOut ? 'Opt-Out' : 'Received', Reason: reason, 'Dedupe Key': 'reply:' + (R.sid || R.from + ':' + iso(NOW)), 'Provider Message ID': R.sid,\n  Provider: CFG.messaging.provider, 'Attempted At': iso(NOW), 'Demo Data': R.demo };\nif (contact) lf.Contact = [contact.id];\nif (job) lf.Job = [job.id];\nreturn [{ json: { known: !!contact, optOut: optOut, contactUpdate: contactUpdate, jobUpdate: jobUpdate, hasContactUpdate: !!contactUpdate, hasJobUpdate: !!jobUpdate,\n  job_ref: job ? job.fields['Job Ref'] : null, log: { typecast: false, records: [{ fields: lf }] } } }];"
+        "jsCode": "\nconst CFG = {\"replies\":{\"webhookPath\":\"roofops-lite/reply\",\"optOutKeywords\":[\"STOP\",\"STOPALL\",\"UNSUBSCRIBE\",\"OPT OUT\",\"OPTOUT\",\"CANCEL\",\"QUIT\",\"END\",\"REMOVE\"]},\"messaging\":{\"mode\":\"test-sink\",\"provider\":\"lite-test-sink\",\"twilio\":null}};\nconst NOW = new Date();\nconst iso = (d) => new Date(d).toISOString();\nconst clean = (s) => String(s == null ? '' : s).trim();\nconst normEmail = (s) => { const e = clean(s).toLowerCase(); return /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(e) ? e : ''; };\nconst normPhone = (s) => { let d = clean(s).replace(/[^0-9+]/g, ''); if (d.startsWith('+61')) d = '0' + d.slice(3); d = d.replace(/[^0-9]/g, ''); return /^0[2-478][0-9]{8}$/.test(d) ? d : ''; };\n/** The contact a form or a reply comes from: the one whose current phone is this number, else one with this email and no\n * other number on file. A different number on file is not merged by a web form: messages never follow it to another phone. */\nconst pickContact = (list, phone, email) => list.find((c) => phone && normPhone((c.fields || {}).Phone) === phone)\n  || list.find((c) => email && normEmail((c.fields || {}).Email) === email && (!phone || !normPhone((c.fields || {}).Phone))) || null;\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n/** Every record of a paginated list (one item per page). An Error if a page failed or the page limit cut it short. */\nconst allRecords = (items, step) => {\n  const out = [];\n  items.forEach((i) => { records(i.json, step).forEach((r) => out.push(r)); });\n  const last = items.length ? items[items.length - 1].json : null;\n  if (last && last.body && last.body.offset) throw new Error(step + ': more than ' + out.length + ' records; the list could not be read completely');\n  return out;\n};\nconst logRef = (prefix) => prefix + '-' + iso(NOW).replace(/[-:TZ.]/g, '').slice(0, 14) + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();\nconst chunk = (list, n) => { const out = []; for (let i = 0; i < list.length; i += n) out.push(list.slice(i, i + n)); return out; };\n\nconst R = $('Verify Request').first().json.reply;\nconst senders = allRecords($('Find Sender').all(), 'find sender');\nconst contact = pickContact(senders, R.phone, R.email) || senders[0] || null;\nconst jobs = records($input.first().json, 'find sender jobs');\nconst words = R.text.toUpperCase().replace(/[^A-Z ]/g, ' ').split(' ').filter(Boolean).join(' ');\nconst optOut = CFG.replies.optOutKeywords.some((k) => words === k || words.indexOf(k + ' ') === 0);\nconst optIn = !optOut && (words === 'START' || words === 'UNSTOP');\nconst recent = (x) => Date.parse((x.fields || {})['Lead Received At'] || '') || 0;\nconst open = jobs.filter((j) => ['Paid', 'Lost', 'Completed', 'Invoiced'].indexOf((j.fields || {}).Stage) < 0).sort((a, b) => recent(b) - recent(a));\n// The reply is logged on their open job, or else on their latest finished one (which is not reopened).\nconst job = open[0] || jobs.slice().sort((a, b) => recent(b) - recent(a))[0] || null;\nconst reopen = !!job && open.indexOf(job) >= 0;\n// STOP opts out every one of them (in batches of 10, Airtable's limit), so a duplicate record of the same person cannot be messaged either.\nconst stopped = senders.filter((c) => !(c.fields || {})['Opted Out']);\nconst optOutRequests = optOut ? chunk(stopped.map((c) => ({ id: c.id, fields: { 'Opted Out': true, 'Opted Out At': iso(NOW), 'Marketing Opt-In': false } })), 10).map((x) => ({ typecast: false, records: x })) : [];\nconst jf = { 'Last Activity At': iso(NOW) };\nif (job && job.fields.Stage === 'New Lead') jf.Stage = 'Contacted';\nconst jobUpdate = reopen && contact && !optOut && !optIn ? { typecast: false, records: [{ id: job.id, fields: jf }] } : null;\nconst reason = !contact ? 'sender is not in the CRM' : optOut ? 'contact opted out of all messages'\n  : optIn ? 'asked to receive messages again: staff must confirm and untick Opted Out (Lite never does this automatically)'\n  : job && !reopen ? 'reply recorded on the finished job (not reopened)' : 'reply recorded; enquiry reopened for a call';\nconst lf = { 'Log Ref': logRef('IN'), Workflow: 'Inbound Reply', Purpose: 'Inbound', Channel: R.channel, To: 'from ' + R.from, Body: R.text,\n  Status: optOut ? 'Opt-Out' : 'Received', Reason: reason, 'Dedupe Key': 'reply:' + (R.sid || R.from + ':' + iso(NOW)), 'Provider Message ID': R.sid,\n  Provider: CFG.messaging.provider, 'Attempted At': iso(NOW), 'Demo Data': R.demo };\nif (contact) lf.Contact = [contact.id];\nif (job) lf.Job = [job.id];\nreturn [{ json: { known: !!contact, optOut: optOut, from: R.from, optOutRequests: optOutRequests, jobUpdate: jobUpdate, hasContactUpdate: optOutRequests.length > 0, hasJobUpdate: !!jobUpdate,\n  job_ref: job ? job.fields['Job Ref'] : null, log: { typecast: false, records: [{ fields: lf }] } } }];"
       }
     },
     {
@@ -558,12 +596,26 @@
       }
     },
     {
+      "id": "65170b85-2fa8-44a2-acbe-4562b80425bc",
+      "name": "Opt Out Batches",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        180
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n\n\nreturn $('Classify Reply').first().json.optOutRequests.map((r) => ({ json: { request: r } }));"
+      }
+    },
+    {
       "id": "490ab08e-4851-43e6-a880-ff9acc63e78c",
       "name": "Opt Out Contact",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
       "position": [
-        2860,
+        3120,
         180
       ],
       "parameters": {
@@ -574,7 +626,7 @@
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($('Classify Reply').first().json.contactUpdate) }}",
+        "jsonBody": "={{ JSON.stringify($json.request) }}",
         "options": {
           "response": {
             "response": {
@@ -599,12 +651,12 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3120,
-        180
+        3380,
+        0
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n\nif ($('Opt Out Contact').isExecuted) records($('Opt Out Contact').first().json, 'opt out contact');\nreturn [{ json: { hasJobUpdate: $('Classify Reply').first().json.hasJobUpdate } }];"
+        "jsCode": "\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n\nconst c = $('Classify Reply').first().json;\n// Every batch must land: a STOP that is only partly applied fails the run with the reason ([Lite] Monitor raises it).\nif ($('Opt Out Contact').isExecuted) {\n  const res = $('Opt Out Contact').all(); const errors = [];\n  res.forEach((i) => { try { records(i.json, 'opt out contact'); } catch (e) { errors.push(e.message); } });\n  if (errors.length) throw new Error('STOP from ' + c.from + ' was not fully applied: ' + errors.length + ' of ' + res.length + ' opt-out batches failed (' + errors[0]\n    + '). Opt out by hand every contact with this number.');\n}\nreturn [{ json: { hasJobUpdate: c.hasJobUpdate } }];"
       }
     },
     {
@@ -613,7 +665,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        3380,
+        3640,
         0
       ],
       "parameters": {
@@ -644,7 +696,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
       "position": [
-        3640,
+        3900,
         0
       ],
       "parameters": {
@@ -680,7 +732,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3900,
+        4160,
         0
       ],
       "parameters": {
@@ -694,7 +746,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
       "position": [
-        4160,
+        4420,
         0
       ],
       "parameters": {
@@ -730,7 +782,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4420,
+        4680,
         0
       ],
       "parameters": {
@@ -744,7 +796,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        4680,
+        4940,
         0
       ],
       "parameters": {
@@ -892,6 +944,17 @@
         ]
       ]
     },
+    "Opt Out Batches": {
+      "main": [
+        [
+          {
+            "node": "Opt Out Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Opt Out Contact": {
       "main": [
         [
@@ -907,7 +970,7 @@
       "main": [
         [
           {
-            "node": "Opt Out Contact",
+            "node": "Opt Out Batches",
             "type": "main",
             "index": 0
           }

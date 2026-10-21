@@ -88,5 +88,6 @@ Lost jobs leave the board. You'll find them under **Lost enquiries** on Business
 | Simulated Sent | Test mode: the message was not really sent. |
 | Sent, Delivered | A real text, sent or delivered. |
 | Skipped | Not sent on purpose. The Reason column says why, for example "no consent". |
+| Unknown | Nobody knows whether it arrived. The system never sends it again by itself; the owner checks first. |
 | Received | A reply from the customer. |
 | Opt-Out | The customer replied STOP. |

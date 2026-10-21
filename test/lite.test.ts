@@ -154,8 +154,8 @@ describe('A. lead intake creates the CRM records (test sink)', () => {
   it('a returning person who ticks a new box: the consent is added to their contact with its evidence (nothing is removed)', () => {
     expect(post('lead-follow-up', { name: 'ZZ Lite Demo Sophie Turner', phone: '0400 000 107', consent_sms: true, marketing_opt_in: true, service: 'roof inspection' }))
       .toMatchObject({ body: { new_contact: false, acknowledgement: { status: 'Simulated Sent' } } });
-    expect(at.get('contacts', ids.contacts.sophie!)!.fields).toMatchObject({ 'Consent SMS': true, 'Marketing Opt-In': true,   // her earlier evidence is kept, this form's is added
-      'Consent Source': `Synthetic demo fixture (website form); Website form (${config.leadIntake.webhookPath})`,
+    expect(at.get('contacts', ids.contacts.sophie!)!.fields).toMatchObject({ 'Consent SMS': true, 'Marketing Opt-In': true,   // her earlier evidence is kept (with its date), this form's is added
+      'Consent Source': expect.stringMatching(new RegExp(`^Synthetic demo fixture \\(website form\\) \\(recorded \\d{4}-\\d\\d-\\d\\dT[^)]+\\); Website form \\(${config.leadIntake.webhookPath}\\)$`)) as unknown,
       'Consent Wording': `service\n${config.consent.wording.service} [SMS]\n${config.consent.wording.marketing} [marketing]` });
   });
 
@@ -281,7 +281,8 @@ const base = loadConfig('lite/config/example-plumbing-twilio.json');
 const TW = structuredClone(base);
 // For the tests the live allowlist holds the synthetic fixture numbers (and the operator's); everyone else stays blocked.
 TW.reviews.delayDays = 2;   // as in the demo, so Grace (finished yesterday) is not due yet
-TW.messaging.twilio!.allowedRecipients = [...['101','103', '105', '106', '107', '109', '111', '112', '113', '201', '202', '301', '302', '303', '304', '305'].map((n) => `+61400000${n}`), '+61491570110'];
+TW.messaging.twilio!.allowedRecipients = [...['101','103', '105', '106', '107', '109', '111', '112', '113', '201', '202', '301', '302', '303', '304', '305',
+  '121', '122', '123', '124', '131', '132', '133', '141', '142'].map((n) => `+61400000${n}`), '+61491570110'];
 let tw: FakeTwilio;
 let tat: FakeAirtable;
 let tids: Seeded;
@@ -298,6 +299,12 @@ const tlog = () => tat.all('messages').map((m): R & { id: string } => ({ ...m.fi
 const tjob = (key: string) => tat.get('jobs', tids.jobs[key]!)!.fields;
 const monitor = () => runNow(twf.monitor, http, { vars: VARS }).summary;
 const today = () => new Date().toISOString().slice(0, 10);
+/** The acknowledgement Dedupe Key the real workflow gives this form (run once against a scratch base). */
+const ackKey = (body: R) => {
+  const scratch = new FakeAirtable(TW.airtable.baseId, TW.airtable.tables); seed(scratch);
+  runWebhook(twf['lead-follow-up'], route(new FakeTwilio(TW.messaging.twilio!.accountSid), scratch.http), body, { vars: VARS });
+  return String(scratch.all('messages').find((m) => String(m.fields['Dedupe Key']).startsWith('lead-ack:'))!.fields['Dedupe Key']);
+};
 
 describe('B-C. Twilio: one acknowledgement SMS per lead, never twice', () => {
   beforeAll(async () => { twf = await buildAll(TW, 'twilio'); tfresh(); }, 60_000);
@@ -319,12 +326,14 @@ describe('B-C. Twilio: one acknowledgement SMS per lead, never twice', () => {
   it('C. the same lead again sends nothing; two copies of one form arriving together send one SMS (the second is marked a duplicate)', () => {
     expect(tpost(lead({ message: 'again' }))).toMatchObject({ body: { duplicate: true } });
     expect(tw.sent).toHaveLength(1);
-    // Another request for Chloe is already sending her acknowledgement when this one arrives.
-    tat.insert('messages', { 'Log Ref': 'LM-OTHER-RUN', Workflow: 'Lead Follow-Up', Purpose: 'Operational', Status: 'Sending', 'Dedupe Key': `lead-ack:0400000202:${today()}`, 'Attempted At': new Date().toISOString() });
-    const r = tpost(lead({ name: 'ZZ Lite Demo Chloe Hart', first_name: 'Chloe', phone: '0400 000 202', email: 'chloe.hart@example.test' }));
+    // Another request with the same form for Chloe is already sending her acknowledgement when this one arrives.
+    const chloe = lead({ name: 'ZZ Lite Demo Chloe Hart', first_name: 'Chloe', phone: '0400 000 202', email: 'chloe.hart@example.test' });
+    const key = ackKey(chloe);
+    tat.insert('messages', { 'Log Ref': 'LM-OTHER-RUN', Workflow: 'Lead Follow-Up', Purpose: 'Operational', Status: 'Sending', 'Dedupe Key': key, 'Attempted At': new Date().toISOString() });
+    const r = tpost(chloe);
     expect(r).toMatchObject({ body: { duplicate: true } });
     expect(tw.sent).toHaveLength(1);
-    const mine = tlog().find((x) => String(x['Dedupe Key']) === `lead-ack:0400000202:${today()}` && x['Log Ref'] !== 'LM-OTHER-RUN')!;
+    const mine = tlog().find((x) => x['Dedupe Key'] === key && x['Log Ref'] !== 'LM-OTHER-RUN')!;
     expect(mine).toMatchObject({ Status: 'Skipped', Reason: 'duplicate: LM-OTHER-RUN already handles this message' });
     expect(tat.all('jobs').find((j) => j.id === (mine.Job as string[])[0])!.fields.Stage).toBe('Lost');
   });
@@ -413,7 +422,7 @@ describe('F. Twilio: STOP, signed webhooks and delivery receipts', () => {
 
 describe('G. Twilio: failed delivery is logged, raised and recoverable', () => {
   beforeAll(tfresh);
-  const ack = (n: string) => tlog().find((x) => String(x['Dedupe Key']) === `lead-ack:0400000${n}:${today()}`)!;
+  const ack = (n: string) => tlog().find((x) => String(x['Dedupe Key']).startsWith(`lead-ack:0400000${n}:${today()}:`))!;
   const person = (n: string, o: R = {}) => lead({ name: `ZZ Lite Demo Test ${n}`, first_name: 'Sam', phone: `0400 000 ${n}`, email: `test${n}@example.test`, ...o });
 
   it('a refused number (21211) is logged Failed with the reason, the job stays New Lead, and Monitor raises one alert (and texts the operator)', () => {
@@ -446,7 +455,7 @@ describe('G. Twilio: failed delivery is logged, raised and recoverable', () => {
     expect(tw.sent.filter((m) => m.to === '+61400000302')).toHaveLength(1);
   });
 
-  it('an unanswered send (timeout) is Unknown, not resent by itself; on Retry Requested, Twilio shows it went out, so the log is corrected and nothing is resent', () => {
+  it('an unanswered send (timeout) is Unknown, not resent by itself; on Retry Requested, Twilio has a message to that number that cannot be proven to be it: nothing is sent or linked', () => {
     tw.rules.set('+61400000303', 'timeout-after-send');
     expect(tpost(person('303'))).toMatchObject({ body: { acknowledgement: { status: 'Unknown' } } });
     expect(tw.sent.filter((m) => m.to === '+61400000303')).toHaveLength(1);              // it did go out
@@ -454,21 +463,27 @@ describe('G. Twilio: failed delivery is logged, raised and recoverable', () => {
     const row = ack('303');
     expect(row).toMatchObject({ Status: 'Unknown', 'Error Code': 'no_response' });
     tat.http({ method: 'PATCH', url: `https://api.airtable.com/v0/${TW.airtable.baseId}/${encodeURIComponent(TW.airtable.tables.messages)}`, query: {}, body: { records: [{ id: row.id, fields: { 'Retry Requested': true } }] } });
-    expect(monitor()).toMatchObject({ found_already_sent: 1, retried: 0 });
+    expect(monitor()).toMatchObject({ retry_held: 1, found_already_sent: 0, retried: 0 });
     expect(tw.sent.filter((m) => m.to === '+61400000303')).toHaveLength(1);
-    expect(tlog().find((x) => x.id === row.id)).toMatchObject({ Status: 'Sent', 'Retry Requested': false, Reason: 'found at Twilio (sent): not resent' });
-    expect(tat.all('jobs').find((j) => j.id === (row.Job as string[])[0])!.fields.Stage).toBe('Contacted');   // its On Success was applied
+    expect(tlog().find((x) => x.id === row.id)).toMatchObject({ Status: 'Unknown', 'Retry Requested': false,
+      Reason: expect.stringMatching(/^not resent: Twilio has a message to this number since this attempt \(SM[0-9a-f]{32}, sent\)/) as unknown });
+    expect(tlog().find((x) => x.id === row.id)!['Provider Message ID']).toBeFalsy();     // not linked to it
+    expect(tat.all('jobs').find((j) => j.id === (row.Job as string[])[0])!.fields.Stage).toBe('New Lead');   // its On Success waits for a person
   });
 
-  it('a Twilio server error (not sent) is Unknown; a retry is postponed while Twilio cannot be checked, then resends once when it can', () => {
+  it('a Twilio server error (not sent) is Unknown; a retry is postponed while Twilio cannot be checked, then held for a person; set Failed, it is sent once', () => {
     tw.rules.set('+61400000304', 'server-error');
     expect(tpost(person('304'))).toMatchObject({ body: { acknowledgement: { status: 'Unknown' } } });
     const row = ack('304');
-    tat.http({ method: 'PATCH', url: `https://api.airtable.com/v0/${TW.airtable.baseId}/${encodeURIComponent(TW.airtable.tables.messages)}`, query: {}, body: { records: [{ id: row.id, fields: { 'Retry Requested': true } }] } });
+    const patch = (fields: R) => tat.http({ method: 'PATCH', url: `https://api.airtable.com/v0/${TW.airtable.baseId}/${encodeURIComponent(TW.airtable.tables.messages)}`, query: {}, body: { records: [{ id: row.id, fields }] } });
+    patch({ 'Retry Requested': true });
     const down = (r: HttpReq) => (r.method === 'GET' && r.url.startsWith('https://api.twilio.com/') ? { statusCode: 503, body: {} } : http(r));
     expect(runNow(twf.monitor, down, { vars: VARS }).summary).toMatchObject({ retry_postponed: 1, retried: 0 });
     expect(tw.sent.filter((m) => m.to === '+61400000304')).toHaveLength(0);
     tw.rules.delete('+61400000304');
+    expect(monitor()).toMatchObject({ retry_held: 1, retried: 0 });                       // Twilio shows nothing, but the result is still unknown
+    expect(tw.sent.filter((m) => m.to === '+61400000304')).toHaveLength(0);
+    patch({ Status: 'Failed', 'Retry Requested': true });                                // a person decides it did not go
     expect(monitor()).toMatchObject({ retried: 1, resent: 1 });
     expect(tw.sent.filter((m) => m.to === '+61400000304')).toHaveLength(1);
   });
@@ -519,7 +534,7 @@ describe('Twilio trial account on n8n Starter: template messages, n8n credential
   const xlog = () => xa.all('messages').map((m): R & { id: string } => ({ ...m.fields, id: m.id }));
   const xpost = (body: unknown) => runWebhook(x['lead-follow-up'], xhttp, body).response!;   // no vars: Starter has none
   const xsms = (params: Record<string, string>, status = false) => runWebhook(x['inbound-replies'], xhttp, params, { query: status ? { event: 'status' } : {} }).response!;
-  const ack = (n: string) => xlog().find((m) => String(m['Dedupe Key']) === `lead-ack:0400000${n}:${today()}`)!;
+  const ack = (n: string) => xlog().find((m) => String(m['Dedupe Key']).startsWith(`lead-ack:0400000${n}:${today()}:`))!;
   beforeAll(async () => {
     x = await buildAll(TRIAL, 'trial');
     xa = new FakeAirtable(TRIAL.airtable.baseId, TRIAL.airtable.tables); seed(xa);
@@ -564,7 +579,7 @@ describe('Twilio trial account on n8n Starter: template messages, n8n credential
     expect(xt.sent.filter((m) => m.to === '+61400000202')).toHaveLength(1);
     const row = ack('202');
     xa.http({ method: 'PATCH', url: `https://api.airtable.com/v0/${TRIAL.airtable.baseId}/${encodeURIComponent(TRIAL.airtable.tables.messages)}`, query: {}, body: { records: [{ id: row.id, fields: { 'Retry Requested': true } }] } });
-    expect(runNow(x.monitor, xhttp).summary).toMatchObject({ found_already_sent: 1, retried: 0 });
+    expect(runNow(x.monitor, xhttp).summary).toMatchObject({ retry_held: 1, retried: 0 });
     expect(xt.sent.filter((m) => m.to === '+61400000202')).toHaveLength(1);
   });
 
@@ -773,7 +788,7 @@ describe('Factory review: the eleven reproduced defects stay fixed', () => {
   const tpatch = (table: 'messages' | 'jobs' | 'contacts', id: string, fields: R) => tat.http({ method: 'PATCH',
     url: `https://api.airtable.com/v0/${TW.airtable.baseId}/${encodeURIComponent(TW.airtable.tables[table])}`, query: {}, body: { records: [{ id, fields }] } });
   const person = (n: string, o: R = {}) => lead({ name: `ZZ Lite Demo Test ${n}`, first_name: 'Sam', phone: `0400 000 ${n}`, email: `test${n}@example.test`, ...o });
-  const ackOf = (n: string) => tlog().find((x) => String(x['Dedupe Key']) === `lead-ack:0400000${n}:${today()}`)!;
+  const ackOf = (n: string) => tlog().find((x) => String(x['Dedupe Key']).startsWith(`lead-ack:0400000${n}:${today()}:`))!;
   const to = (n: string) => tw.sent.filter((m) => m.to === `+61400000${n}`);
   const jobOf = (row: R) => tat.get('jobs', (row.Job as string[])[0]!)!.fields;
 
@@ -811,7 +826,7 @@ describe('Factory review: the eleven reproduced defects stay fixed', () => {
     const sophie = tat.get('contacts', tids.contacts.sophie!)!.fields;
     expect(String(sophie['Consent Wording'])).toMatch(/^service\n/);                     // the earlier record is kept
     expect(String(sophie['Consent Wording'])).toContain(`${TW.consent.wording.reviews} [reviews]`);
-    expect(String(sophie['Consent Source'])).toMatch(/^Synthetic demo fixture \(website form\); Website form/);
+    expect(String(sophie['Consent Source'])).toMatch(/^Synthetic demo fixture \(website form\) \(recorded [^)]+\); Website form/);   // with its own date
     // Website-form evidence counts for marketing when it says so ([marketing], even under wording the business has since
     // changed), and only then: a form that gave service consent alone does not.
     const quiet = (n: string, wording: string) => {
@@ -851,14 +866,14 @@ describe('Factory review: the eleven reproduced defects stay fixed', () => {
     expect(tat.get('contacts', tids.contacts.daniel!)!.fields['Opted Out']).toBe(true);
   });
 
-  it('5 (P1). a send that timed out while Twilio still had it queued is found by the retry check and not sent again', () => {
+  it('5 (P1). a send that timed out while Twilio still had it queued is seen by the retry check and not sent again', () => {
     tfresh();
     tw.rules.set('+61400000303', 'timeout-queued');
     expect(tpost(person('303'))).toMatchObject({ body: { acknowledgement: { status: 'Unknown' } } });
     expect(to('303')).toHaveLength(1);
     tw.rules.delete('+61400000303');
     tpatch('messages', ackOf('303').id, { 'Retry Requested': true });
-    expect(monitor()).toMatchObject({ found_already_sent: 1, retried: 0 });
+    expect(monitor()).toMatchObject({ retry_held: 1, retried: 0 });
     expect(to('303')).toHaveLength(1);
   });
 
@@ -875,7 +890,7 @@ describe('Factory review: the eleven reproduced defects stay fixed', () => {
     expect(to('109')).toHaveLength(0);
   });
 
-  it('7 (P1). a delivery receipt that arrives before Lite has recorded the message is not dropped: an Unknown send is resolved, otherwise an alert is raised', () => {
+  it('7 (P1). a delivery receipt that arrives before Lite has recorded the message is not dropped: it is raised as an alert (and, per release gate FIX 3, never applied by number alone)', () => {
     tfresh();
     tw.rules.set('+61400000303', 'timeout-after-send');
     tpost(person('303'));
@@ -883,7 +898,8 @@ describe('Factory review: the eleven reproduced defects stay fixed', () => {
     expect(unknown).toMatchObject({ Status: 'Unknown' });
     const sid = to('303')[0]!.sid;
     expect(sms(tw.statusCallback(sid, 'delivered'), { status: true })).toMatchObject({ status: 200 });
-    expect(tlog().find((x) => x.id === unknown.id)).toMatchObject({ Status: 'Delivered', 'Provider Message ID': sid });
+    expect(tlog().find((x) => x.id === unknown.id)).toMatchObject({ Status: 'Unknown' });   // it may be this one, but only its SID could prove it
+    expect(tat.all('alerts').map((a) => a.fields).find((a) => a['Record Ref'] === sid)).toMatchObject({ Kind: 'Delivery Unknown', Status: 'Open' });
     tpost(person('201'));
     const sent = ackOf('201');
     const sid2 = String(sent['Provider Message ID']);
@@ -899,27 +915,27 @@ describe('Factory review: the eleven reproduced defects stay fixed', () => {
     const row = ackOf('303');
     tpatch('jobs', (row.Job as string[])[0]!, { Stage: 'Paid', 'Invoice Status': 'Paid' });
     tpatch('messages', row.id, { 'Retry Requested': true });
-    expect(monitor()).toMatchObject({ found_already_sent: 1 });
+    expect(monitor()).toMatchObject({ retry_held: 1 });
     expect(jobOf(row).Stage).toBe('Paid');
     tw.rules.set('+61400000304', 'server-error');
     tpost(person('304'));
     const r4 = ackOf('304');
     tw.rules.delete('+61400000304');
     tpatch('jobs', (r4.Job as string[])[0]!, { Stage: 'Paid', 'Invoice Status': 'Paid' });
-    tpatch('messages', r4.id, { 'Retry Requested': true });
+    tpatch('messages', r4.id, { Status: 'Failed', 'Retry Requested': true });          // a person decided it did not go
     expect(monitor()).toMatchObject({ retried: 1, resent: 1 });
     expect(jobOf(r4).Stage).toBe('Paid');
   });
 
-  it('9 (P2). a new enquiry from a past customer on the day of an earlier acknowledgement stays a New Lead; it is not marked Lost', () => {
+  it('9 (P2). a past customer\'s enquiry on the day of an earlier acknowledgement is never marked Lost: the same form again, hours after its job was paid, stays a New Lead without a second text (a different enquiry: release gate FIX 4)', () => {
     tfresh();
     tpost(lead());
     const first = ackOf('201');
     tat.get('messages', first.id)!.createdTime = new Date(Date.now() - 3 * 3600_000).toISOString();   // this morning
     tpatch('jobs', (first.Job as string[])[0]!, { Stage: 'Paid', 'Invoice Status': 'Paid' });
-    expect(tpost(lead({ service: 'gutter replacement', message: 'A new job: the gutters this time' }))).toMatchObject({ status: 200, body: { duplicate: false, stage: 'New Lead' } });
-    const second = tlog().filter((x) => String(x['Dedupe Key']) === `lead-ack:0400000201:${today()}`).find((x) => x.id !== first.id)!;
-    expect(second).toMatchObject({ Status: 'Skipped' });
+    expect(tpost(lead())).toMatchObject({ status: 200, body: { duplicate: false, stage: 'New Lead', acknowledgement: { status: 'Skipped' } } });
+    const second = tlog().filter((x) => x['Dedupe Key'] === first['Dedupe Key']).find((x) => x.id !== first.id)!;
+    expect(second).toMatchObject({ Status: 'Skipped', Reason: expect.stringMatching(/already sent this message earlier today$/) as unknown });
     expect(jobOf(second).Stage).toBe('New Lead');
     expect(to('201')).toHaveLength(1);
   });
@@ -939,5 +955,144 @@ describe('Factory review: the eleven reproduced defects stay fixed', () => {
     expect(to('202')).toHaveLength(1);
     expect(to('101')).toHaveLength(0);
     expect(tat.get('contacts', tids.contacts.olivia!)!.fields.Phone).toBe('0400 000 101');
+  });
+});
+
+// ---- Factory release gate (2026-10-21): four confirmed blockers, each written to fail before its fix ------------------
+describe('Factory release gate: the four confirmed blockers stay fixed', () => {
+  beforeAll(async () => { if (!(twf as Wfs | undefined)) twf = await buildAll(TW, 'twilio'); }, 60_000);
+  const FROM = () => TW.messaging.twilio!.from!;
+  const CONTACTS = encodeURIComponent(TW.airtable.tables.contacts);
+  const tpatch = (table: 'messages' | 'jobs' | 'contacts', id: string, fields: R) => tat.http({ method: 'PATCH',
+    url: `https://api.airtable.com/v0/${TW.airtable.baseId}/${encodeURIComponent(TW.airtable.tables[table])}`, query: {}, body: { records: [{ id, fields }] } });
+  const person = (n: string, o: R = {}) => lead({ name: `ZZ Lite Demo Test ${n}`, first_name: 'Sam', phone: `0400 000 ${n}`, email: `test${n}@example.test`, ...o });
+  const ackOf = (n: string) => tlog().find((x) => String(x['Dedupe Key']).startsWith(`lead-ack:0400000${n}:${today()}`))!;
+  const to = (n: string) => tw.sent.filter((m) => m.to === `+61400000${n}`);
+  const quietJob = (contact: string, ref: string) => tat.insert('jobs', { 'Job Ref': ref, Contact: [contact], Stage: 'Quoted', 'Lead Received At': daysAgo(200), 'Last Activity At': daysAgo(190), 'Demo Data': true });
+  const signed = (params: Record<string, string>) => ({ vars: VARS, headers: { 'X-Twilio-Signature': tw.sign(hookUrl(false), params) } });
+
+  it("FIX 1. Factory's case: a legacy import's marketing tick (\"Legacy CSV import\", no date) never becomes usable through a service-only form; staff evidence counts only for what it names", () => {
+    tfresh();
+    const legacy = (n: string, wording?: string) => {
+      const c = tat.insert('contacts', { Name: `ZZ Lite Demo Legacy ${n}`, 'First Name': 'Lee', Phone: `0400 000 ${n}`, 'Phone Normalized': `0400000${n}`, 'Marketing Opt-In': true, 'Review Opt-In': true,
+        'Consent Source': 'Legacy CSV import', ...(wording ? { 'Consent Wording': wording } : {}), 'Demo Data': true });
+      quietJob(c.id, `LJ-DEMO-L${n}`);
+      tat.insert('jobs', { 'Job Ref': `LJ-DEMO-LC${n}`, Contact: [c.id], Stage: 'Completed', 'Lead Received At': daysAgo(30), 'Last Activity At': daysAgo(5), 'Completed At': daysAgo(5), 'Demo Data': true });
+      return c;
+    };
+    legacy('121');
+    const named = legacy('122', `${TW.consent.wording.marketing} ${TW.consent.wording.reviews}`);   // names both purposes, but has no date
+    for (const n of ['121', '122']) expect(tpost(lead({ name: `ZZ Lite Demo Legacy ${n}`, first_name: 'Lee', phone: `0400 000 ${n}`, email: '', consent_sms: true })))
+      .toMatchObject({ body: { acknowledgement: { status: 'Sent' } } });                  // a service-only form: acknowledged
+    runNow(twf['lead-reactivation'], http);
+    runNow(twf['review-requests'], http);
+    expect(to('121')).toHaveLength(1);                                                     // the acknowledgement only:
+    expect(to('122')).toHaveLength(1);                                                     // no follow-up, no review request
+    const f = tat.get('contacts', named.id)!.fields;
+    expect(f).toMatchObject({ 'Marketing Opt-In': true, 'Consent Source': 'Website form (zz-plumbing/lead)' });   // the tick is left; the evidence is this form's alone
+    expect(String(f.Notes)).toContain('Legacy CSV import');                                // the old record is kept, word for word, and not used
+    expect(String(f.Notes)).toContain(TW.consent.wording.marketing);
+    // Evidence recorded by staff (with a source and a date) counts only for the purpose it names.
+    const staff = (n: string, wording: string) => quietJob(tat.insert('contacts', { Name: `ZZ Lite Demo Staff ${n}`, 'First Name': 'Kim', Phone: `0400 000 ${n}`, 'Phone Normalized': `0400000${n}`,
+      'Consent SMS': true, 'Marketing Opt-In': true, 'Consent Source': 'Phone call with staff', 'Consent Recorded At': daysAgo(300), 'Consent Wording': wording, 'Demo Data': true }).id, `LJ-DEMO-S${n}`);
+    staff('123', 'Agreed by phone to SMS about the job. [SMS]');
+    staff('124', 'Agreed by phone to occasional offers. [marketing]');
+    tpost(lead({ name: 'ZZ Lite Demo Staff 124', first_name: 'Kim', phone: '0400 000 124', email: 'staff124@example.test', consent_sms: true, consent_email: true }));   // a later service-only form
+    expect(String(tat.all('contacts').find((c) => c.fields.Name === 'ZZ Lite Demo Staff 124')!.fields['Consent Source'])).toMatch(/^Phone call with staff \(recorded [^)]+\); Website form/);
+    runNow(twf['lead-reactivation'], http);
+    expect(to('123')).toHaveLength(0);                                                     // service consent does not cover marketing
+    expect(to('124')).toHaveLength(2);                                                     // the acknowledgement and one follow-up: the phone consent still stands
+  });
+
+  it("FIX 2. Factory's case: STOP opts out all 11 contacts sharing a number, and all 150 (more than one Airtable page), in batches of at most 10; a failed batch fails the run with the reason", () => {
+    tfresh();
+    const dupes = (n: string, count: number) => Array.from({ length: count }, (_x, k) => tat.insert('contacts', { Name: `ZZ Lite Demo Dup ${n}-${k}`, Phone: `0400 000 ${n}`, 'Phone Normalized': `0400000${n}`,
+      'Consent SMS': true, 'Marketing Opt-In': true, 'Consent Source': 'Phone call with staff', 'Consent Recorded At': daysAgo(300), 'Consent Wording': 'Agreed by phone to occasional offers. [marketing]', 'Demo Data': true }).id);
+    const left = (list: string[]) => list.filter((id) => !tat.get('contacts', id)!.fields['Opted Out']);
+    const eleven = dupes('131', 11);
+    quietJob(eleven[10]!, 'LJ-DEMO-DUP11');                                                // the eleventh has a quiet enquiry
+    expect(sms(tw.inbound('+61400000131', FROM(), 'STOP'))).toMatchObject({ status: 200 });
+    expect(left(eleven)).toEqual([]);
+    runNow(twf['lead-reactivation'], http);
+    expect(to('131')).toHaveLength(0);                                                     // so no follow-up reaches the eleventh
+    const many = dupes('132', 150);
+    expect(sms(tw.inbound('+61400000132', FROM(), 'STOP'))).toMatchObject({ status: 200 });
+    expect(left(many)).toEqual([]);
+    const sizes = tat.requests.filter((r) => r.method === 'PATCH' && r.url.endsWith(CONTACTS)).map((r) => (r.body as { records: unknown[] }).records.length);
+    expect(Math.max(...sizes)).toBeLessThanOrEqual(10);
+    // A batch that Airtable refuses: the run fails with the reason (n8n's error workflow, [Lite] Monitor, raises it), never a quiet partial opt-out.
+    const some = dupes('133', 25);
+    let patches = 0;
+    const flaky = (r: HttpReq) => (r.method === 'PATCH' && r.url.endsWith(CONTACTS) && ++patches === 2 ? { statusCode: 503, body: { error: { message: 'service unavailable' } } } : http(r));
+    const p = tw.inbound('+61400000133', FROM(), 'STOP');
+    let err: Error | null = null;
+    try { runWebhook(twf['inbound-replies'], flaky, p, signed(p)); } catch (e) { err = e as Error; }
+    expect(err?.message).toMatch(/STOP from 0400000133 was not fully applied: 1 of 3 opt-out batches failed/);
+    expect(left(some)).toHaveLength(10);
+    runError(twf.monitor, http, { execution: { id: '9301', lastNodeExecuted: 'After Contact', error: { message: err!.message }, mode: 'webhook' }, workflow: { id: 'wfIn', name: '[Lite] Inbound Replies' } }, { vars: VARS });
+    expect(tat.all('alerts').find((a) => a.fields.Kind === 'Workflow Failed')!.fields.Detail).toMatch(/not fully applied/);
+  });
+
+  it("FIX 3. Factory's case: message B's early failure receipt is never bound to unrelated Unknown message A by its number, and A (still queued at Twilio) is not resent", () => {
+    tfresh();
+    tw.rules.set('+61400000141', 'timeout-queued');
+    tpost(person('141'));                                                                  // A: Twilio has it queued; Lite has no Message SID
+    tw.rules.delete('+61400000141');
+    const a = ackOf('141');
+    expect(a).toMatchObject({ Status: 'Unknown' });
+    // B: another Lite message to the same person is accepted; its failure receipt arrives before Lite records B's SID.
+    tat.insert('messages', { 'Log Ref': 'RV-B', Workflow: 'Review Request', Purpose: 'Review', Channel: 'SMS', To: '0400000141', Status: 'Sending', 'Dedupe Key': 'review:b', 'Attempted At': new Date().toISOString() });
+    const b = tw.http({ method: 'POST', url: `https://api.twilio.com/2010-04-01/Accounts/${tw.accountSid}/Messages.json`, query: {}, contentType: 'form-urlencoded',
+      body: { To: '+61400000141', From: FROM(), Body: 'B: a review request' }, credentials: { httpBasicAuth: {} } }).body as { sid: string };
+    expect(sms(tw.statusCallback(b.sid, 'undelivered', '30003'), { status: true })).toMatchObject({ status: 200 });
+    expect(tlog().find((x) => x.id === a.id)).toMatchObject({ Status: 'Unknown' });          // A is untouched
+    expect(tlog().find((x) => x.id === a.id)!['Provider Message ID']).toBeFalsy();
+    expect(tat.all('alerts').map((x) => x.fields).find((x) => x['Record Ref'] === b.sid)).toMatchObject({ Kind: 'Delivery Failed', Status: 'Open',
+      Detail: expect.stringContaining('no message in the Message Log has this Message SID') as unknown });
+    // Staff ask for A to be retried: Twilio shows a message to this number that cannot be proven to be A, so nothing is sent or linked.
+    tpatch('messages', a.id, { 'Retry Requested': true });
+    expect(monitor()).toMatchObject({ retried: 0, retry_held: 1 });
+    expect(to('141')).toHaveLength(2);                                                     // A (queued) and B: no third
+    expect(tlog().find((x) => x.id === a.id)).toMatchObject({ Status: 'Unknown', 'Retry Requested': false, Reason: expect.stringMatching(/^not resent: /) as unknown });
+    expect(tlog().find((x) => x.id === a.id)!['Provider Message ID']).toBeFalsy();
+    // A send whose fate Twilio cannot show either (no message to the number since) is not resent by itself: a person
+    // decides, by setting it Failed; only then is it sent again, once.
+    tw.rules.set('+61400000142', 'timeout');
+    tpost(person('142'));
+    tw.rules.delete('+61400000142');
+    const c = ackOf('142');
+    tpatch('messages', c.id, { 'Retry Requested': true });
+    expect(monitor()).toMatchObject({ retried: 0, retry_held: 1 });
+    expect(to('142')).toHaveLength(0);
+    tpatch('messages', c.id, { Status: 'Failed', 'Retry Requested': true });
+    expect(monitor()).toMatchObject({ retried: 1, resent: 1 });
+    expect(to('142')).toHaveLength(1);
+    // A receipt for the confirmed message (by its SID) still updates it, and never backwards.
+    const sid = String(tlog().find((x) => x['Retry Of'] === c['Log Ref'])!['Provider Message ID']);
+    sms(tw.statusCallback(sid, 'delivered'), { status: true });
+    sms(tw.statusCallback(sid, 'sent'), { status: true });
+    expect(tlog().find((x) => x['Retry Of'] === c['Log Ref'])).toMatchObject({ Status: 'Delivered' });
+  });
+
+  it("FIX 4. Factory's case: a different enquiry two minutes after a paid job is its own job (acknowledged, not Lost); an identical form arriving twice is still one enquiry", () => {
+    tfresh();
+    tpost(lead());                                                                         // Emma: roof leak repair
+    const first = ackOf('201');
+    tpatch('jobs', (first.Job as string[])[0]!, { Stage: 'Paid', 'Invoice Status': 'Paid', 'Completed At': new Date().toISOString() });
+    tat.get('messages', first.id)!.createdTime = new Date(Date.now() - 2 * 60_000).toISOString();   // two minutes ago
+    expect(tpost(lead({ service: 'gutter replacement', message: 'A different job: the gutters' })))
+      .toMatchObject({ status: 200, body: { duplicate: false, stage: 'Contacted', acknowledgement: { status: 'Sent' } } });
+    expect(tat.get('jobs', (first.Job as string[])[0]!)!.fields.Stage).toBe('Paid');
+    const jobs = tat.all('jobs').filter((j) => (j.fields.Contact as string[] | undefined)?.[0] === (first.Contact as string[])[0]);
+    expect(jobs.map((j) => j.fields.Stage).sort()).toEqual(['Contacted', 'Paid']);
+    // The same form twice, together (another request is already sending its acknowledgement): one SMS, one enquiry.
+    const chloe = lead({ name: 'ZZ Lite Demo Chloe Hart', first_name: 'Chloe', phone: '0400 000 202', email: 'chloe.hart@example.test' });
+    const key = ackKey(chloe);
+    tat.insert('messages', { 'Log Ref': 'LM-OTHER-RUN', Workflow: 'Lead Follow-Up', Purpose: 'Operational', Status: 'Sending', 'Dedupe Key': key, 'Attempted At': new Date().toISOString() });
+    expect(tpost(chloe)).toMatchObject({ body: { duplicate: true } });
+    expect(to('202')).toHaveLength(0);
+    const mine = tlog().find((x) => x['Dedupe Key'] === key && x['Log Ref'] !== 'LM-OTHER-RUN')!;
+    expect(mine).toMatchObject({ Status: 'Skipped', Reason: 'duplicate: LM-OTHER-RUN already handles this message' });
+    expect(tat.get('jobs', (mine.Job as string[])[0]!)!.fields.Stage).toBe('Lost');
   });
 });

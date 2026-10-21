@@ -7,10 +7,12 @@ import { workflow, node, trigger, ifElse, expr } from '@n8n/workflow-sdk';
 // - Every few hours (and Run Now): messages stuck in Sending become Unknown; Failed and Unknown messages, leads nobody
 //   contacted are raised as alerts (once each). A Completed job without a Completed At date gets today's date (staff
 //   usually just drag the card), so its review request still goes out.
-// - Retry Requested (ticked by staff on a Failed or Unknown message): Lite first asks Twilio whether the message went out
-//   (by Message SID, or by recipient and text). Found: the row is corrected and nothing is resent. Not found: it is sent
-//   again once, through the same reserve-and-confirm pipeline, so two runs cannot both resend it. Opted-out contacts,
-//   Twilio "unsubscribed" (21610) errors and messages that cannot be checked are never resent.
+// - Retry Requested (ticked by staff on a Failed or Unknown message): Lite first asks Twilio. By Message SID: delivered or
+//   sent, the row is corrected and nothing is resent. Without a SID, a message Twilio has to the same number since the
+//   attempt may be this one: nothing is sent or linked, a person checks. A Failed message is otherwise sent again once,
+//   through the same reserve-and-confirm pipeline, so two runs cannot both resend it. An Unknown one is never resent by
+//   itself (a person sets it Failed to send it again). Opted-out contacts, Twilio "unsubscribed" (21610) errors and
+//   messages that cannot be checked are never resent.
 // - New alerts can also be texted to the operator (monitoring.operatorPhone).
 
 const failed = trigger({ type: 'n8n-nodes-base.errorTrigger', version: 1, config: { name: 'Workflow Failed', parameters: {} }, output: [{ execution: {}, workflow: {} }] });
@@ -53,7 +55,7 @@ for (const m of msgs) {
     updates.push({ table: 'messages', id: m.id, fields: { Status: 'Unknown', 'Error Code': 'stuck', Reason: reason } });
   }
   if (status === 'Failed') { summary.failed++; if (recent(f, m)) alert('Delivery Failed', ref, 'msg:' + m.id + ':failed', f.Workflow + ' message to ' + clean(f.To) + ' failed: ' + clean(reason || f['Error Code']) + '. Fix the cause, then tick Retry Requested.', f['Demo Data'], f.Workflow); }
-  if (status === 'Unknown') { summary.unknown++; if (recent(f, m)) alert('Delivery Unknown', ref, 'msg:' + m.id + ':unknown', f.Workflow + ' message to ' + clean(f.To) + ' has no confirmed result: ' + clean(reason || f['Error Code']) + '. Tick Retry Requested: Lite checks with Twilio before resending.', f['Demo Data'], f.Workflow); }
+  if (status === 'Unknown') { summary.unknown++; if (recent(f, m)) alert('Delivery Unknown', ref, 'msg:' + m.id + ':unknown', f.Workflow + ' message to ' + clean(f.To) + ' has no confirmed result: ' + clean(reason || f['Error Code']) + '. Check it; Lite never resends an unconfirmed message by itself (set Status to Failed and tick Retry Requested to send it again).', f['Demo Data'], f.Workflow); }
   if (f['Retry Requested']) {
     summary.retry_requests++;
     const c = contacts[(f.Contact || [])[0]];
@@ -123,29 +125,39 @@ const planRetries = code('Plan Retries', `
 const h = $('Plan Health').isExecuted ? $('Plan Health').first().json : { retries: [], updates: [], summary: {} };
 const checks = CFG.messaging.mode === 'twilio' && $('Check Delivery').isExecuted ? $('Check Delivery').all().map((i) => i.json) : [];
 const updates = h.updates.slice(); const sends = [];
-const summary = Object.assign({}, h.summary, { retried: 0, found_already_sent: 0, retry_postponed: 0 });
+const summary = Object.assign({}, h.summary, { retried: 0, found_already_sent: 0, retry_postponed: 0, retry_held: 0 });
 // A message's CRM updates were planned when it was first sent; a job that has moved on since (Paid, Lost...) keeps its stage.
 const stageOf = {}; ($('Find Retry Jobs').isExecuted ? records($('Find Retry Jobs').first().json, 'find retry jobs') : []).forEach((j) => { stageOf[j.id] = (j.fields || {}).Stage; });
 const STAGES = ['New Lead', 'Contacted', 'Quoted', 'Accepted', 'Job In Progress', 'Completed', 'Invoiced', 'Paid'];
 const forward = (list) => list.filter((u) => u.table !== 'jobs' || !(u.fields || {}).Stage
   || (stageOf[u.id] !== 'Lost' && STAGES.indexOf(stageOf[u.id]) < STAGES.indexOf(u.fields.Stage)));
+// Only a Message SID proves which message Twilio has. Without one, a message Twilio has to the same number may or may not
+// be this one: it is neither linked nor resent. A send whose result is Unknown is never resent by itself either; a person
+// decides (setting it Failed sends it again on the next run).
+const hold = (r, why) => { summary.retry_held++; updates.push({ table: 'messages', id: r.id, fields: { 'Retry Requested': false, Reason: 'not resent: ' + why } }); };
+const NOT_DELIVERED = ['failed', 'undelivered', 'canceled'];
 h.retries.forEach((r, i) => {
   const f = r.fields;
-  let found = null;
+  const bySid = /^(SM|MM)[0-9a-f]{32}$/.test(clean(f['Provider Message ID']));
+  let found = null; let candidate = null; let confirmed = false;
   if (CFG.messaging.mode === 'twilio') {
     const c = checks[i] || {}; const b = c.body || {};
-    if (c.statusCode === 200) {
+    if (c.statusCode === 200 && bySid) { confirmed = true; found = NOT_DELIVERED.indexOf(b.status) < 0 ? b : null; }   // failed/undelivered: Twilio confirms it did not arrive
+    else if (c.statusCode === 200) {
       const since = (Date.parse(f['Attempted At'] || '') || 0) - 120000;
       // On a trial account Twilio sent its template text, not Lite's wording: any message to them since the attempt counts.
       const sameText = (x) => (CFG.messaging.twilio.trialTemplate ? true : clean(x.body) === clean(f.Body));
-      const list = b.sid ? [b] : (b.messages || []).filter((x) => sameText(x) && (Date.parse(x.date_created) || 0) >= since);
-      found = list.find((x) => ['failed', 'undelivered', 'canceled'].indexOf(x.status) < 0) || null;   // failed/undelivered: Twilio confirms it did not arrive
-    } else if (c.statusCode !== 404) {   // could not check (no answer, refused, test credentials): never resend blind
+      candidate = (b.messages || []).find((x) => sameText(x) && (Date.parse(x.date_created) || 0) >= since && NOT_DELIVERED.indexOf(x.status) < 0) || null;
+    } else if (c.statusCode === 404 && bySid) { hold(r, 'Twilio has no message with its Message SID (' + clean(f['Provider Message ID']) + '); check the Twilio account before sending it again'); return; }
+    else {   // could not check (no answer, refused, test credentials): never resend blind
       summary.retry_postponed++;
       updates.push({ table: 'messages', id: r.id, fields: { Reason: 'retry postponed: could not check with Twilio (' + (c.statusCode || 'no answer') + '); Lite will try again on the next run' } });
       return;
     }
   }
+  if (candidate) { hold(r, 'Twilio has a message to this number since this attempt (' + candidate.sid + ', ' + candidate.status + ') that may be this one, so nothing was sent or linked; check it in Twilio, and if this message did not arrive, send it by hand'); return; }
+  if (!confirmed && f.Status === 'Unknown') { hold(r, 'its result is unknown' + (CFG.messaging.mode === 'twilio' ? ' and Twilio shows no message to this number since this attempt' : ' (test mode cannot check)')
+    + '; if it should go again, set Status to Failed and tick Retry Requested'); return; }
   if (found) {
     summary.found_already_sent++;
     updates.push({ table: 'messages', id: r.id, fields: { Status: found.status === 'delivered' ? 'Delivered' : 'Sent', 'Provider Message ID': found.sid, 'Error Code': null,

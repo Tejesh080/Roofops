@@ -288,10 +288,11 @@ Show staff:
   Moving it to Completed is enough: Lite records Completed At, and the review request follows.
 - **Imported old jobs:** fill in Completed At, or set Review Status to Skipped. Otherwise Lite treats them as finished
   today, and asks for a review.
-- **Consent:** record consent taken by phone (tick the boxes and fill Source, Recorded At, Wording). Never tick boxes
-  without it.
+- **Consent:** record consent taken by phone (tick the boxes and fill Source, Recorded At, Wording). The wording must
+  name the purpose ([reviews], [marketing]). Never tick boxes without it.
 - **Alerts:** on the Overview and Alerts pages. Fix the cause, tick **Retry Requested** on the message, then set the
-  alert to Resolved.
+  alert to Resolved. Lite never resends an **Unknown** message by itself. If it did not arrive, set it to Failed and
+  tick Retry Requested.
 - **Opt-outs:** the "Do not contact" list. Never untick Opted Out unless the person asks.
 
 ## Undo

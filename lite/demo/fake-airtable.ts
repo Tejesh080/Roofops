@@ -1,6 +1,7 @@
 /**
  * An in-memory Airtable for the Lite demo and tests: tables from lite/airtable/schema.json, addressed by NAME in the URL
- * (as the Lite workflows do), with list (filterByFormula), create and update. It refuses what real Airtable refuses with
+ * (as the Lite workflows do), with list (filterByFormula, pages of at most 100 with an offset), create and update. It
+ * refuses what real Airtable refuses with
  * typecast:false: unknown fields, a value that is not one of a single-select's options, more than 10 records per write,
  * a link to a record that does not exist. Formulas: AND, OR, NOT, FIND, LOWER, REGEX_REPLACE, BLANK(), TRUE(), FALSE(),
  * RECORD_ID(), =, !=, >, <, strings (with \' escapes), numbers and {Field}.
@@ -78,7 +79,14 @@ export class FakeAirtable {
       let fn: (r: Rec) => boolean;
       try { fn = req.query.filterByFormula ? compile(req.query.filterByFormula) : () => true; }
       catch (e) { return { statusCode: 422, body: { error: { type: 'INVALID_FILTER_BY_FORMULA', message: (e as Error).message } } }; }
-      return { statusCode: 200, body: { records: [...tab.values()].filter(fn).slice(0, Number(req.query.pageSize ?? 100)).map((r) => structuredClone(r)) } };
+      // Pages of at most 100, as Airtable: an "offset" in the answer means there are more, fetched by sending it back.
+      const size = Number(req.query.pageSize ?? 100);
+      if (!(size >= 1 && size <= 100)) return { statusCode: 422, body: { error: { type: 'INVALID_PAGE_SIZE', message: 'pageSize must be 1 to 100' } } };
+      const from = req.query.offset ? Number(/^itr(\d+)$/.exec(req.query.offset)?.[1] ?? NaN) : 0;
+      if (Number.isNaN(from)) return { statusCode: 422, body: { error: { type: 'LIST_RECORDS_ITERATOR_NOT_AVAILABLE', message: 'invalid offset' } } };
+      const all = [...tab.values()].filter(fn);
+      const page = all.slice(from, from + size).map((r) => structuredClone(r));
+      return { statusCode: 200, body: { records: page, ...(from + size < all.length ? { offset: `itr${from + size}` } : {}) } };
     }
     const body = req.body as { records?: { id?: string; fields: Record<string, unknown> }[]; typecast?: boolean } | undefined;
     if (!body || !Array.isArray(body.records) || !body.records.length) return { statusCode: 422, body: { error: { type: 'INVALID_REQUEST_MISSING_FIELDS', message: 'records' } } };

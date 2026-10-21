@@ -25,7 +25,9 @@ export function seed(at: FakeAirtable): Seeded {
   };
   const sms = (n: string) => ({ Phone: `0400 000 ${n}`, 'Phone Normalized': `0400000${n}`, 'Consent SMS': true, 'Preferred Channel': 'SMS' });
   const email = (local: string) => ({ Email: `${local}@example.test`, 'Consent Email': true });
-  const recorded = (d: number, what: string) => ({ 'Consent Source': 'Synthetic demo fixture (website form)', 'Consent Recorded At': ago(d), 'Consent Wording': what });
+  // The wording names each purpose with its tag ([reviews], [marketing]), as Lite requires of any recorded consent.
+  const recorded = (d: number, what: string) => ({ 'Consent Source': 'Synthetic demo fixture (website form)', 'Consent Recorded At': ago(d),
+    'Consent Wording': what.split(', ').map((p) => (p === 'service' ? p : `${p} [${p}]`)).join(', ') });
 
   // Review requests (finished jobs)
   person('olivia', 'ZZ Lite Demo Olivia Chen', { ...sms('101'), ...email('olivia.chen'), 'Review Opt-In': true, 'Marketing Opt-In': true, ...recorded(40, 'service, reviews, marketing') });

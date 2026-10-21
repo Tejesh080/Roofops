@@ -32,10 +32,10 @@ export class LiteRun {
     return { $json: input[idx]?.json ?? {}, $input: { first: () => input[0]!, all: () => input, item: input[idx]! }, $: ref, $execution: { id: this.executionId }, $vars: this.vars };
   }
 
-  private eval(value: unknown, input: Item[], idx: number): unknown {
+  private eval(value: unknown, input: Item[], idx: number, extra: P = {}): unknown {
     if (typeof value !== 'string' || !value.startsWith('=')) return value;
     const src = value.slice(1);
-    const run = (c: string) => runInNewContext(`(${c})`, { ...this.ctx(input, idx) }) as unknown;
+    const run = (c: string) => runInNewContext(`(${c})`, { ...this.ctx(input, idx), ...extra }) as unknown;
     const whole = /^\{\{([\s\S]*)\}\}$/.exec(src.trim());
     if (whole && !whole[1]!.includes('}}')) return run(whole[1]!);
     return src.replace(/\{\{([\s\S]*?)\}\}/g, (_m, c: string) => String(run(c)));
@@ -63,18 +63,38 @@ export class LiteRun {
       case 'n8n-nodes-base.httpRequest': {
         const kv = (list: unknown, i: number) => Object.fromEntries(((list as P | undefined)?.parameters as P[] | undefined ?? []).map((x) => [String(x.name), String(this.eval(x.value, input, i))]));
         const form = p.contentType === 'form-urlencoded';
-        return { main: input.map((_x, i) => {
+        // n8n's Pagination option, "Update a Parameter in Each Request": after each page the parameters are set from
+        // $response and the next page is fetched, until the "complete" expression is true or the page limit is reached.
+        // Every page is one output item.
+        const pg = ((p.options as P | undefined)?.pagination as P | undefined)?.pagination as P | undefined;
+        const paged = !!pg && pg.paginationMode !== undefined && pg.paginationMode !== 'off';
+        if (paged && (pg.paginationMode !== 'updateAParameterInEachRequest' || pg.paginationCompleteWhen !== 'other')) throw new Error(`${n.name}: unsupported pagination`);
+        return { main: input.flatMap((_x, i) => {
           let body: unknown;
           if (p.sendBody && form) body = kv(p.bodyParameters, i);
           else if (p.sendBody) { const raw = this.eval(p.jsonBody, input, i); try { body = JSON.parse(String(raw)); } catch { body = raw; } }
-          try {
-            const r = this.http({ method: String(this.eval(p.method ?? 'GET', input, i)), url: String(this.eval(p.url, input, i)), query: p.sendQuery ? kv(p.queryParameters, i) : {},
-              ...(p.sendBody ? { body, contentType: form ? 'form-urlencoded' : 'json' } : {}), credentials: n.config.credentials });
-            return { json: { statusCode: r.statusCode, body: r.body, headers: {} } };
-          } catch (e) {
-            if (n.config.onError !== 'continueRegularOutput') throw e;
-            return { json: { error: { message: (e as Error).message } } };
+          const query = p.sendQuery ? kv(p.queryParameters, i) : {};
+          const pages: Item[] = [];
+          for (;;) {
+            try {
+              const r = this.http({ method: String(this.eval(p.method ?? 'GET', input, i)), url: String(this.eval(p.url, input, i)), query: { ...query },
+                ...(p.sendBody ? { body, contentType: form ? 'form-urlencoded' : 'json' } : {}), credentials: n.config.credentials });
+              pages.push({ json: { statusCode: r.statusCode, body: r.body, headers: {} } });
+            } catch (e) {
+              if (n.config.onError !== 'continueRegularOutput') throw e;
+              pages.push({ json: { error: { message: (e as Error).message } } });
+              break;
+            }
+            if (!paged) break;
+            const $response = pages.at(-1)!.json;
+            if (this.eval(pg.completeExpression, input, i, { $response, $pageCount: pages.length }) === true) break;
+            if (pg.limitPagesFetched && pages.length >= Number(pg.maxRequests)) break;
+            for (const x of ((pg.parameters as P | undefined)?.parameters as P[] | undefined) ?? []) {
+              if (x.type !== 'qs') throw new Error(`${n.name}: unsupported pagination parameter`);
+              query[String(x.name)] = String(this.eval(x.value, input, i, { $response, $pageCount: pages.length }));
+            }
           }
+          return pages;
         }) };
       }
       case 'n8n-nodes-base.respondToWebhook': {

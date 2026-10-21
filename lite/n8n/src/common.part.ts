@@ -21,6 +21,15 @@ const airtableList = (name, url, formula) => node({ type: 'n8n-nodes-base.httpRe
   parameters: { method: 'GET', url, authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi', sendQuery: true,
     queryParameters: { parameters: [{ name: 'filterByFormula', value: expr(formula) }, { name: 'pageSize', value: '100' }] }, options: RAW },
   credentials: CRED }, output: [{ statusCode: 200, body: { records: [] } }] });
+// Every page of a list (n8n's pagination sends Airtable's "offset" back until there is none), at most `pages` pages of
+// 100, one output item per page. Read it with allRecords(), which refuses a list that is incomplete.
+const airtableListAll = (name, url, formula, pages = 20) => node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name, onError: 'continueRegularOutput',
+  parameters: { method: 'GET', url, authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi', sendQuery: true,
+    queryParameters: { parameters: [{ name: 'filterByFormula', value: expr(formula) }, { name: 'pageSize', value: '100' }] },
+    options: { ...RAW, pagination: { pagination: { paginationMode: 'updateAParameterInEachRequest',
+      parameters: { parameters: [{ type: 'qs', name: 'offset', value: expr('{{ $response.body.offset }}') }] },
+      paginationCompleteWhen: 'other', completeExpression: expr('{{ !$response.body || !$response.body.offset }}'), limitPagesFetched: true, maxRequests: pages, requestInterval: 200 } } } },
+  credentials: CRED }, output: [{ statusCode: 200, body: { records: [] } }] });
 const airtableWrite = (name, method, url, body = '{{ JSON.stringify($json.request) }}') => node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name, onError: 'continueRegularOutput',
   parameters: { method, url, authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi', sendBody: true, contentType: 'json', specifyBody: 'json',
     jsonBody: expr(body), options: RAW },
@@ -85,6 +94,14 @@ const records = (r, step) => {
   if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');
   return r.body.records;
 };
+/** Every record of a paginated list (one item per page). An Error if a page failed or the page limit cut it short. */
+const allRecords = (items, step) => {
+  const out = [];
+  items.forEach((i) => { records(i.json, step).forEach((r) => out.push(r)); });
+  const last = items.length ? items[items.length - 1].json : null;
+  if (last && last.body && last.body.offset) throw new Error(step + ': more than ' + out.length + ' records; the list could not be read completely');
+  return out;
+};
 /** Twilio sends SMS only; the test sink also simulates email. */
 const CHANNELS = CFG.messaging.mode === 'twilio' ? ['SMS'] : ['SMS', 'Email'];
 /** Which channel may carry a message to this contact: the preferred one if it is consented and reachable, else the other. */
@@ -104,11 +121,10 @@ const channelFor = (c) => {
 const permission = (c, purpose) => {
   if (c['Opted Out']) return 'opted out';
   if (purpose === 'Operational') return null;
-  const evidence = !!(c['Consent Recorded At'] && clean(c['Consent Source']));
-  // Evidence written by the website form lists each box ticked (its wording, tagged [reviews] / [marketing]), so it vouches
-  // only for those purposes: service consent given on a form never makes an older, unrecorded marketing tick usable.
-  const formOnly = clean(c['Consent Source']).split('; ').every((s) => s.indexOf(CFG.consent.formName) === 0);
-  const covers = (tag, w) => { const said = clean(c['Consent Wording']); return !formOnly || said.indexOf('[' + tag + ']') >= 0 || said.indexOf(clean(w)) >= 0; };
+  const evidence = !!(clean(c['Consent Source']) && !Number.isNaN(Date.parse(clean(c['Consent Recorded At']) || 'none')));
+  // The recorded wording must name the purpose (the form's words for it, or its tag [reviews] / [marketing]), whoever
+  // recorded it: consent given for one purpose never makes a ticked box for another usable.
+  const covers = (tag, w) => { const said = clean(c['Consent Wording']); return said.indexOf('[' + tag + ']') >= 0 || (!!clean(w) && said.indexOf(clean(w)) >= 0); };
   if (purpose === 'Review') {
     if (CFG.consent.reviewRequests === 'service') return null;
     if (!c['Review Opt-In'] && !c['Marketing Opt-In']) return 'no permission for review requests';

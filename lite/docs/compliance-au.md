@@ -41,9 +41,23 @@ Lite stores consent with each contact:
 The form writes all three. When staff record consent themselves (for example in a phone call), they fill in the same
 three fields.
 
+**The wording must name the purpose.** Review requests need the review wording or the tag **[reviews]**; marketing
+needs the marketing wording or **[marketing]**. The form tags what each ticked box covers. Staff add the tag when
+they record consent by hand, for example "Agreed by phone to occasional offers [marketing]".
+
+Consent recorded for one purpose never covers another. Service consent alone, for example, never makes a ticked
+marketing box usable.
+
 A ticked box with no source and date is **not** treated as consent for review requests or marketing. This is
 deliberate, so imported or old contacts are never messaged on an assumption. Do not fill these fields in for old
 contacts without real evidence.
+
+**When a person comes back and ticks a new box:**
+- **Earlier evidence with a source and a date** is kept, its date written beside its source, and the new evidence is
+  added.
+- **Earlier evidence without both** (for example "Legacy CSV import" with no date) is not kept as evidence. The new
+  form's date must not make it look recorded, so it moves to the contact's Notes, word for word, and no longer
+  counts.
 
 ## Identify the sender
 
@@ -67,6 +81,9 @@ needs an upgraded account with the business's own number.
 - **Who STOP opts out.** It applies to every contact with that number, including duplicate records of the same person.
   It also applies to every contact Lite has messaged at that number before, so a number changed in the CRM since
   cannot make a STOP go unheard. It may opt out more than one record; it never opts out too few.
+- **However many there are.** Lite reads every page of matches (up to 2,000) and opts them out in batches of 10. If
+  any batch fails, or there are more, the run fails with the reason, and [Lite] Monitor raises it as an alert. Opt
+  the rest out by hand. It is never a quiet partial opt-out.
 - Twilio error 21610 ("unsubscribed recipient") also opts the contact out.
 - An opted-out contact gets **nothing** from Lite again: no acknowledgement, review request, reactivation or retry.
 - **Retries recheck consent.** A retry is sent only if the person still has the permission it needs: SMS consent, and

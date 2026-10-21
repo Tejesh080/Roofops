@@ -40,9 +40,15 @@ touches Advanced RoofOps tables, workflows, invoices or Xero.
    Failed.
 
 Staff tick **Retry Requested** on a Failed or Unknown message. `[Lite] Monitor` first asks Twilio whether it went out:
-- **Found:** the row is corrected and nothing is resent.
-- **Not found:** it is resent once, through the same reservation.
+- **Found by its Message SID:** the row is corrected and nothing is resent.
+- **A message to that number, but no SID to prove it is this one:** nothing is sent or linked; a person checks.
+- **Failed and not found:** it is resent once, through the same reservation.
+- **Unknown and not found:** not resent by itself. Staff set it to Failed (they decide it did not go), and the next
+  run sends it once.
 - **Never resent:** opted-out contacts, 21610 errors, or messages that could not be checked.
+
+A delivery receipt changes only the message with its exact Message SID. One that matches no recorded message changes
+nothing and becomes an alert (a failure always; any receipt while an unconfirmed message to that number exists).
 
 ## Consent and opt-out (Australia: Spam Act 2003)
 
@@ -57,7 +63,7 @@ Staff tick **Retry Requested** on a Failed or Unknown message. `[Lite] Monitor` 
 - **STOP, UNSUBSCRIBE, CANCEL, END, QUIT, OPT OUT…** opt the person out at once, well within the 5 working days the
   law allows. Lite never re-subscribes anyone automatically: a START is flagged for staff.
 - **No consent is assumed.** A contact with a ticked box but no recorded source and date gets no review request or
-  marketing. Details: [docs/compliance-au.md](docs/compliance-au.md).
+  marketing, and the recorded wording must name that purpose. Details: [docs/compliance-au.md](docs/compliance-au.md).
 
 ## Try it locally (nothing leaves your computer)
 
@@ -74,7 +80,7 @@ npx tsx lite/demo/run-demo.ts lite/config/example-plumbing-twilio.json lite/demo
 
 Both run the workflows' **actual n8n node code** against an in-memory Airtable that enforces the Lite schema.
 
-Tests: 63, the same code, acceptance tests A–H.
+Tests: 67, the same code, acceptance tests A–H.
 ```bash
 npx vitest run test/lite.test.ts
 ```

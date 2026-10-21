@@ -39,7 +39,7 @@ if (TW) {
   if (b.AccountSid !== TW.accountSid) return reject(403, 'request is not for this Twilio account');
   if (event === 'status') {
     if (!/^(SM|MM)[0-9a-f]{32}$/.test(clean(b.MessageSid))) return reject(400, 'MessageSid is missing');
-    // The message by its SID; and, for a receipt that overtakes Lite's own record, an Unknown send (no SID) to this number.
+    // The message by its SID; and Unknown sends (no SID) to this number, only to say in an alert that one may be it.
     const to = normPhone(b.To);
     return [{ json: { ok: true, event: 'status', status: { sid: clean(b.MessageSid), status: clean(b.MessageStatus).toLowerCase(), errorCode: clean(b.ErrorCode) || null, to: to },
       formula: "OR({Provider Message ID}='" + formulaText(b.MessageSid) + "'" + (to ? ",AND({Status}='Unknown',{Provider Message ID}=BLANK(),{To}='" + formulaText(to) + "')" : '') + ')' } }];
@@ -64,11 +64,12 @@ const findSent = airtableList('Find Sent Message', T.messages, '{{ $json.formula
 const applyStatus = code('Apply Delivery Status', `
 const s = $('Verify Request').first().json.status;
 const found = records($input.first().json, 'find sent message');
-// A receipt can overtake Lite's own record of the send. It settles an Unknown send to the same number only when there is
-// exactly one; otherwise a failure is raised as an alert (never dropped), and the message it is about is checked by a person.
+// A receipt changes only the message with its exact Message SID. One that overtakes Lite's own record of the send, or
+// belongs to no message Lite knows, changes nothing: a failure, or any receipt while an unconfirmed message to the same
+// number exists, is raised as an alert for a person instead. Matching it by number could settle or fail the wrong message.
 const bySid = found.filter((r) => clean((r.fields || {})['Provider Message ID']) === s.sid);
 const pending = found.filter((r) => !clean((r.fields || {})['Provider Message ID']));
-const rows = bySid.length ? bySid : pending.length === 1 ? pending : [];
+const rows = bySid;
 const list = [];
 const RANK = { Sending: 0, Unknown: 0, Sent: 1, Delivered: 2, Failed: 2 };
 for (const r of rows) {
@@ -79,15 +80,16 @@ for (const r of rows) {
   else if (s.status === 'sent') to = 'Sent';
   if (!to || (RANK[f.Status] || 0) > RANK[to] || f.Status === to) continue;   // never downgrade (receipts can arrive out of order)
   const fields = { Status: to };
-  if (!clean(f['Provider Message ID'])) { fields['Provider Message ID'] = s.sid; fields.Reason = 'settled by the Twilio delivery receipt (' + s.status + ')'; }
   if (to === 'Failed') { fields['Error Code'] = s.errorCode; fields.Reason = 'Twilio: ' + s.status + (s.errorCode ? ' (error ' + s.errorCode + ')' : ''); }
   list.push({ table: 'messages', id: r.id, fields: fields });
   if (s.errorCode === '21610' && (f.Contact || [])[0]) list.push({ table: 'contacts', id: f.Contact[0], fields: { 'Opted Out': true, 'Opted Out At': iso(NOW), 'Marketing Opt-In': false } });
 }
 const failed = s.status === 'failed' || s.status === 'undelivered';
-const alert = !rows.length && failed ? { 'Alert Ref': logRef('AL'), Kind: 'Delivery Failed', Status: 'Open', Workflow: 'Inbound Reply', 'Record Ref': s.sid,
-  Detail: 'Twilio reported a message to ' + (s.to || 'an unknown number') + ' as ' + s.status + (s.errorCode ? ' (error ' + s.errorCode + ')' : '')
-    + ' before Lite had recorded it. Find the latest message to this number in the Message Log; tick Retry Requested if it should be sent again.',
+const alert = !rows.length && (failed || pending.length) ? { 'Alert Ref': logRef('AL'), Kind: failed ? 'Delivery Failed' : 'Delivery Unknown', Status: 'Open', Workflow: 'Inbound Reply', 'Record Ref': s.sid,
+  Detail: 'Twilio reported message ' + s.sid + ' to ' + (s.to || 'an unknown number') + ' as ' + s.status + (s.errorCode ? ' (error ' + s.errorCode + ')' : '')
+    + ', but no message in the Message Log has this Message SID (it may not have been recorded yet), so Lite changed nothing.'
+    + (pending.length ? ' ' + pending.length + ' unconfirmed message(s) to this number may or may not be this one.' : '')
+    + ' Check this SID in Twilio against the Message Log before ticking Retry Requested on anything.',
   'Dedupe Key': 'receipt:' + s.sid + ':' + s.status, 'Raised At': iso(NOW), 'Demo Data': false } : null;
 return [{ json: { items: patches(list), hasAlert: !!alert, alertRequest: alert ? { typecast: false, records: [{ fields: alert }] } : null } }];`);
 const needAlert = OK_IF('Receipt Alert?', '{{ $json.hasAlert }}');
@@ -104,24 +106,26 @@ return [{ json: { response: { status: 200, body: { ok: true }, text: '<?xml vers
 const respondStatus = respond('Respond Reply Status');
 
 // Replies. The sender is every contact with this number or email (duplicates included), and every contact Lite has
-// messaged at it before: a number changed in the CRM since does not make their STOP go unheard.
-const findHistory = airtableList('Find Number History', T.messages, '{{ $json.historyFormula }}');
+// messaged at it before: a number changed in the CRM since does not make their STOP go unheard. Both lists are read to
+// the end (every page), so STOP reaches all of them.
+const findHistory = airtableListAll('Find Number History', T.messages, '{{ $json.historyFormula }}');
 const senderFormula = code('Sender Formula', `
 const v = $('Verify Request').first().json;
-const ids = Array.from(new Set(records($input.first().json, 'find number history').map((m) => ((m.fields || {}).Contact || [])[0]).filter(Boolean)));
+const ids = Array.from(new Set(allRecords($input.all(), 'find number history').map((m) => ((m.fields || {}).Contact || [])[0]).filter(Boolean)));
+if (ids.length > 100) throw new Error('find number history: Lite has messaged ' + ids.length + ' contacts at ' + v.reply.from + ', more than one reply can handle (100); deal with this reply by hand');
 return [{ json: { formula: ids.length ? 'OR(' + [v.contactFormula].concat(ids.map((i) => "RECORD_ID()='" + formulaText(i) + "'")).join(',') + ')' : v.contactFormula } }];`);
-const findContact = airtableList('Find Sender', T.contacts, '{{ $json.formula }}');
+const findContact = airtableListAll('Find Sender', T.contacts, '{{ $json.formula }}');
 const jobsFormula = code('Sender Jobs Formula', `
 // The contact's jobs, through Airtable's back-link (Lite Contacts > Lite Jobs): also jobs that staff created by hand.
 const R = $('Verify Request').first().json.reply;
-const list = records($input.first().json, 'find sender');
+const list = allRecords($input.all(), 'find sender');
 const c = pickContact(list, R.phone, R.email) || list[0];
 const ids = c ? ((c.fields || {})['Lite Jobs'] || []) : [];
 return [{ json: { jobFormula: ids.length ? 'OR(' + ids.map((i) => "RECORD_ID()='" + formulaText(i) + "'").join(',') + ')' : 'FALSE()' } }];`);
 const findJobs = airtableList('Find Sender Jobs', T.jobs, '{{ $json.jobFormula }}');
 const classify = code('Classify Reply', `
 const R = $('Verify Request').first().json.reply;
-const senders = records($('Find Sender').first().json, 'find sender');
+const senders = allRecords($('Find Sender').all(), 'find sender');
 const contact = pickContact(senders, R.phone, R.email) || senders[0] || null;
 const jobs = records($input.first().json, 'find sender jobs');
 const words = R.text.toUpperCase().replace(/[^A-Z ]/g, ' ').split(' ').filter(Boolean).join(' ');
@@ -132,9 +136,9 @@ const open = jobs.filter((j) => ['Paid', 'Lost', 'Completed', 'Invoiced'].indexO
 // The reply is logged on their open job, or else on their latest finished one (which is not reopened).
 const job = open[0] || jobs.slice().sort((a, b) => recent(b) - recent(a))[0] || null;
 const reopen = !!job && open.indexOf(job) >= 0;
-// STOP opts out every one of them, so a duplicate record of the same person cannot be messaged either.
-const stopped = senders.filter((c) => !(c.fields || {})['Opted Out']).slice(0, 10);
-const contactUpdate = optOut && stopped.length ? { typecast: false, records: stopped.map((c) => ({ id: c.id, fields: { 'Opted Out': true, 'Opted Out At': iso(NOW), 'Marketing Opt-In': false } })) } : null;
+// STOP opts out every one of them (in batches of 10, Airtable's limit), so a duplicate record of the same person cannot be messaged either.
+const stopped = senders.filter((c) => !(c.fields || {})['Opted Out']);
+const optOutRequests = optOut ? chunk(stopped.map((c) => ({ id: c.id, fields: { 'Opted Out': true, 'Opted Out At': iso(NOW), 'Marketing Opt-In': false } })), 10).map((x) => ({ typecast: false, records: x })) : [];
 const jf = { 'Last Activity At': iso(NOW) };
 if (job && job.fields.Stage === 'New Lead') jf.Stage = 'Contacted';
 const jobUpdate = reopen && contact && !optOut && !optIn ? { typecast: false, records: [{ id: job.id, fields: jf }] } : null;
@@ -146,13 +150,22 @@ const lf = { 'Log Ref': logRef('IN'), Workflow: 'Inbound Reply', Purpose: 'Inbou
   Provider: CFG.messaging.provider, 'Attempted At': iso(NOW), 'Demo Data': R.demo };
 if (contact) lf.Contact = [contact.id];
 if (job) lf.Job = [job.id];
-return [{ json: { known: !!contact, optOut: optOut, contactUpdate: contactUpdate, jobUpdate: jobUpdate, hasContactUpdate: !!contactUpdate, hasJobUpdate: !!jobUpdate,
+return [{ json: { known: !!contact, optOut: optOut, from: R.from, optOutRequests: optOutRequests, jobUpdate: jobUpdate, hasContactUpdate: optOutRequests.length > 0, hasJobUpdate: !!jobUpdate,
   job_ref: job ? job.fields['Job Ref'] : null, log: { typecast: false, records: [{ fields: lf }] } } }];`);
 const needOptOut = OK_IF('Opt Out Contact?', '{{ $json.hasContactUpdate }}');
-const optOutContact = airtableWrite('Opt Out Contact', 'PATCH', T.contacts, "{{ JSON.stringify($('Classify Reply').first().json.contactUpdate) }}");
+const optOutBatches = code('Opt Out Batches', `
+return $('Classify Reply').first().json.optOutRequests.map((r) => ({ json: { request: r } }));`);
+const optOutContact = airtableWrite('Opt Out Contact', 'PATCH', T.contacts);
 const afterContact = code('After Contact', `
-if ($('Opt Out Contact').isExecuted) records($('Opt Out Contact').first().json, 'opt out contact');
-return [{ json: { hasJobUpdate: $('Classify Reply').first().json.hasJobUpdate } }];`);
+const c = $('Classify Reply').first().json;
+// Every batch must land: a STOP that is only partly applied fails the run with the reason ([Lite] Monitor raises it).
+if ($('Opt Out Contact').isExecuted) {
+  const res = $('Opt Out Contact').all(); const errors = [];
+  res.forEach((i) => { try { records(i.json, 'opt out contact'); } catch (e) { errors.push(e.message); } });
+  if (errors.length) throw new Error('STOP from ' + c.from + ' was not fully applied: ' + errors.length + ' of ' + res.length + ' opt-out batches failed (' + errors[0]
+    + '). Opt out by hand every contact with this number.');
+}
+return [{ json: { hasJobUpdate: c.hasJobUpdate } }];`);
 const needJob = OK_IF('Reopen Job?', '{{ $json.hasJobUpdate }}');
 const reopenJob = airtableWrite('Reopen Job', 'PATCH', T.jobs, "{{ JSON.stringify($('Classify Reply').first().json.jobUpdate) }}");
 const logRequest = code('Log Reply Request', `
@@ -171,7 +184,7 @@ export default workflow('roofops-lite-inbound-replies', '[Lite] Inbound Replies'
   .add(hook).to(validate).to(valid
     .onTrue(isStatus
       .onTrue(findSent.to(applyStatus).to(needAlert.onTrue(saveAlert.to(receiptUpdates)).onFalse(receiptUpdates)))
-      .onFalse(findHistory.to(senderFormula).to(findContact).to(jobsFormula).to(findJobs).to(classify).to(needOptOut.onTrue(optOutContact.to(afterContact)).onFalse(afterContact))))
+      .onFalse(findHistory.to(senderFormula).to(findContact).to(jobsFormula).to(findJobs).to(classify).to(needOptOut.onTrue(optOutBatches.to(optOutContact).to(afterContact)).onFalse(afterContact))))
     .onFalse(rejected))
   .add(receiptUpdates).to(anyStatus.onTrue(writeStatus.to(statusResponse)).onFalse(statusResponse))
   .add(statusResponse).to(respondStatus)

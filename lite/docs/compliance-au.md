@@ -94,9 +94,11 @@ needs an upgraded account with the business's own number.
 - **Form consent covers only what was ticked.** The website form records exactly which boxes were ticked, tagging the
   wording [reviews] and [marketing]. Service consent on a form never makes an older, unrecorded marketing tick usable.
   Earlier consent evidence is kept when a returning person ticks a new box.
-- **START** is only logged for staff. Lite never re-subscribes anyone by itself. Staff untick Opted Out only when the
-  person clearly asks again, and record that consent. The number stays suppressed by its Opt-Out row. To let Lite
-  message it again, the owner also sets that row's Status to Received; the row and its text stay as the record.
+- **Resubscription is disabled in Lite v1.**
+  - **START** is only logged for staff. A number that replied STOP stays suppressed by its Opt-Out row, even if staff
+    untick Opted Out on a contact.
+  - **If the person asks to hear from the business again,** contact them outside Lite.
+  - **Don't edit the Opt-Out rows:** they are the record of the opt-out.
 - A new form from an opted-out person creates the enquiry but does not message them, and does not undo the opt-out.
 
 ## What stays with the business

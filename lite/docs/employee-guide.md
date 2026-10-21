@@ -72,7 +72,8 @@ Lost jobs leave the board. You'll find them under **Lost enquiries** on Business
 
 - It never creates invoices or touches Xero. Invoice Status and Amount are notes for the team.
 - It never messages anyone who didn't agree, or who replied STOP.
-- It never re-subscribes anyone. If a customer asks to hear from you again, the owner records that on purpose.
+- It never re-subscribes anyone. A number that replied STOP stays blocked. If a customer asks to hear from you again,
+  the owner contacts them directly.
 
 ## The Customers page
 

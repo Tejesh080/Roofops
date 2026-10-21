@@ -112,7 +112,8 @@ This list covers what must be true before, at and after handover to a trade busi
 - SMS only. Email is simulated in test-sink mode.
 - Each look-up reads up to 100 records: about 100 open enquiries or finished jobs waiting for a review at one time.
 - Two copies of one form at the same moment can create two records. Only one SMS is sent.
-- Lite never re-subscribes anyone. After a START, staff untick Opted Out only when the person asks.
+- Lite v1 never re-subscribes a number that replied STOP: its Opt-Out row keeps it suppressed. If the person asks to
+  hear from the business again, contact them outside Lite.
 - **On n8n Starter:**
   - no signature check inside n8n;
   - execution logs for 7 days;

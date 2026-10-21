@@ -730,4 +730,12 @@ describe('webhook protection', () => {
     const bad = structuredClone(config); bad.webhookAuth = { id: 'x', name: '' };
     expect(configProblems(bad).join()).toMatch(/webhookAuth/);
   });
+
+  it('a workflow whose webhook needs a login saves no production executions: n8n keeps the request headers, login included, in saved executions', () => {
+    const NO_SAVE = { saveDataSuccessExecution: 'none', saveDataErrorExecution: 'none' };
+    for (const w of ['lead-follow-up', 'inbound-replies']) expect(imports('auth', w).settings, w).toMatchObject(NO_SAVE);
+    expect(imports('basic', 'inbound-replies').settings).toMatchObject(NO_SAVE);
+    expect(imports('basic', 'lead-follow-up').settings).not.toHaveProperty('saveDataSuccessExecution');
+    for (const w of WORKFLOWS) expect(imports('demo', w).settings, w).not.toHaveProperty('saveDataSuccessExecution');
+  });
 });

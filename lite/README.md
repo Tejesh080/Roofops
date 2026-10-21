@@ -74,7 +74,7 @@ npx tsx lite/demo/run-demo.ts lite/config/example-plumbing-twilio.json lite/demo
 
 Both run the workflows' **actual n8n node code** against an in-memory Airtable that enforces the Lite schema.
 
-Tests: 40, the same code, acceptance tests A–H.
+Tests: 49, the same code, acceptance tests A–H.
 ```bash
 npx vitest run test/lite.test.ts
 ```
@@ -98,6 +98,7 @@ lite/demo/                     local demo: in-memory Airtable, fake Twilio, synt
 ```
 
 Install a client: [DEPLOY.md](DEPLOY.md) (full guide) and [SETUP-CHECKLIST.md](SETUP-CHECKLIST.md) (one page).
+Hand it over: [DELIVERY-CHECKLIST.md](DELIVERY-CHECKLIST.md).
 Demo script: [demo/portfolio-demo-script.md](demo/portfolio-demo-script.md).
 
 ## Limits (MVP)

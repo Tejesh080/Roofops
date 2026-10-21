@@ -166,15 +166,42 @@ tables, error workflows and the public API.
 These were tested against n8n 2.34.6 on 2026-10-21. After the login, Lite still refuses a request for another Twilio
 account (`403`).
 
-**Twilio can send the login in two ways:**
-- **In the webhook URL,** `https://user:password@<n8n>/webhook/<path>`. Twilio's documented behaviour is to post
-  first without credentials, then repeat with them after the `401` challenge.
-- **A Twilio Webhook Rule:** a Basic AuthProfile, a Setting, and a `PREFIX_MATCH` Rule for `https://<n8n>/webhook/`
-  (webhooks.twilio.com). Twilio keeps the login, so no URL carries it. Twilio refuses Basic on the default Rule.
+**How Twilio sends the login: a Webhook Rule.** Set it up in Twilio's Webhooks configuration API
+(webhooks.twilio.com), in two parts:
+1. **A Setting** with the login inline: `auth: {source: "INLINE", value: {scheme: "BASIC", username, password}}`.
+   Keep the usual signature, `signature: {type: "ACCOUNT_AUTH_TOKEN", algorithm: "HMAC_SHA1"}`. Twilio never returns
+   the password.
+2. **An `EXACT_MATCH` Rule** for `https://<n8n>/webhook/<replies.webhookPath>`.
+   - Twilio ignores the query string when matching, so the same Rule covers receipts (`?event=status`).
+   - No other address gets the login.
+   - Twilio refuses Basic on the default Rule.
 
-**Receipts.** Lite never puts a password in `StatusCallback`: it would sit in every workflow and every message
-resource. With `basic-auth`, turn `statusCallbacks` on only once a Webhook Rule logs in for the n8n address. Until
-then, Sent stays Sent. Failed messages are still caught, because Twilio refuses them when Lite sends, before any receipt.
+**Create the Setting from n8n.** Only n8n holds the Twilio credential, so create the Setting with a one-shot n8n
+workflow:
+- it reads the login from a temporary data table;
+- it saves no executions;
+- it clears the table at the end.
+
+That way the password never appears in chat, code or a saved run.
+
+**Check it before live traffic** with `POST /v1/Webhooks/Tests`:
+- `401`: n8n refused the login.
+- `400` or `403`: n8n accepted the login, and Lite refused Twilio's synthetic test body.
+
+**Don't put the login in the URL** (`https://user:password@…`). The password would then sit in Twilio's number
+settings and in every receipt URL.
+
+**Execution data.**
+- **The problem:** n8n saves the Webhook node's request headers with each execution, login included. On n8n 2.34.6,
+  the `Authorization` header was in the saved run.
+- **What the build does:** execution-data redaction is an Enterprise feature. So on every workflow whose webhook
+  needs a login, the build sets **Save successful/failed production executions: Do not save**.
+- **The effect:** n8n hides such a run at once, and deletes it at its next clean-up (about 15 minutes in the local
+  test).
+- **What remains:** the Message Log keeps a row for each reply and receipt, and Monitor alerts on failures.
+
+**Receipts.** Turn `statusCallbacks` on once the Rule exists. Lite never puts a password in `StatusCallback`. Without
+receipts, Sent stays Sent. Failed messages are still caught, because Twilio refuses them when Lite sends.
 
 **What Basic Auth does not prove.** It shows the caller knows the password. It does not show the caller is Twilio,
 and it does not sign the content. That is acceptable for a test with one phone, but not for a customer release.
@@ -222,7 +249,7 @@ Twilio's text never matches Lite's.
    Rebuild and re-import.
 3. **Twilio webhook:** point the number's "A message comes in" at `https://<n8n>/webhook/<replies.webhookPath>`. On a
    trial, use Try out SMS › Auto-Reply › Custom webhook.
-   - **Basic-auth mode:** the URL carries `user:password@`, or a Webhook Rule sends the login.
+   - **Basic-auth mode:** a plain URL. The Webhook Rule sends the login.
    - **Header-auth mode:** the URL is the relay function's.
 4. **Publish only Inbound Replies.** It must receive Twilio's posts.
    - Signature mode rejects anything unsigned.

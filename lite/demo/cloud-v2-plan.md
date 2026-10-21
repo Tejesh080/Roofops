@@ -12,7 +12,7 @@ It is split into batches so that each can be approved on its own. No step touche
 | A | **Done** 2026-10-21 (`evidence/lite-v2-batch-a-20261021.md`). The four Status options were added through the API, using one labelled setup row, instead of by hand. |
 | B | **Done** 2026-10-21 (`evidence/lite-v2-batch-b-20261021.md`). Five v2 workflows unpublished; tests A, C, D, E, F and G passed on the test sink; v1 archived. One Monitor defect was found and fixed. The error workflow is set at go-live, because n8n needs Monitor published first. |
 | C | **Done** 2026-10-21, adapted to what exists: a Twilio trial and n8n Starter (`evidence/lite-twilio-starter-20261021.md`). The five workflows run in Twilio trial mode, all unpublished. Every test reached the real Twilio API with no SMS sent. |
-| D | Not approved yet. |
+| D | **Prepared** 2026-10-21 (`evidence/lite-live-test-prep-20261021.md`). The login reaches Twilio through a Webhook Rule (no credentials in URLs). Inbound Replies saves no execution data, and one-shot helpers are ready. Waiting for the recipient in `.env.local` and the owner's approval. |
 
 ## Batch A: Airtable additions (no messages, additive only)
 

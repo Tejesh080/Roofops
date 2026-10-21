@@ -536,6 +536,30 @@
         "3215": "T4b Monitor retry: real delivery check (none), one resend, 572002 again, Attempts 2, 1 alert",
         "3186-3192": "read-only account checks (credential, services, numbers, messages, Webhooks configuration API)"
       }
+    },
+    "liveTestPrep": {
+      "done": "2026-10-21 (AEST), nothing sent, nothing published",
+      "inboundRepliesSettings": "saveDataSuccessExecution none, saveDataErrorExecution none (its webhook needs a login, which n8n would keep in saved headers)",
+      "helpers": {
+        "[Lite] Live Test Pre-check (saves nothing)": "ikWTxNSgiH3u1TWr",
+        "[Lite] Twilio Webhook Login Setup (one-shot, saves nothing)": "0h3YTk1ewoemNQCq",
+        "[Lite] Twilio Webhook Test (no SMS, saves nothing)": "CRYdGYERCuVGcaEs"
+      },
+      "helperState": "unpublished, manual trigger only; no secret or phone number in any node",
+      "dataTable": {
+        "Lite Live Test (temporary)": "y28wzAvfOC2U7fwI",
+        "rows": "phone, login_user, login_password: cleared; precheck_result, setup_result, test_result: non-secret results"
+      },
+      "archived": {
+        "[Lite] Pin Data Probe (fictional data, never published)": "U79SM9NgrZA7OHeh"
+      },
+      "executions": {
+        "3237": "pre-check dry run on a fictional number (not stored)",
+        "3238": "login setup dry run with no login staged: no Twilio call (not stored)",
+        "3239": "webhook test dry run with no Setting: no Twilio call (not stored)",
+        "3240": "pre-check re-run on the second fictional number (not stored)"
+      },
+      "twilio": "no Webhook Setting or Rule created yet (waits for approval)"
     }
   }
 }

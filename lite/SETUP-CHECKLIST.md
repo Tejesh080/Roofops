@@ -18,7 +18,8 @@ Tick each line. Full detail: [DEPLOY.md](DEPLOY.md).
   - n8n Variable `LITE_TWILIO_AUTH_TOKEN` (Pro/Enterprise);
   - a Basic Auth login for the reply webhook (Starter; tests only);
   - the reply relay with Header Auth (Starter; customer release).
-- [ ] Receipts with Basic Auth: a Twilio Webhook Rule sends the login, then `statusCallbacks: true` (never a password in a URL Lite sends)
+- [ ] Basic Auth: a Twilio Webhook Setting + `EXACT_MATCH` Rule sends the login (never a password in a URL), checked with Twilio's Webhooks Test; then `statusCallbacks: true`
+- [ ] Workflows with a login-protected webhook show **Do not save** for production executions (the build sets it: n8n would keep the login in saved headers)
 - [ ] No secret written anywhere else (repository, chat, config file)
 
 ## Config and build (local)

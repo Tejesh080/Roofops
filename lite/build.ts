@@ -125,6 +125,11 @@ export async function build(configFile: string, outDir?: string) {
     // Schedules run in the business timezone; failures of the others go to [Lite] Monitor once its id is in the config.
     const settings: Record<string, unknown> = { executionOrder: 'v1', timezone: config.business.timezone, saveManualExecutions: true };
     if (w !== 'monitor' && config.n8n.errorWorkflowId) settings.errorWorkflow = config.n8n.errorWorkflowId;
+    // n8n saves the Webhook node's request headers with each execution, so a login the caller sends (Basic or Header
+    // Auth) would sit in every saved run. Such workflows save none; the Message Log is their record, Monitor their alarm.
+    if ([...r.nodes.values()].some((n) => n.type === 'n8n-nodes-base.webhook' && (n.config.parameters as { authentication?: string } | undefined)?.authentication)) {
+      settings.saveDataSuccessExecution = 'none'; settings.saveDataErrorExecution = 'none';
+    }
     const json = toN8nJson(r.meta, r.nodes, r.edges, settings);
     writeFileSync(join(out, `${w}.json`), JSON.stringify(json, null, 2) + '\n');
     summary.push({ workflow: w, name: json.name, nodes: json.nodes.length, connections: r.edges.length });

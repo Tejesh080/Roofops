@@ -565,12 +565,62 @@
       }
     },
     {
-      "id": "fc6ae079-a682-48df-a24a-fc2b6630e925",
-      "name": "Opt Out Contact?",
+      "id": "673d279a-c54c-4486-a6be-298a0d83fde0",
+      "name": "Log Reply Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2600,
+        180
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n\n\nreturn [{ json: { request: $('Classify Reply').first().json.log } }];"
+      }
+    },
+    {
+      "id": "d1c527f5-0697-4b8c-ae60-f61c19aea764",
+      "name": "Write Reply Log",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2860,
+        180
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Message%20Log",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.request) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "3XbFnHjAd7mFvBD2",
+          "name": "Roofops Airtable Personal Access Token account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "46bec128-6238-40df-a25a-ed7d59af75df",
+      "name": "Reply Log Saved?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        2600,
+        3120,
         180
       ],
       "parameters": {
@@ -582,7 +632,74 @@
           },
           "conditions": [
             {
-              "leftValue": "={{ $json.hasContactUpdate }}",
+              "leftValue": "={{ $json.statusCode === 200 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a60c1759-1993-4ce6-ad37-402d01e19db3",
+      "name": "Write Reply Log Again",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        3380,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Message%20Log",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Log Reply Request').first().json.request) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "3XbFnHjAd7mFvBD2",
+          "name": "Roofops Airtable Personal Access Token account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "fc6ae079-a682-48df-a24a-fc2b6630e925",
+      "name": "Opt Out Contact?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3640,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Classify Reply').first().json.hasContactUpdate }}",
               "rightValue": true,
               "operator": {
                 "type": "boolean",
@@ -601,8 +718,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2860,
-        180
+        3900,
+        0
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
@@ -615,8 +732,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
       "position": [
-        3120,
-        180
+        4160,
+        0
       ],
       "parameters": {
         "method": "PATCH",
@@ -657,12 +774,12 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3380,
+        4420,
         0
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n\nconst c = $('Classify Reply').first().json;\n// Every batch must land: a STOP that is only partly applied fails the run with the reason ([Lite] Monitor raises it).\nif ($('Opt Out Contact').isExecuted) {\n  const res = $('Opt Out Contact').all(); const errors = [];\n  res.forEach((i) => { try { records(i.json, 'opt out contact'); } catch (e) { errors.push(e.message); } });\n  if (errors.length) throw new Error('STOP from ' + c.from + ' was not fully applied: ' + errors.length + ' of ' + res.length + ' opt-out batches failed (' + errors[0]\n    + '). Opt out by hand every contact with this number.');\n}\nreturn [{ json: { hasJobUpdate: c.hasJobUpdate } }];"
+        "jsCode": "\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n\nconst c = $('Classify Reply').first().json;\n// The log row must be saved (first or second try); then every contact update. Either failure fails the run with the\n// reason ([Lite] Monitor raises it). The contacts are updated even when the log could not be saved.\nconst tries = [$('Write Reply Log').first().json].concat($('Write Reply Log Again').isExecuted ? [$('Write Reply Log Again').first().json] : []);\nlet saved = false; let why = '';\ntries.forEach((t) => { try { records(t, 'write reply log'); saved = true; } catch (e) { why = e.message; } });\nconst res = $('Opt Out Contact').isExecuted ? $('Opt Out Contact').all() : []; const errors = [];\nres.forEach((i) => { try { records(i.json, 'opt out contact'); } catch (e) { errors.push(e.message); } });\nconst contacts = errors.length + ' of ' + res.length + ' contact updates failed' + (errors.length ? ' (' + errors[0] + ')' : '');\nif (!saved && c.optOut) throw new Error('STOP from ' + c.from + ' could not be saved, so the number is NOT suppressed (' + why + '); ' + contacts\n  + '. Record the STOP and opt out every contact with this number by hand.');\nif (!saved) throw new Error('reply from ' + c.from + ' could not be logged (' + why + ')');\nif (errors.length) throw new Error('STOP from ' + c.from + ' is saved and the number is suppressed, but ' + contacts + '; tick Opted Out on the remaining contacts with this number.');\nreturn [{ json: { hasJobUpdate: c.hasJobUpdate } }];"
       }
     },
     {
@@ -671,7 +788,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        3640,
+        4680,
         0
       ],
       "parameters": {
@@ -702,7 +819,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
       "position": [
-        3900,
+        4940,
         0
       ],
       "parameters": {
@@ -733,67 +850,17 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "673d279a-c54c-4486-a6be-298a0d83fde0",
-      "name": "Log Reply Request",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        4160,
-        0
-      ],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "jsCode": "\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n\nif ($('Reopen Job').isExecuted) records($('Reopen Job').first().json, 'reopen job');\nreturn [{ json: { request: $('Classify Reply').first().json.log } }];"
-      }
-    },
-    {
-      "id": "d1c527f5-0697-4b8c-ae60-f61c19aea764",
-      "name": "Write Reply Log",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.5,
-      "position": [
-        4420,
-        0
-      ],
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.airtable.com/v0/appMc8V0Wm29tEeHQ/Lite%20Message%20Log",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "airtableTokenApi",
-        "sendBody": true,
-        "contentType": "json",
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.request) }}",
-        "options": {
-          "response": {
-            "response": {
-              "fullResponse": true,
-              "neverError": true
-            }
-          },
-          "timeout": 20000
-        }
-      },
-      "credentials": {
-        "airtableTokenApi": {
-          "id": "3XbFnHjAd7mFvBD2",
-          "name": "Roofops Airtable Personal Access Token account"
-        }
-      },
-      "onError": "continueRegularOutput"
-    },
-    {
       "id": "33b5d816-b4b8-4472-aec2-9c70a05fea41",
       "name": "Reply Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4680,
+        5200,
         0
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n\nrecords($input.first().json, 'write reply log');\nconst c = $('Classify Reply').first().json;\n// Twilio gets an empty TwiML answer (nothing is sent back to the person); other callers get JSON.\nreturn [{ json: { response: { status: 200, body: { ok: true, known_contact: c.known, opted_out: c.optOut, job_ref: c.job_ref },\n  text: '<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>' } } }];"
+        "jsCode": "\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n\nif ($('Reopen Job').isExecuted) records($('Reopen Job').first().json, 'reopen job');\nconst c = $('Classify Reply').first().json;\n// Twilio gets an empty TwiML answer (nothing is sent back to the person); other callers get JSON.\nreturn [{ json: { response: { status: 200, body: { ok: true, known_contact: c.known, opted_out: c.optOut, job_ref: c.job_ref },\n  text: '<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>' } } }];"
       }
     },
     {
@@ -802,7 +869,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        4940,
+        5460,
         0
       ],
       "parameters": {
@@ -950,6 +1017,28 @@
         ]
       ]
     },
+    "Classify Reply": {
+      "main": [
+        [
+          {
+            "node": "Log Reply Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Reply Request": {
+      "main": [
+        [
+          {
+            "node": "Write Reply Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Opt Out Batches": {
       "main": [
         [
@@ -990,11 +1079,29 @@
         ]
       ]
     },
-    "Classify Reply": {
+    "Reply Log Saved?": {
       "main": [
         [
           {
             "node": "Opt Out Contact?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Write Reply Log Again",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Reply Log": {
+      "main": [
+        [
+          {
+            "node": "Reply Log Saved?",
             "type": "main",
             "index": 0
           }
@@ -1024,6 +1131,17 @@
         [
           {
             "node": "Request Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Reply Log Again": {
+      "main": [
+        [
+          {
+            "node": "Opt Out Contact?",
             "type": "main",
             "index": 0
           }
@@ -1085,7 +1203,7 @@
       "main": [
         [
           {
-            "node": "Log Reply Request",
+            "node": "Reply Response",
             "type": "main",
             "index": 0
           }
@@ -1103,7 +1221,7 @@
         ],
         [
           {
-            "node": "Log Reply Request",
+            "node": "Reply Response",
             "type": "main",
             "index": 0
           }
@@ -1115,28 +1233,6 @@
         [
           {
             "node": "Reopen Job?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Log Reply Request": {
-      "main": [
-        [
-          {
-            "node": "Write Reply Log",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Write Reply Log": {
-      "main": [
-        [
-          {
-            "node": "Reply Response",
             "type": "main",
             "index": 0
           }

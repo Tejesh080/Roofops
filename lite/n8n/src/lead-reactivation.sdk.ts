@@ -15,14 +15,18 @@ const findJobs = airtableList('Find Quiet Leads', T.jobs, 'OR(' + CONFIG.reactiv
 const contactFormula = code('Contact Formula', `
 const jobs = records($input.first().json, 'find quiet leads');
 const ids = Array.from(new Set(jobs.map((j) => ((j.fields || {}).Contact || [])[0]).filter(Boolean)));
-return [{ json: { contactFormula: ids.length ? 'OR(' + ids.map((i) => "RECORD_ID()='" + formulaText(i) + "'").join(',') + ')' : 'FALSE()' } }];`);
+// The earlier follow-ups of exactly these jobs (their Dedupe Key starts reactivation:<job>:), read to the last page.
+const history = jobs.map((j) => "FIND('reactivation:" + formulaText(j.id) + ":',{Dedupe Key})");
+return [{ json: { contactFormula: ids.length ? 'OR(' + ids.map((i) => "RECORD_ID()='" + formulaText(i) + "'").join(',') + ')' : 'FALSE()',
+  historyFormula: history.length ? "AND({Workflow}='Reactivation',{Status}!='Skipped',OR(" + history.join(',') + '))' : 'FALSE()' } }];`);
 const findContacts = airtableList('Find Contacts', T.contacts, '{{ $json.contactFormula }}');
-const findSent = airtableList('Find Earlier Follow-Ups', T.messages, "AND({Workflow}='Reactivation',{Status}!='Skipped')");
+const findSent = airtableListAll('Find Earlier Follow-Ups', T.messages, "{{ $('Contact Formula').first().json.historyFormula }}");
 const plan = code('Plan Reactivation', `
 const jobs = records($('Find Quiet Leads').first().json, 'find quiet leads');
 const contacts = {}; records($('Find Contacts').first().json, 'find contacts').forEach((c) => { contacts[c.id] = c; });
 // Every earlier follow-up for a job counts, whatever month it was in (the Dedupe Key carries the month, the Job link does not).
-const earlier = {}; records($input.first().json, 'find earlier follow-ups').forEach((m) => { const f = m.fields || {}; if (ATTEMPTED.indexOf(f.Status) < 0) return;
+// The history must be complete: a page that cannot be read stops the run here, before anything is sent.
+const earlier = {}; allRecords($input.all(), 'find earlier follow-ups').forEach((m) => { const f = m.fields || {}; if (ATTEMPTED.indexOf(f.Status) < 0) return;
   const jobId = (f.Job || [])[0] || clean(f['Dedupe Key']).split(':')[1]; (earlier[jobId] = earlier[jobId] || []).push(f); });
 const recent = (f) => NOW.getTime() - (Date.parse(f['Attempted At'] || '') || 0) < days(CFG.reactivation.cooldownDays);
 const sends = [];

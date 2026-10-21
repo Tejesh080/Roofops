@@ -67,9 +67,11 @@ export class FakeTwilio {
       return m ? { statusCode: 200, body: { ...m } } : { statusCode: 404, body: { code: 20404, message: 'not found' } };
     }
     if (req.method === 'GET' && u.pathname === `${base}.json`) {
+      // As Twilio: newest first, PageSize per page (default 50), and a next_page_uri when there are more.
       const to = u.searchParams.get('To'); const after = u.searchParams.get('DateSent>');
-      const list = this.messages.filter((m) => (!to || m.to === to) && (!after || (m.date_sent && Date.parse(m.date_sent) >= Date.parse(after))));
-      return { statusCode: 200, body: { messages: list.map((m) => ({ ...m })) } };
+      const list = this.messages.filter((m) => (!to || m.to === to) && (!after || (m.date_sent && Date.parse(m.date_sent) >= Date.parse(after)))).reverse();
+      const size = Number(u.searchParams.get('PageSize') ?? 50);
+      return { statusCode: 200, body: { messages: list.slice(0, size).map((m) => ({ ...m })), next_page_uri: list.length > size ? `${base}.json?Page=1&PageSize=${size}` : null } };
     }
     return { statusCode: 404, body: { code: 20404, message: `no fake for ${req.method} ${u.pathname}` } };
   };

@@ -117,7 +117,7 @@ export async function demo(configFile = 'lite/config/demo.json', outDir = 'lite/
     if (tw) {
       const failed = at.all('messages').find((m) => m.fields.Status === 'Failed')!;
       tick(String(failed.fields['Log Ref']), { To: '0400000302', 'Retry Requested': true });
-      note('15. Staff fix the number and tick Retry Requested; Monitor checks Twilio first, then resends once', run('monitor'));
+      note('15. Staff fix the number and tick Retry Requested; Twilio refused it, so Monitor resends it once', run('monitor'));
       note('16. Monitor again: nothing is resent', run('monitor'));
     }
   } finally { server.close(); }

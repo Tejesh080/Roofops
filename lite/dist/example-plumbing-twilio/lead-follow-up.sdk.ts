@@ -484,7 +484,7 @@ const n25 = node({ type: "n8n-nodes-base.code", version: 2, config: {
   "name": "Reservation Check",
   "parameters": {
     "mode": "runOnceForAllItems",
-    "jsCode": "\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** Text inside a single-quoted Airtable formula string: quotes and backslashes are escaped, never dropped (an address\n * like o'brien@ must not turn into obrien@ and match someone else). */\nconst formulaText = (s) => clean(s).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"\\\\'\");\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n\nconst p = $('Plan Acknowledgement').first().json;\nconst created = {};\nif ($('Write Reservations').isExecuted) $('Write Reservations').all().forEach((i) => records(i.json, 'reserve messages').forEach((r) => {\n  if ((r.fields || {}).Status === 'Sending') created[r.fields['Dedupe Key']] = r.id; }));\nconst keys = p.sends.map((s) => s.key);\nreturn [{ json: { none: !keys.length, created: created,\n  formula: keys.length ? 'OR(' + keys.map((k) => \"{Dedupe Key}='\" + formulaText(k) + \"'\").join(',') + ')' : 'FALSE()' } }];"
+    "jsCode": "\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** Text inside a single-quoted Airtable formula string: quotes and backslashes are escaped, never dropped (an address\n * like o'brien@ must not turn into obrien@ and match someone else). */\nconst formulaText = (s) => clean(s).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"\\\\'\");\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n\nconst p = $('Plan Acknowledgement').first().json;\nconst created = {};\nif ($('Write Reservations').isExecuted) $('Write Reservations').all().forEach((i) => records(i.json, 'reserve messages').forEach((r) => {\n  if ((r.fields || {}).Status === 'Sending') created[r.fields['Dedupe Key']] = r.id; }));\nconst keys = p.sends.map((s) => s.key);\nconst tos = Array.from(new Set(p.sends.map((s) => clean(s.to)).filter(Boolean)));\nreturn [{ json: { none: !keys.length, created: created,\n  formula: keys.length ? 'OR(' + keys.map((k) => \"{Dedupe Key}='\" + formulaText(k) + \"'\").join(',') + ')' : 'FALSE()',\n  suppressionFormula: tos.length ? \"AND({Status}='Opt-Out',OR(\" + tos.map((t) => \"{To}='from \" + formulaText(t) + \"'\").join(',') + '))' : 'FALSE()' } }];"
   }
 } });
 
@@ -549,17 +549,71 @@ const n27 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
   }
 } });
 
+// Find Suppressions
+const n28 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
+  "name": "Find Suppressions",
+  "onError": "continueRegularOutput",
+  "parameters": {
+    "method": "GET",
+    "url": "https://api.airtable.com/v0/appZZEXAMPLE00001/Plumbing%20Messages",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "airtableTokenApi",
+    "sendQuery": true,
+    "queryParameters": {
+      "parameters": [{
+        "name": "filterByFormula",
+        "value": expr("{{ $('Reservation Check').first().json.suppressionFormula }}")
+      }, {
+        "name": "pageSize",
+        "value": "100"
+      }]
+    },
+    "options": {
+      "response": {
+        "response": {
+          "fullResponse": true,
+          "neverError": true
+        }
+      },
+      "timeout": 20000,
+      "pagination": {
+        "pagination": {
+          "paginationMode": "updateAParameterInEachRequest",
+          "parameters": {
+            "parameters": [{
+              "type": "qs",
+              "name": "offset",
+              "value": expr("{{ $response.body.offset }}")
+            }]
+          },
+          "paginationCompleteWhen": "other",
+          "completeExpression": expr("{{ !$response.body || !$response.body.offset }}"),
+          "limitPagesFetched": true,
+          "maxRequests": 20,
+          "requestInterval": 250
+        }
+      }
+    }
+  },
+  "credentials": {
+    "airtableTokenApi": {
+      "id": "ZZExampleAirtab1",
+      "name": "ZZ example Airtable token"
+    }
+  }
+} });
+
 // Pick Winners
-const n28 = node({ type: "n8n-nodes-base.code", version: 2, config: {
+const n29 = node({ type: "n8n-nodes-base.code", version: 2, config: {
   "name": "Pick Winners",
   "parameters": {
     "mode": "runOnceForAllItems",
-    "jsCode": "\nconst CFG = {\"messaging\":{\"mode\":\"twilio\",\"provider\":\"twilio\",\"twilio\":{\"accountSid\":\"AC00000000000000000000000000000000\",\"from\":\"+61491570006\",\"messagingServiceSid\":null,\"credential\":{\"id\":\"ZZExampleTwilio1\",\"name\":\"ZZ example Twilio API key\"},\"inboundAuth\":\"signature\",\"signatureVariable\":\"LITE_TWILIO_AUTH_TOKEN\",\"inboundCredential\":null,\"allowedRecipients\":[\"+61491570156\",\"+61491570157\",\"+61491570158\",\"+61491570159\",\"+61491570110\"],\"allowAllRecipients\":false}}};\nconst clean = (s) => String(s == null ? '' : s).trim();\nconst normPhone = (s) => { let d = clean(s).replace(/[^0-9+]/g, ''); if (d.startsWith('+61')) d = '0' + d.slice(3); d = d.replace(/[^0-9]/g, ''); return /^0[2-478][0-9]{8}$/.test(d) ? d : ''; };\n/** Australian national number (04xx xxx xxx) to E.164 (+614xxxxxxxx), as Twilio needs it. */\nconst toE164 = (s) => { const n = normPhone(s); return n ? '+61' + n.slice(1) : ''; };\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n\nconst p = $('Plan Acknowledgement').first().json;\nconst created = $('Reservation Check').first().json.created;\nconst rows = $('Find Reservations').isExecuted ? records($('Find Reservations').first().json, 'find reservations') : [];\nconst T = CFG.messaging.mode === 'twilio' ? CFG.messaging.twilio : null;\nconst allowed = (n) => !T || T.allowAllRecipients === true || T.allowedRecipients.indexOf(n) >= 0;\nconst decisions = p.sends.map((s) => {\n  const mine = created[s.key];\n  if (!mine) throw new Error('reserve messages: no Message Log row was written for ' + s.key);\n  const first = rows.filter((r) => (r.fields || {})['Dedupe Key'] === s.key && (r.fields || {}).Status !== 'Skipped')\n    .sort((a, b) => (Date.parse(a.createdTime) - Date.parse(b.createdTime)) || (a.id < b.id ? -1 : 1))[0];\n  const d = { key: s.key, logId: mine, channel: s.channel, to: s.to, body: s.body };\n  if (first && first.id !== mine) {\n    // Two copies of one form reserve within moments of each other. A message reserved long before belongs to an earlier\n    // enquiry: this one is not sent again today, but it is not a duplicate of it either (its job is kept).\n    const me = rows.find((r) => r.id === mine);\n    const together = !me || Math.abs(Date.parse(me.createdTime) - Date.parse(first.createdTime)) <= 10 * 60000;\n    const ref = first.fields['Log Ref'] || first.id;\n    return Object.assign(d, together ? { action: 'lost', reason: 'duplicate: ' + ref + ' already handles this message' }\n      : { action: 'repeat', reason: 'not sent: ' + ref + ' already sent this message earlier today' });\n  }\n  if (T && !allowed(toE164(s.to))) return Object.assign(d, { action: 'blocked', reason: 'not sent: ' + toE164(s.to) + ' is not on the live test allowlist' });\n  return Object.assign(d, { action: 'deliver', to164: toE164(s.to) });\n});\nconst go = decisions.filter((d) => d.action === 'deliver');\nif (!go.length) return [{ json: { none: true, decisions: decisions } }];\nreturn go.map((d, i) => ({ json: Object.assign({}, d, i === 0 ? { decisions: decisions } : {}) }));"
+    "jsCode": "\nconst CFG = {\"messaging\":{\"mode\":\"twilio\",\"provider\":\"twilio\",\"twilio\":{\"accountSid\":\"AC00000000000000000000000000000000\",\"from\":\"+61491570006\",\"messagingServiceSid\":null,\"credential\":{\"id\":\"ZZExampleTwilio1\",\"name\":\"ZZ example Twilio API key\"},\"inboundAuth\":\"signature\",\"signatureVariable\":\"LITE_TWILIO_AUTH_TOKEN\",\"inboundCredential\":null,\"allowedRecipients\":[\"+61491570156\",\"+61491570157\",\"+61491570158\",\"+61491570159\",\"+61491570110\"],\"allowAllRecipients\":false}}};\nconst clean = (s) => String(s == null ? '' : s).trim();\nconst normPhone = (s) => { let d = clean(s).replace(/[^0-9+]/g, ''); if (d.startsWith('+61')) d = '0' + d.slice(3); d = d.replace(/[^0-9]/g, ''); return /^0[2-478][0-9]{8}$/.test(d) ? d : ''; };\n/** Australian national number (04xx xxx xxx) to E.164 (+614xxxxxxxx), as Twilio needs it. */\nconst toE164 = (s) => { const n = normPhone(s); return n ? '+61' + n.slice(1) : ''; };\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n/** Every record of a paginated list (one item per page). An Error if a page failed or the page limit cut it short. */\nconst allRecords = (items, step) => {\n  const out = [];\n  items.forEach((i) => { records(i.json, step).forEach((r) => out.push(r)); });\n  const last = items.length ? items[items.length - 1].json : null;\n  if (last && last.body && last.body.offset) throw new Error(step + ': more than ' + out.length + ' records; the list could not be read completely');\n  return out;\n};\n\nconst p = $('Plan Acknowledgement').first().json;\nconst created = $('Reservation Check').first().json.created;\nconst rows = $('Find Reservations').isExecuted ? records($('Find Reservations').first().json, 'find reservations') : [];\n// A number that replied STOP is never sent to, whatever its contact records say. If this list cannot be read completely,\n// the run fails here and nothing is sent.\nconst stopped = {}; ($('Find Suppressions').isExecuted ? allRecords($('Find Suppressions').all(), 'find suppressions') : [])\n  .forEach((r) => { stopped[clean((r.fields || {}).To).replace(/^from /, '')] = (r.fields || {})['Log Ref'] || r.id; });\nconst T = CFG.messaging.mode === 'twilio' ? CFG.messaging.twilio : null;\nconst allowed = (n) => !T || T.allowAllRecipients === true || T.allowedRecipients.indexOf(n) >= 0;\nconst decisions = p.sends.map((s) => {\n  const mine = created[s.key];\n  if (!mine) throw new Error('reserve messages: no Message Log row was written for ' + s.key);\n  const first = rows.filter((r) => (r.fields || {})['Dedupe Key'] === s.key && (r.fields || {}).Status !== 'Skipped')\n    .sort((a, b) => (Date.parse(a.createdTime) - Date.parse(b.createdTime)) || (a.id < b.id ? -1 : 1))[0];\n  const d = { key: s.key, logId: mine, channel: s.channel, to: s.to, body: s.body };\n  if (first && first.id !== mine) {\n    // Two copies of one form reserve within moments of each other. A message reserved long before belongs to an earlier\n    // enquiry: this one is not sent again today, but it is not a duplicate of it either (its job is kept).\n    const me = rows.find((r) => r.id === mine);\n    const together = !me || Math.abs(Date.parse(me.createdTime) - Date.parse(first.createdTime)) <= 10 * 60000;\n    const ref = first.fields['Log Ref'] || first.id;\n    return Object.assign(d, together ? { action: 'lost', reason: 'duplicate: ' + ref + ' already handles this message' }\n      : { action: 'repeat', reason: 'not sent: ' + ref + ' already sent this message earlier today' });\n  }\n  if (stopped[clean(s.to)]) return Object.assign(d, { action: 'blocked', reason: 'not sent: this number replied STOP (' + stopped[clean(s.to)] + ')' });\n  if (T && !allowed(toE164(s.to))) return Object.assign(d, { action: 'blocked', reason: 'not sent: ' + toE164(s.to) + ' is not on the live test allowlist' });\n  return Object.assign(d, { action: 'deliver', to164: toE164(s.to) });\n});\nconst go = decisions.filter((d) => d.action === 'deliver');\nif (!go.length) return [{ json: { none: true, decisions: decisions } }];\nreturn go.map((d, i) => ({ json: Object.assign({}, d, i === 0 ? { decisions: decisions } : {}) }));"
   }
 } });
 
 // Anything To Send?
-const n29 = ifElse({ version: 2.3, config: {
+const n30 = ifElse({ version: 2.3, config: {
   "name": "Anything To Send?",
   "parameters": {
     "conditions": {
@@ -583,7 +637,7 @@ const n29 = ifElse({ version: 2.3, config: {
 } });
 
 // Send SMS (Twilio)
-const n30 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
+const n31 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
   "name": "Send SMS (Twilio)",
   "onError": "continueRegularOutput",
   "parameters": {
@@ -628,7 +682,7 @@ const n30 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
 } });
 
 // Record Results
-const n31 = node({ type: "n8n-nodes-base.code", version: 2, config: {
+const n32 = node({ type: "n8n-nodes-base.code", version: 2, config: {
   "name": "Record Results",
   "parameters": {
     "mode": "runOnceForAllItems",
@@ -637,7 +691,7 @@ const n31 = node({ type: "n8n-nodes-base.code", version: 2, config: {
 } });
 
 // Updates To Write?
-const n32 = ifElse({ version: 2.3, config: {
+const n33 = ifElse({ version: 2.3, config: {
   "name": "Updates To Write?",
   "parameters": {
     "conditions": {
@@ -661,7 +715,7 @@ const n32 = ifElse({ version: 2.3, config: {
 } });
 
 // Write Updates
-const n33 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
+const n34 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
   "name": "Write Updates",
   "onError": "continueRegularOutput",
   "parameters": {
@@ -695,8 +749,9 @@ export default workflow("roofops-lite-lead-follow-up", "[Lite] Instant Lead Foll
   .add(n24).to(n25)
   .add(n22).to(n23)
   .add(n27).to(n28)
-  .add(n30).to(n31)
-  .add(n33).to(n20)
+  .add(n28).to(n29)
+  .add(n31).to(n32)
+  .add(n34).to(n20)
   .add(n0).to(n1)
   .add(n4).to(n5)
   .add(n5).to(n6)
@@ -712,14 +767,14 @@ export default workflow("roofops-lite-lead-follow-up", "[Lite] Instant Lead Foll
   .add(n18).to(n19)
   .add(n19).to(n22)
   .add(n25).to(n26)
-  .add(n28).to(n29)
-  .add(n31).to(n32)
+  .add(n29).to(n30)
+  .add(n32).to(n33)
   .add(n20).to(n21)
   .add(n2.onTrue(n4).onFalse(n3))
   .add(n8.onTrue(n9).onFalse(n12))
   .add(n12.onTrue(n13).onFalse(n14))
   .add(n15.onTrue(n16).onFalse(n17))
   .add(n23.onTrue(n24).onFalse(n25))
-  .add(n26.onTrue(n27).onFalse(n28))
-  .add(n29.onTrue(n30).onFalse(n31))
-  .add(n32.onTrue(n33).onFalse(n20));
+  .add(n26.onTrue(n27).onFalse(n29))
+  .add(n30.onTrue(n31).onFalse(n32))
+  .add(n33.onTrue(n34).onFalse(n20));

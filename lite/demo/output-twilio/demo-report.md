@@ -1,7 +1,7 @@
-# RoofOps Lite demo run (2026-10-21T11:54:27.336Z)
+# RoofOps Lite demo run (2026-10-21T12:43:01.270Z)
 
 Config: `lite/config/example-plumbing-twilio.json` (ZZ Example Plumbing (test client)). Messaging: **twilio** against a LOCAL FAKE of the Twilio API (signed webhooks, real error codes): nothing was sent to a real phone or inbox.
-Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Follow-Up (34 nodes), [Lite] Google Review Requests (20 nodes), [Lite] Lead Reactivation (20 nodes), [Lite] Inbound Replies (30 nodes), [Lite] Monitor (36 nodes).
+Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Follow-Up (35 nodes), [Lite] Google Review Requests (21 nodes), [Lite] Lead Reactivation (21 nodes), [Lite] Inbound Replies (32 nodes), [Lite] Monitor (37 nodes).
 
 ## Steps
 
@@ -13,7 +13,7 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
  "body": {
   "ok": true,
   "duplicate": false,
-  "job_ref": "LJ-20261021-4SJJ",
+  "job_ref": "LJ-20261021-0OT9",
   "new_contact": true,
   "stage": "Contacted",
   "acknowledgement": {
@@ -33,7 +33,7 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
  "body": {
   "ok": true,
   "duplicate": true,
-  "job_ref": "LJ-20261021-4SJJ",
+  "job_ref": "LJ-20261021-0OT9",
   "message": "We already have this enquiry and will be in touch."
  }
 }
@@ -61,7 +61,7 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
  "body": {
   "ok": true,
   "duplicate": false,
-  "job_ref": "LJ-20261021-WFRE",
+  "job_ref": "LJ-20261021-MTG3",
   "new_contact": true,
   "stage": "New Lead",
   "acknowledgement": {
@@ -78,7 +78,7 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-21T11:54:27.195Z",
+ "ran_at": "2026-10-21T12:43:01.045Z",
  "mode": "twilio",
  "sent": 2,
  "failed": 0,
@@ -106,7 +106,7 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-21T11:54:27.202Z",
+ "ran_at": "2026-10-21T12:43:01.054Z",
  "mode": "twilio",
  "sent": 0,
  "failed": 0,
@@ -130,7 +130,7 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-21T11:54:27.216Z",
+ "ran_at": "2026-10-21T12:43:01.076Z",
  "mode": "twilio",
  "sent": 1,
  "failed": 0,
@@ -157,7 +157,7 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-21T11:54:27.223Z",
+ "ran_at": "2026-10-21T12:43:01.085Z",
  "mode": "twilio",
  "sent": 0,
  "failed": 0,
@@ -202,7 +202,7 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-21T11:54:27.261Z",
+ "ran_at": "2026-10-21T12:43:01.134Z",
  "mode": "twilio",
  "sent": 0,
  "failed": 0,
@@ -240,7 +240,7 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
  "body": {
   "ok": true,
   "duplicate": false,
-  "job_ref": "LJ-20261021-5PVR",
+  "job_ref": "LJ-20261021-3O4P",
   "new_contact": true,
   "stage": "New Lead",
   "acknowledgement": {
@@ -257,7 +257,7 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-21T11:54:27.306Z",
+ "ran_at": "2026-10-21T12:43:01.216Z",
  "mode": "twilio",
  "alerts_raised": 2,
  "problem_messages": 1,
@@ -265,24 +265,24 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
  "failed": 1,
  "unknown": 0,
  "retry_requests": 0,
+ "retry_held": 0,
  "stale_leads": 1,
  "completed_at_recorded": 0,
  "retried": 0,
  "found_already_sent": 0,
  "retry_postponed": 0,
- "retry_held": 0,
  "resent": 0,
  "resend_failed": 0,
  "resend_unknown": 0
 }
 ```
 
-### 15. Staff fix the number and tick Retry Requested; Monitor checks Twilio first, then resends once
+### 15. Staff fix the number and tick Retry Requested; Twilio refused it, so Monitor resends it once
 
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-21T11:54:27.324Z",
+ "ran_at": "2026-10-21T12:43:01.250Z",
  "mode": "twilio",
  "alerts_raised": 0,
  "problem_messages": 1,
@@ -290,12 +290,12 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
  "failed": 1,
  "unknown": 0,
  "retry_requests": 1,
+ "retry_held": 0,
  "stale_leads": 1,
  "completed_at_recorded": 0,
  "retried": 1,
  "found_already_sent": 0,
  "retry_postponed": 0,
- "retry_held": 0,
  "resent": 1,
  "resend_failed": 0,
  "resend_unknown": 0
@@ -307,7 +307,7 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-21T11:54:27.335Z",
+ "ran_at": "2026-10-21T12:43:01.268Z",
  "mode": "twilio",
  "alerts_raised": 0,
  "problem_messages": 1,
@@ -315,12 +315,12 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
  "failed": 1,
  "unknown": 0,
  "retry_requests": 0,
+ "retry_held": 0,
  "stale_leads": 1,
  "completed_at_recorded": 0,
  "retried": 0,
  "found_already_sent": 0,
  "retry_postponed": 0,
- "retry_held": 0,
  "resent": 0,
  "resend_failed": 0,
  "resend_unknown": 0
@@ -331,8 +331,8 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
 
 | Stage | Jobs |
 |---|---|
-| New Lead | LJ-DEMO-A3, LJ-20261021-WFRE |
-| Contacted | LJ-DEMO-A2, LJ-DEMO-A5, LJ-20261021-4SJJ, LJ-20261021-5PVR |
+| New Lead | LJ-DEMO-A3, LJ-20261021-MTG3 |
+| Contacted | LJ-DEMO-A2, LJ-DEMO-A5, LJ-20261021-0OT9, LJ-20261021-3O4P |
 | Quoted | LJ-DEMO-A1, LJ-DEMO-A4, LJ-DEMO-A6, LJ-DEMO-A7 |
 | Accepted | LJ-DEMO-P1 |
 | Job In Progress | LJ-DEMO-P2 |
@@ -345,9 +345,9 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
 
 | Workflow | Purpose | Contact | Job | Channel | Status | Reason / To |
 |---|---|---|---|---|---|---|
-| Lead Follow-Up | Operational | ZZ Lite Demo Emma Walsh | LJ-20261021-4SJJ | SMS | Delivered | 0400000201 |
-| Lead Follow-Up | Operational | ZZ Lite Demo Emma Walsh | LJ-20261021-4SJJ |  | Skipped | repeat enquiry within 30 days of LJ-20261021-4SJJ |
-| Lead Follow-Up | Operational | ZZ Lite Demo Ethan Cole | LJ-20261021-WFRE |  | Skipped | no SMS consent or no mobile number |
+| Lead Follow-Up | Operational | ZZ Lite Demo Emma Walsh | LJ-20261021-0OT9 | SMS | Delivered | 0400000201 |
+| Lead Follow-Up | Operational | ZZ Lite Demo Emma Walsh | LJ-20261021-0OT9 |  | Skipped | repeat enquiry within 30 days of LJ-20261021-0OT9 |
+| Lead Follow-Up | Operational | ZZ Lite Demo Ethan Cole | LJ-20261021-MTG3 |  | Skipped | no SMS consent or no mobile number |
 | Review Request | Review | ZZ Lite Demo Marcus Webb | LJ-DEMO-R2 |  | Skipped | no SMS consent or no mobile number |
 | Review Request | Review | ZZ Lite Demo Priya Nair | LJ-DEMO-R3 |  | Skipped | opted out |
 | Review Request | Review | ZZ Lite Demo Tom Fraser | LJ-DEMO-R4 |  | Skipped | no permission for review requests |
@@ -357,14 +357,14 @@ Workflows built into `lite\demo\output-twilio\workflows`: [Lite] Instant Lead Fo
 | Reactivation | Marketing | ZZ Lite Demo Daniel Brooks | LJ-DEMO-A1 | SMS | Sent | 0400000106 |
 | Inbound Reply | Inbound | ZZ Lite Demo Daniel Brooks | LJ-DEMO-A1 | SMS | Received | reply recorded; enquiry reopened for a call |
 | Inbound Reply | Inbound | ZZ Lite Demo Olivia Chen | LJ-DEMO-R1 | SMS | Opt-Out | contact opted out of all messages |
-| Lead Follow-Up | Operational | ZZ Lite Demo Sam Typo | LJ-20261021-5PVR | SMS | Failed | invalid phone number (not sent); resent as attempt 2 |
-| Lead Follow-Up | Operational | ZZ Lite Demo Sam Typo | LJ-20261021-5PVR | SMS | Sent | 0400000302 |
+| Lead Follow-Up | Operational | ZZ Lite Demo Sam Typo | LJ-20261021-3O4P | SMS | Failed | invalid phone number (not sent); resent as attempt 2 |
+| Lead Follow-Up | Operational | ZZ Lite Demo Sam Typo | LJ-20261021-3O4P | SMS | Sent | 0400000302 |
 
 ## Lite Alerts
 
 | Kind | Record | Detail |
 |---|---|---|
-| Delivery Failed | LM-20261021115427-PTN6 | Lead Follow-Up message to 0400000301 failed: invalid phone number (not sent). Fix the cause, then tick Retry Requested. |
+| Delivery Failed | LM-20261021124301-2UXB | Lead Follow-Up message to 0400000301 failed: invalid phone number (not sent). Fix the cause, then tick Retry Requested. |
 | Stuck Lead | LJ-DEMO-A3 | New Lead for more than 24 hours: nobody has contacted them yet. |
 
 ## What the fake Twilio received (accepted messages)

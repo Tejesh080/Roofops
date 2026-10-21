@@ -152,28 +152,36 @@ if (contact) lf.Contact = [contact.id];
 if (job) lf.Job = [job.id];
 return [{ json: { known: !!contact, optOut: optOut, from: R.from, optOutRequests: optOutRequests, jobUpdate: jobUpdate, hasContactUpdate: optOutRequests.length > 0, hasJobUpdate: !!jobUpdate,
   job_ref: job ? job.fields['Job Ref'] : null, log: { typecast: false, records: [{ fields: lf }] } } }];`);
-const needOptOut = OK_IF('Opt Out Contact?', '{{ $json.hasContactUpdate }}');
+// The reply is logged first. For a STOP, that row (Status Opt-Out, To "from <number>") is the number's suppression: every
+// send reads it just before sending, so the STOP holds even if some contact updates below fail. Saving it is tried twice.
+const logRequest = code('Log Reply Request', `
+return [{ json: { request: $('Classify Reply').first().json.log } }];`);
+const writeLog = airtableWrite('Write Reply Log', 'POST', T.messages);
+const logSaved = OK_IF('Reply Log Saved?', '{{ $json.statusCode === 200 }}');
+const writeLogAgain = airtableWrite('Write Reply Log Again', 'POST', T.messages, "{{ JSON.stringify($('Log Reply Request').first().json.request) }}");
+const needOptOut = OK_IF('Opt Out Contact?', "{{ $('Classify Reply').first().json.hasContactUpdate }}");
 const optOutBatches = code('Opt Out Batches', `
 return $('Classify Reply').first().json.optOutRequests.map((r) => ({ json: { request: r } }));`);
 const optOutContact = airtableWrite('Opt Out Contact', 'PATCH', T.contacts, undefined, { batching: { batch: { batchSize: 4, batchInterval: 1000 } } });   // within Airtable's 5 per second
 const afterContact = code('After Contact', `
 const c = $('Classify Reply').first().json;
-// Every batch must land: a STOP that is only partly applied fails the run with the reason ([Lite] Monitor raises it).
-if ($('Opt Out Contact').isExecuted) {
-  const res = $('Opt Out Contact').all(); const errors = [];
-  res.forEach((i) => { try { records(i.json, 'opt out contact'); } catch (e) { errors.push(e.message); } });
-  if (errors.length) throw new Error('STOP from ' + c.from + ' was not fully applied: ' + errors.length + ' of ' + res.length + ' opt-out batches failed (' + errors[0]
-    + '). Opt out by hand every contact with this number.');
-}
+// The log row must be saved (first or second try); then every contact update. Either failure fails the run with the
+// reason ([Lite] Monitor raises it). The contacts are updated even when the log could not be saved.
+const tries = [$('Write Reply Log').first().json].concat($('Write Reply Log Again').isExecuted ? [$('Write Reply Log Again').first().json] : []);
+let saved = false; let why = '';
+tries.forEach((t) => { try { records(t, 'write reply log'); saved = true; } catch (e) { why = e.message; } });
+const res = $('Opt Out Contact').isExecuted ? $('Opt Out Contact').all() : []; const errors = [];
+res.forEach((i) => { try { records(i.json, 'opt out contact'); } catch (e) { errors.push(e.message); } });
+const contacts = errors.length + ' of ' + res.length + ' contact updates failed' + (errors.length ? ' (' + errors[0] + ')' : '');
+if (!saved && c.optOut) throw new Error('STOP from ' + c.from + ' could not be saved, so the number is NOT suppressed (' + why + '); ' + contacts
+  + '. Record the STOP and opt out every contact with this number by hand.');
+if (!saved) throw new Error('reply from ' + c.from + ' could not be logged (' + why + ')');
+if (errors.length) throw new Error('STOP from ' + c.from + ' is saved and the number is suppressed, but ' + contacts + '; tick Opted Out on the remaining contacts with this number.');
 return [{ json: { hasJobUpdate: c.hasJobUpdate } }];`);
 const needJob = OK_IF('Reopen Job?', '{{ $json.hasJobUpdate }}');
 const reopenJob = airtableWrite('Reopen Job', 'PATCH', T.jobs, "{{ JSON.stringify($('Classify Reply').first().json.jobUpdate) }}");
-const logRequest = code('Log Reply Request', `
-if ($('Reopen Job').isExecuted) records($('Reopen Job').first().json, 'reopen job');
-return [{ json: { request: $('Classify Reply').first().json.log } }];`);
-const writeLog = airtableWrite('Write Reply Log', 'POST', T.messages);
 const replyResponse = code('Reply Response', `
-records($input.first().json, 'write reply log');
+if ($('Reopen Job').isExecuted) records($('Reopen Job').first().json, 'reopen job');
 const c = $('Classify Reply').first().json;
 // Twilio gets an empty TwiML answer (nothing is sent back to the person); other callers get JSON.
 return [{ json: { response: { status: 200, body: { ok: true, known_contact: c.known, opted_out: c.optOut, job_ref: c.job_ref },
@@ -184,9 +192,11 @@ export default workflow('roofops-lite-inbound-replies', '[Lite] Inbound Replies'
   .add(hook).to(validate).to(valid
     .onTrue(isStatus
       .onTrue(findSent.to(applyStatus).to(needAlert.onTrue(saveAlert.to(receiptUpdates)).onFalse(receiptUpdates)))
-      .onFalse(findHistory.to(senderFormula).to(findContact).to(jobsFormula).to(findJobs).to(classify).to(needOptOut.onTrue(optOutBatches.to(optOutContact).to(afterContact)).onFalse(afterContact))))
+      .onFalse(findHistory.to(senderFormula).to(findContact).to(jobsFormula).to(findJobs).to(classify).to(logRequest).to(writeLog)
+        .to(logSaved.onTrue(needOptOut.onTrue(optOutBatches.to(optOutContact).to(afterContact)).onFalse(afterContact)).onFalse(writeLogAgain))))
     .onFalse(rejected))
+  .add(writeLogAgain).to(needOptOut)
   .add(receiptUpdates).to(anyStatus.onTrue(writeStatus.to(statusResponse)).onFalse(statusResponse))
   .add(statusResponse).to(respondStatus)
-  .add(afterContact).to(needJob.onTrue(reopenJob.to(logRequest)).onFalse(logRequest))
-  .add(logRequest).to(writeLog).to(replyResponse).to(respondOk);
+  .add(afterContact).to(needJob.onTrue(reopenJob.to(replyResponse)).onFalse(replyResponse))
+  .add(replyResponse).to(respondOk);

@@ -81,9 +81,12 @@ needs an upgraded account with the business's own number.
 - **Who STOP opts out.** It applies to every contact with that number, including duplicate records of the same person.
   It also applies to every contact Lite has messaged at that number before, so a number changed in the CRM since
   cannot make a STOP go unheard. It may opt out more than one record; it never opts out too few.
-- **However many there are.** Lite reads every page of matches (up to 2,000) and opts them out in batches of 10. If
-  any batch fails, or there are more, the run fails with the reason, and [Lite] Monitor raises it as an alert. Opt
-  the rest out by hand. It is never a quiet partial opt-out.
+- **The number itself is suppressed first.** The STOP's own row in the Message Log (Status Opt-Out) is saved before
+  any contact is updated, with one retry. Every Lite message reads these rows just before it is sent, so nothing goes
+  to that number again, even if a contact record was missed. If the rows cannot be read, nothing is sent.
+- **However many contacts there are.** Lite reads every page of matches (up to 2,000) and opts them out in batches of
+  10. If any update fails, or the STOP row could not be saved, the run fails with the reason, and [Lite] Monitor
+  raises it as an alert. Then opt the contacts out by hand (and, if the STOP row is missing, record the STOP).
 - Twilio error 21610 ("unsubscribed recipient") also opts the contact out.
 - An opted-out contact gets **nothing** from Lite again: no acknowledgement, review request, reactivation or retry.
 - **Retries recheck consent.** A retry is sent only if the person still has the permission it needs: SMS consent, and
@@ -92,7 +95,8 @@ needs an upgraded account with the business's own number.
   wording [reviews] and [marketing]. Service consent on a form never makes an older, unrecorded marketing tick usable.
   Earlier consent evidence is kept when a returning person ticks a new box.
 - **START** is only logged for staff. Lite never re-subscribes anyone by itself. Staff untick Opted Out only when the
-  person clearly asks again, and record that consent.
+  person clearly asks again, and record that consent. The number stays suppressed by its Opt-Out row. To let Lite
+  message it again, the owner also sets that row's Status to Received; the row and its text stay as the record.
 - A new form from an opted-out person creates the enquiry but does not message them, and does not undo the opt-out.
 
 ## What stays with the business

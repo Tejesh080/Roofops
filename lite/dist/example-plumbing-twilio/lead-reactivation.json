@@ -91,7 +91,7 @@
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** Text inside a single-quoted Airtable formula string: quotes and backslashes are escaped, never dropped (an address\n * like o'brien@ must not turn into obrien@ and match someone else). */\nconst formulaText = (s) => clean(s).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"\\\\'\");\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n\nconst jobs = records($input.first().json, 'find quiet leads');\nconst ids = Array.from(new Set(jobs.map((j) => ((j.fields || {}).Contact || [])[0]).filter(Boolean)));\nreturn [{ json: { contactFormula: ids.length ? 'OR(' + ids.map((i) => \"RECORD_ID()='\" + formulaText(i) + \"'\").join(',') + ')' : 'FALSE()' } }];"
+        "jsCode": "\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** Text inside a single-quoted Airtable formula string: quotes and backslashes are escaped, never dropped (an address\n * like o'brien@ must not turn into obrien@ and match someone else). */\nconst formulaText = (s) => clean(s).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"\\\\'\");\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n\nconst jobs = records($input.first().json, 'find quiet leads');\nconst ids = Array.from(new Set(jobs.map((j) => ((j.fields || {}).Contact || [])[0]).filter(Boolean)));\n// The earlier follow-ups of exactly these jobs (their Dedupe Key starts reactivation:<job>:), read to the last page.\nconst history = jobs.map((j) => \"FIND('reactivation:\" + formulaText(j.id) + \":',{Dedupe Key})\");\nreturn [{ json: { contactFormula: ids.length ? 'OR(' + ids.map((i) => \"RECORD_ID()='\" + formulaText(i) + \"'\").join(',') + ')' : 'FALSE()',\n  historyFormula: history.length ? \"AND({Workflow}='Reactivation',{Status}!='Skipped',OR(\" + history.join(',') + '))' : 'FALSE()' } }];"
       }
     },
     {
@@ -158,7 +158,7 @@
           "parameters": [
             {
               "name": "filterByFormula",
-              "value": "=AND({Workflow}='Reactivation',{Status}!='Skipped')"
+              "value": "={{ $('Contact Formula').first().json.historyFormula }}"
             },
             {
               "name": "pageSize",
@@ -173,7 +173,26 @@
               "neverError": true
             }
           },
-          "timeout": 20000
+          "timeout": 20000,
+          "pagination": {
+            "pagination": {
+              "paginationMode": "updateAParameterInEachRequest",
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "qs",
+                    "name": "offset",
+                    "value": "={{ $response.body.offset }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body || !$response.body.offset }}",
+              "limitPagesFetched": true,
+              "maxRequests": 20,
+              "requestInterval": 250
+            }
+          }
         }
       },
       "credentials": {
@@ -195,7 +214,7 @@
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "\nconst CFG = {\"reactivation\":{\"inactivityDays\":60,\"cooldownDays\":180,\"maxPerRun\":20,\"stages\":[\"New Lead\",\"Contacted\",\"Quoted\"],\"sms\":\"Hi {firstName}, it's {businessName}. You asked us about {service} a while ago - is it still on your list? Reply YES and we'll call you to book a free inspection. Reply STOP to opt out.\",\"emailSubject\":\"Still thinking about your {service}? - {businessName}\",\"email\":\"Hi {firstName},\\n\\nA while ago you asked {businessName} about {service}. If it's still on your list, just reply to this email and we'll book a free inspection at a time that suits you.\\n\\n{signoff}\\n\\nDon't want these emails? Reply STOP.\"},\"business\":{\"name\":\"ZZ Example Plumbing (test client)\",\"trade\":\"plumbing\",\"phone\":\"1300 000 001\",\"signoff\":\"The ZZ Example Plumbing team\",\"timezone\":\"Australia/Sydney\"},\"reviews\":{\"googleReviewUrl\":\"https://g.page/r/ZZ-EXAMPLE-PLUMBING/review\",\"delayDays\":1,\"maxPerRun\":20,\"sms\":\"Hi {firstName}, thanks for choosing {businessName} for your {service}. If you're happy with the work, a quick Google review would really help us: {reviewUrl} Reply STOP to opt out.\",\"emailSubject\":\"How did we do? - {businessName}\",\"email\":\"Hi {firstName},\\n\\nThanks for choosing {businessName} for your {service}. If you are happy with the result, we would be grateful for a short Google review:\\n{reviewUrl}\\n\\n{signoff}\\n\\nReply STOP to stop these emails.\"},\"messaging\":{\"mode\":\"twilio\",\"provider\":\"twilio\",\"twilio\":{\"accountSid\":\"AC00000000000000000000000000000000\",\"from\":\"+61491570006\",\"messagingServiceSid\":null,\"credential\":{\"id\":\"ZZExampleTwilio1\",\"name\":\"ZZ example Twilio API key\"},\"inboundAuth\":\"signature\",\"signatureVariable\":\"LITE_TWILIO_AUTH_TOKEN\",\"inboundCredential\":null,\"allowedRecipients\":[\"+61491570156\",\"+61491570157\",\"+61491570158\",\"+61491570159\",\"+61491570110\"],\"allowAllRecipients\":false}},\"consent\":{\"jurisdiction\":\"AU\",\"formName\":\"Website form\",\"reviewRequests\":\"express\",\"wording\":{\"service\":\"Contact me about this enquiry and my job.\",\"reviews\":\"After the job, send me a link to leave a review.\",\"marketing\":\"Send me occasional reminders and offers. I can reply STOP at any time.\"}}};\nconst NOW = new Date();\nconst iso = (d) => new Date(d).toISOString();\nconst days = (n) => n * 24 * 60 * 60 * 1000;\nconst clean = (s) => String(s == null ? '' : s).trim();\nconst normEmail = (s) => { const e = clean(s).toLowerCase(); return /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(e) ? e : ''; };\nconst normPhone = (s) => { let d = clean(s).replace(/[^0-9+]/g, ''); if (d.startsWith('+61')) d = '0' + d.slice(3); d = d.replace(/[^0-9]/g, ''); return /^0[2-478][0-9]{8}$/.test(d) ? d : ''; };\nconst firstNameOf = (n) => clean(n).split(/\\s+/)[0] || 'there';\nconst render = (tpl, v) => String(tpl).replace(/\\{(\\w+)\\}/g, (m, k) => (v[k] == null ? m : String(v[k])));\nconst vars = (contact, job) => ({ firstName: contact['First Name'] || firstNameOf(contact.Name), businessName: CFG.business.name, businessPhone: CFG.business.phone,\n  signoff: CFG.business.signoff, service: (job && job.Service) || ('your ' + CFG.business.trade + ' job'), reviewUrl: CFG.reviews.googleReviewUrl });\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n/** Twilio sends SMS only; the test sink also simulates email. */\nconst CHANNELS = CFG.messaging.mode === 'twilio' ? ['SMS'] : ['SMS', 'Email'];\n/** Which channel may carry a message to this contact: the preferred one if it is consented and reachable, else the other. */\nconst channelFor = (c) => {\n  if (c['Opted Out']) return { skip: 'opted out' };\n  const can = { SMS: CHANNELS.includes('SMS') && !!c['Consent SMS'] && !!normPhone(c.Phone), Email: CHANNELS.includes('Email') && !!c['Consent Email'] && !!normEmail(c.Email) };\n  const order = c['Preferred Channel'] === 'Email' ? ['Email', 'SMS'] : ['SMS', 'Email'];\n  const ch = order.find((x) => can[x]);\n  if (!ch) return { skip: CHANNELS.length === 1 ? 'no SMS consent or no mobile number' : 'no consent or no reachable contact detail' };\n  return { channel: ch, to: ch === 'SMS' ? normPhone(c.Phone) : normEmail(c.Email) };\n};\n/**\n * Whether a message of this purpose may go to this contact (null) or why not. Operational: a reply to their own enquiry\n * (channel consent is checked by channelFor). Review and Marketing are commercial messages: they need express consent for\n * that purpose, recorded with a source and a date. Nothing is assumed for contacts without that record.\n */\nconst permission = (c, purpose) => {\n  if (c['Opted Out']) return 'opted out';\n  if (purpose === 'Operational') return null;\n  const evidence = !!(clean(c['Consent Source']) && !Number.isNaN(Date.parse(clean(c['Consent Recorded At']) || 'none')));\n  // The recorded wording must name the purpose (the form's words for it, or its tag [reviews] / [marketing]), whoever\n  // recorded it: consent given for one purpose never makes a ticked box for another usable.\n  const covers = (tag, w) => { const said = clean(c['Consent Wording']); return said.indexOf('[' + tag + ']') >= 0 || (!!clean(w) && said.indexOf(clean(w)) >= 0); };\n  if (purpose === 'Review') {\n    if (CFG.consent.reviewRequests === 'service') return null;\n    if (!c['Review Opt-In'] && !c['Marketing Opt-In']) return 'no permission for review requests';\n    if (!evidence) return 'consent not recorded (source and date)';\n    return (c['Review Opt-In'] && covers('reviews', CFG.consent.wording.reviews)) || (c['Marketing Opt-In'] && covers('marketing', CFG.consent.wording.marketing)) ? null\n      : 'review permission is not in the recorded consent wording';\n  }\n  if (!c['Marketing Opt-In']) return 'no marketing permission';\n  if (!evidence) return 'consent not recorded (source and date)';\n  return covers('marketing', CFG.consent.wording.marketing) ? null : 'marketing permission is not in the recorded consent wording';\n};\nconst logRef = (prefix) => prefix + '-' + iso(NOW).replace(/[-:TZ.]/g, '').slice(0, 14) + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();\n/** Message Log statuses that mean \"this message was attempted\": a run never sends that Dedupe Key again by itself. */\nconst ATTEMPTED = ['Simulated Sent', 'Sending', 'Sent', 'Delivered', 'Failed', 'Unknown'];\n/** A message to send: its Message Log fields, and the CRM updates to make once it is sent (onSuccess) or if another run already sent it (onLost). */\nconst outMessage = (o) => {\n  const subject = o.channel === 'Email' ? o.subject : null;\n  const fields = { 'Log Ref': logRef(o.prefix), Workflow: o.workflow, Purpose: o.purpose, Channel: o.channel, To: o.to,\n    Body: (subject ? 'Subject: ' + subject + '\\n\\n' : '') + o.body, 'Dedupe Key': o.key, Provider: CFG.messaging.provider, 'Attempted At': iso(NOW), 'Demo Data': !!o.demo };\n  if (o.jobId) fields.Job = [o.jobId];\n  if (o.contactId) fields.Contact = [o.contactId];\n  return { key: o.key, purpose: o.purpose, channel: o.channel, to: o.to, body: o.body, subject: subject, contactId: o.contactId || null, fields: fields, onSuccess: o.onSuccess || [], onLost: o.onLost || [] };\n};\n\nconst jobs = records($('Find Quiet Leads').first().json, 'find quiet leads');\nconst contacts = {}; records($('Find Contacts').first().json, 'find contacts').forEach((c) => { contacts[c.id] = c; });\n// Every earlier follow-up for a job counts, whatever month it was in (the Dedupe Key carries the month, the Job link does not).\nconst earlier = {}; records($input.first().json, 'find earlier follow-ups').forEach((m) => { const f = m.fields || {}; if (ATTEMPTED.indexOf(f.Status) < 0) return;\n  const jobId = (f.Job || [])[0] || clean(f['Dedupe Key']).split(':')[1]; (earlier[jobId] = earlier[jobId] || []).push(f); });\nconst recent = (f) => NOW.getTime() - (Date.parse(f['Attempted At'] || '') || 0) < days(CFG.reactivation.cooldownDays);\nconst sends = [];\nconst summary = { open_leads: jobs.length, planned: 0, still_active: 0, excluded: 0, exclusion_reasons: {}, deferred_to_next_run: 0 };\nconst exclude = (why) => { summary.excluded++; summary.exclusion_reasons[why] = (summary.exclusion_reasons[why] || 0) + 1; };\nconst period = iso(NOW).slice(0, 7);\n// Oldest activity first, so the longest-waiting people are followed up first when the run is capped.\nconst lastOf = (f) => Date.parse(f['Last Activity At'] || f['Lead Received At'] || '');\njobs.sort((a, b) => (lastOf(a.fields || {}) || 0) - (lastOf(b.fields || {}) || 0));\nfor (const j of jobs) {\n  const f = j.fields || {};\n  const last = lastOf(f);\n  if (!last || NOW.getTime() - last < days(CFG.reactivation.inactivityDays)) { summary.still_active++; continue; }\n  const prev = Date.parse(f['Reactivation Sent At'] || '');\n  if (prev && NOW.getTime() - prev < days(CFG.reactivation.cooldownDays)) { exclude('followed up within the cooldown'); continue; }\n  const before = earlier[j.id] || [];\n  // An attempt with no confirmed outcome (Sending, Unknown) holds the job until someone decides; a failed one, for the cooldown.\n  if (before.some((x) => x.Status === 'Sending' || x.Status === 'Unknown' || (x.Status === 'Failed' && recent(x)))) { exclude('earlier attempt awaits a retry decision'); continue; }\n  if (before.some(recent)) { exclude('followed up within the cooldown'); continue; }\n  const key = 'reactivation:' + j.id + ':' + period;\n  const c = contacts[(f.Contact || [])[0]] || null;\n  if (!c) { exclude('no contact on the job'); continue; }\n  const cf = c.fields || {};\n  const ch = channelFor(cf);\n  const why = permission(cf, 'Marketing') || ch.skip;\n  if (why) { exclude(why); continue; }\n  if (summary.planned >= CFG.reactivation.maxPerRun) { summary.deferred_to_next_run++; continue; }\n  const v = vars(cf, f);\n  summary.planned++;\n  sends.push(outMessage({ prefix: 'RA', workflow: 'Reactivation', purpose: 'Marketing', key: key, jobId: j.id, contactId: c.id, demo: !!f['Demo Data'],\n    channel: ch.channel, to: ch.to, subject: render(CFG.reactivation.emailSubject, v), body: render(ch.channel === 'SMS' ? CFG.reactivation.sms : CFG.reactivation.email, v),\n    onSuccess: [{ table: 'jobs', id: j.id, fields: { 'Reactivation Sent At': iso(NOW), 'Reactivation Count': (Number(f['Reactivation Count']) || 0) + 1 } }] }));\n}\nreturn [{ json: { sends: sends, logs: [], updates: [], summary: summary } }];"
+        "jsCode": "\nconst CFG = {\"reactivation\":{\"inactivityDays\":60,\"cooldownDays\":180,\"maxPerRun\":20,\"stages\":[\"New Lead\",\"Contacted\",\"Quoted\"],\"sms\":\"Hi {firstName}, it's {businessName}. You asked us about {service} a while ago - is it still on your list? Reply YES and we'll call you to book a free inspection. Reply STOP to opt out.\",\"emailSubject\":\"Still thinking about your {service}? - {businessName}\",\"email\":\"Hi {firstName},\\n\\nA while ago you asked {businessName} about {service}. If it's still on your list, just reply to this email and we'll book a free inspection at a time that suits you.\\n\\n{signoff}\\n\\nDon't want these emails? Reply STOP.\"},\"business\":{\"name\":\"ZZ Example Plumbing (test client)\",\"trade\":\"plumbing\",\"phone\":\"1300 000 001\",\"signoff\":\"The ZZ Example Plumbing team\",\"timezone\":\"Australia/Sydney\"},\"reviews\":{\"googleReviewUrl\":\"https://g.page/r/ZZ-EXAMPLE-PLUMBING/review\",\"delayDays\":1,\"maxPerRun\":20,\"sms\":\"Hi {firstName}, thanks for choosing {businessName} for your {service}. If you're happy with the work, a quick Google review would really help us: {reviewUrl} Reply STOP to opt out.\",\"emailSubject\":\"How did we do? - {businessName}\",\"email\":\"Hi {firstName},\\n\\nThanks for choosing {businessName} for your {service}. If you are happy with the result, we would be grateful for a short Google review:\\n{reviewUrl}\\n\\n{signoff}\\n\\nReply STOP to stop these emails.\"},\"messaging\":{\"mode\":\"twilio\",\"provider\":\"twilio\",\"twilio\":{\"accountSid\":\"AC00000000000000000000000000000000\",\"from\":\"+61491570006\",\"messagingServiceSid\":null,\"credential\":{\"id\":\"ZZExampleTwilio1\",\"name\":\"ZZ example Twilio API key\"},\"inboundAuth\":\"signature\",\"signatureVariable\":\"LITE_TWILIO_AUTH_TOKEN\",\"inboundCredential\":null,\"allowedRecipients\":[\"+61491570156\",\"+61491570157\",\"+61491570158\",\"+61491570159\",\"+61491570110\"],\"allowAllRecipients\":false}},\"consent\":{\"jurisdiction\":\"AU\",\"formName\":\"Website form\",\"reviewRequests\":\"express\",\"wording\":{\"service\":\"Contact me about this enquiry and my job.\",\"reviews\":\"After the job, send me a link to leave a review.\",\"marketing\":\"Send me occasional reminders and offers. I can reply STOP at any time.\"}}};\nconst NOW = new Date();\nconst iso = (d) => new Date(d).toISOString();\nconst days = (n) => n * 24 * 60 * 60 * 1000;\nconst clean = (s) => String(s == null ? '' : s).trim();\nconst normEmail = (s) => { const e = clean(s).toLowerCase(); return /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(e) ? e : ''; };\nconst normPhone = (s) => { let d = clean(s).replace(/[^0-9+]/g, ''); if (d.startsWith('+61')) d = '0' + d.slice(3); d = d.replace(/[^0-9]/g, ''); return /^0[2-478][0-9]{8}$/.test(d) ? d : ''; };\nconst firstNameOf = (n) => clean(n).split(/\\s+/)[0] || 'there';\nconst render = (tpl, v) => String(tpl).replace(/\\{(\\w+)\\}/g, (m, k) => (v[k] == null ? m : String(v[k])));\nconst vars = (contact, job) => ({ firstName: contact['First Name'] || firstNameOf(contact.Name), businessName: CFG.business.name, businessPhone: CFG.business.phone,\n  signoff: CFG.business.signoff, service: (job && job.Service) || ('your ' + CFG.business.trade + ' job'), reviewUrl: CFG.reviews.googleReviewUrl });\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n/** Every record of a paginated list (one item per page). An Error if a page failed or the page limit cut it short. */\nconst allRecords = (items, step) => {\n  const out = [];\n  items.forEach((i) => { records(i.json, step).forEach((r) => out.push(r)); });\n  const last = items.length ? items[items.length - 1].json : null;\n  if (last && last.body && last.body.offset) throw new Error(step + ': more than ' + out.length + ' records; the list could not be read completely');\n  return out;\n};\n/** Twilio sends SMS only; the test sink also simulates email. */\nconst CHANNELS = CFG.messaging.mode === 'twilio' ? ['SMS'] : ['SMS', 'Email'];\n/** Which channel may carry a message to this contact: the preferred one if it is consented and reachable, else the other. */\nconst channelFor = (c) => {\n  if (c['Opted Out']) return { skip: 'opted out' };\n  const can = { SMS: CHANNELS.includes('SMS') && !!c['Consent SMS'] && !!normPhone(c.Phone), Email: CHANNELS.includes('Email') && !!c['Consent Email'] && !!normEmail(c.Email) };\n  const order = c['Preferred Channel'] === 'Email' ? ['Email', 'SMS'] : ['SMS', 'Email'];\n  const ch = order.find((x) => can[x]);\n  if (!ch) return { skip: CHANNELS.length === 1 ? 'no SMS consent or no mobile number' : 'no consent or no reachable contact detail' };\n  return { channel: ch, to: ch === 'SMS' ? normPhone(c.Phone) : normEmail(c.Email) };\n};\n/**\n * Whether a message of this purpose may go to this contact (null) or why not. Operational: a reply to their own enquiry\n * (channel consent is checked by channelFor). Review and Marketing are commercial messages: they need express consent for\n * that purpose, recorded with a source and a date. Nothing is assumed for contacts without that record.\n */\nconst permission = (c, purpose) => {\n  if (c['Opted Out']) return 'opted out';\n  if (purpose === 'Operational') return null;\n  const evidence = !!(clean(c['Consent Source']) && !Number.isNaN(Date.parse(clean(c['Consent Recorded At']) || 'none')));\n  // The recorded wording must name the purpose (the form's words for it, or its tag [reviews] / [marketing]), whoever\n  // recorded it: consent given for one purpose never makes a ticked box for another usable.\n  const covers = (tag, w) => { const said = clean(c['Consent Wording']); return said.indexOf('[' + tag + ']') >= 0 || (!!clean(w) && said.indexOf(clean(w)) >= 0); };\n  if (purpose === 'Review') {\n    if (CFG.consent.reviewRequests === 'service') return null;\n    if (!c['Review Opt-In'] && !c['Marketing Opt-In']) return 'no permission for review requests';\n    if (!evidence) return 'consent not recorded (source and date)';\n    return (c['Review Opt-In'] && covers('reviews', CFG.consent.wording.reviews)) || (c['Marketing Opt-In'] && covers('marketing', CFG.consent.wording.marketing)) ? null\n      : 'review permission is not in the recorded consent wording';\n  }\n  if (!c['Marketing Opt-In']) return 'no marketing permission';\n  if (!evidence) return 'consent not recorded (source and date)';\n  return covers('marketing', CFG.consent.wording.marketing) ? null : 'marketing permission is not in the recorded consent wording';\n};\nconst logRef = (prefix) => prefix + '-' + iso(NOW).replace(/[-:TZ.]/g, '').slice(0, 14) + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();\n/** Message Log statuses that mean \"this message was attempted\": a run never sends that Dedupe Key again by itself. */\nconst ATTEMPTED = ['Simulated Sent', 'Sending', 'Sent', 'Delivered', 'Failed', 'Unknown'];\n/** A message to send: its Message Log fields, and the CRM updates to make once it is sent (onSuccess) or if another run already sent it (onLost). */\nconst outMessage = (o) => {\n  const subject = o.channel === 'Email' ? o.subject : null;\n  const fields = { 'Log Ref': logRef(o.prefix), Workflow: o.workflow, Purpose: o.purpose, Channel: o.channel, To: o.to,\n    Body: (subject ? 'Subject: ' + subject + '\\n\\n' : '') + o.body, 'Dedupe Key': o.key, Provider: CFG.messaging.provider, 'Attempted At': iso(NOW), 'Demo Data': !!o.demo };\n  if (o.jobId) fields.Job = [o.jobId];\n  if (o.contactId) fields.Contact = [o.contactId];\n  return { key: o.key, purpose: o.purpose, channel: o.channel, to: o.to, body: o.body, subject: subject, contactId: o.contactId || null, fields: fields, onSuccess: o.onSuccess || [], onLost: o.onLost || [] };\n};\n\nconst jobs = records($('Find Quiet Leads').first().json, 'find quiet leads');\nconst contacts = {}; records($('Find Contacts').first().json, 'find contacts').forEach((c) => { contacts[c.id] = c; });\n// Every earlier follow-up for a job counts, whatever month it was in (the Dedupe Key carries the month, the Job link does not).\n// The history must be complete: a page that cannot be read stops the run here, before anything is sent.\nconst earlier = {}; allRecords($input.all(), 'find earlier follow-ups').forEach((m) => { const f = m.fields || {}; if (ATTEMPTED.indexOf(f.Status) < 0) return;\n  const jobId = (f.Job || [])[0] || clean(f['Dedupe Key']).split(':')[1]; (earlier[jobId] = earlier[jobId] || []).push(f); });\nconst recent = (f) => NOW.getTime() - (Date.parse(f['Attempted At'] || '') || 0) < days(CFG.reactivation.cooldownDays);\nconst sends = [];\nconst summary = { open_leads: jobs.length, planned: 0, still_active: 0, excluded: 0, exclusion_reasons: {}, deferred_to_next_run: 0 };\nconst exclude = (why) => { summary.excluded++; summary.exclusion_reasons[why] = (summary.exclusion_reasons[why] || 0) + 1; };\nconst period = iso(NOW).slice(0, 7);\n// Oldest activity first, so the longest-waiting people are followed up first when the run is capped.\nconst lastOf = (f) => Date.parse(f['Last Activity At'] || f['Lead Received At'] || '');\njobs.sort((a, b) => (lastOf(a.fields || {}) || 0) - (lastOf(b.fields || {}) || 0));\nfor (const j of jobs) {\n  const f = j.fields || {};\n  const last = lastOf(f);\n  if (!last || NOW.getTime() - last < days(CFG.reactivation.inactivityDays)) { summary.still_active++; continue; }\n  const prev = Date.parse(f['Reactivation Sent At'] || '');\n  if (prev && NOW.getTime() - prev < days(CFG.reactivation.cooldownDays)) { exclude('followed up within the cooldown'); continue; }\n  const before = earlier[j.id] || [];\n  // An attempt with no confirmed outcome (Sending, Unknown) holds the job until someone decides; a failed one, for the cooldown.\n  if (before.some((x) => x.Status === 'Sending' || x.Status === 'Unknown' || (x.Status === 'Failed' && recent(x)))) { exclude('earlier attempt awaits a retry decision'); continue; }\n  if (before.some(recent)) { exclude('followed up within the cooldown'); continue; }\n  const key = 'reactivation:' + j.id + ':' + period;\n  const c = contacts[(f.Contact || [])[0]] || null;\n  if (!c) { exclude('no contact on the job'); continue; }\n  const cf = c.fields || {};\n  const ch = channelFor(cf);\n  const why = permission(cf, 'Marketing') || ch.skip;\n  if (why) { exclude(why); continue; }\n  if (summary.planned >= CFG.reactivation.maxPerRun) { summary.deferred_to_next_run++; continue; }\n  const v = vars(cf, f);\n  summary.planned++;\n  sends.push(outMessage({ prefix: 'RA', workflow: 'Reactivation', purpose: 'Marketing', key: key, jobId: j.id, contactId: c.id, demo: !!f['Demo Data'],\n    channel: ch.channel, to: ch.to, subject: render(CFG.reactivation.emailSubject, v), body: render(ch.channel === 'SMS' ? CFG.reactivation.sms : CFG.reactivation.email, v),\n    onSuccess: [{ table: 'jobs', id: j.id, fields: { 'Reactivation Sent At': iso(NOW), 'Reactivation Count': (Number(f['Reactivation Count']) || 0) + 1 } }] }));\n}\nreturn [{ json: { sends: sends, logs: [], updates: [], summary: summary } }];"
       }
     },
     {
@@ -204,7 +223,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4680,
+        4940,
         0
       ],
       "parameters": {
@@ -304,7 +323,7 @@
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** Text inside a single-quoted Airtable formula string: quotes and backslashes are escaped, never dropped (an address\n * like o'brien@ must not turn into obrien@ and match someone else). */\nconst formulaText = (s) => clean(s).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"\\\\'\");\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n\nconst p = $('Plan Reactivation').first().json;\nconst created = {};\nif ($('Write Reservations').isExecuted) $('Write Reservations').all().forEach((i) => records(i.json, 'reserve messages').forEach((r) => {\n  if ((r.fields || {}).Status === 'Sending') created[r.fields['Dedupe Key']] = r.id; }));\nconst keys = p.sends.map((s) => s.key);\nreturn [{ json: { none: !keys.length, created: created,\n  formula: keys.length ? 'OR(' + keys.map((k) => \"{Dedupe Key}='\" + formulaText(k) + \"'\").join(',') + ')' : 'FALSE()' } }];"
+        "jsCode": "\nconst clean = (s) => String(s == null ? '' : s).trim();\n/** Text inside a single-quoted Airtable formula string: quotes and backslashes are escaped, never dropped (an address\n * like o'brien@ must not turn into obrien@ and match someone else). */\nconst formulaText = (s) => clean(s).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"\\\\'\");\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n\nconst p = $('Plan Reactivation').first().json;\nconst created = {};\nif ($('Write Reservations').isExecuted) $('Write Reservations').all().forEach((i) => records(i.json, 'reserve messages').forEach((r) => {\n  if ((r.fields || {}).Status === 'Sending') created[r.fields['Dedupe Key']] = r.id; }));\nconst keys = p.sends.map((s) => s.key);\nconst tos = Array.from(new Set(p.sends.map((s) => clean(s.to)).filter(Boolean)));\nreturn [{ json: { none: !keys.length, created: created,\n  formula: keys.length ? 'OR(' + keys.map((k) => \"{Dedupe Key}='\" + formulaText(k) + \"'\").join(',') + ')' : 'FALSE()',\n  suppressionFormula: tos.length ? \"AND({Status}='Opt-Out',OR(\" + tos.map((t) => \"{To}='from \" + formulaText(t) + \"'\").join(',') + '))' : 'FALSE()' } }];"
       }
     },
     {
@@ -384,17 +403,81 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "4f273b39-1990-42ff-a0e0-0606a7ebd7d4",
-      "name": "Pick Winners",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "id": "3e301e2e-7a37-4fb0-a908-01f4f60d16b7",
+      "name": "Find Suppressions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
       "position": [
         3120,
         0
       ],
       "parameters": {
+        "method": "GET",
+        "url": "https://api.airtable.com/v0/appZZEXAMPLE00001/Plumbing%20Messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filterByFormula",
+              "value": "={{ $('Reservation Check').first().json.suppressionFormula }}"
+            },
+            {
+              "name": "pageSize",
+              "value": "100"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 20000,
+          "pagination": {
+            "pagination": {
+              "paginationMode": "updateAParameterInEachRequest",
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "qs",
+                    "name": "offset",
+                    "value": "={{ $response.body.offset }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body || !$response.body.offset }}",
+              "limitPagesFetched": true,
+              "maxRequests": 20,
+              "requestInterval": 250
+            }
+          }
+        }
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "ZZExampleAirtab1",
+          "name": "ZZ example Airtable token"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "4f273b39-1990-42ff-a0e0-0606a7ebd7d4",
+      "name": "Pick Winners",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3380,
+        0
+      ],
+      "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "\nconst CFG = {\"messaging\":{\"mode\":\"twilio\",\"provider\":\"twilio\",\"twilio\":{\"accountSid\":\"AC00000000000000000000000000000000\",\"from\":\"+61491570006\",\"messagingServiceSid\":null,\"credential\":{\"id\":\"ZZExampleTwilio1\",\"name\":\"ZZ example Twilio API key\"},\"inboundAuth\":\"signature\",\"signatureVariable\":\"LITE_TWILIO_AUTH_TOKEN\",\"inboundCredential\":null,\"allowedRecipients\":[\"+61491570156\",\"+61491570157\",\"+61491570158\",\"+61491570159\",\"+61491570110\"],\"allowAllRecipients\":false}}};\nconst clean = (s) => String(s == null ? '' : s).trim();\nconst normPhone = (s) => { let d = clean(s).replace(/[^0-9+]/g, ''); if (d.startsWith('+61')) d = '0' + d.slice(3); d = d.replace(/[^0-9]/g, ''); return /^0[2-478][0-9]{8}$/.test(d) ? d : ''; };\n/** Australian national number (04xx xxx xxx) to E.164 (+614xxxxxxxx), as Twilio needs it. */\nconst toE164 = (s) => { const n = normPhone(s); return n ? '+61' + n.slice(1) : ''; };\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n\nconst p = $('Plan Reactivation').first().json;\nconst created = $('Reservation Check').first().json.created;\nconst rows = $('Find Reservations').isExecuted ? records($('Find Reservations').first().json, 'find reservations') : [];\nconst T = CFG.messaging.mode === 'twilio' ? CFG.messaging.twilio : null;\nconst allowed = (n) => !T || T.allowAllRecipients === true || T.allowedRecipients.indexOf(n) >= 0;\nconst decisions = p.sends.map((s) => {\n  const mine = created[s.key];\n  if (!mine) throw new Error('reserve messages: no Message Log row was written for ' + s.key);\n  const first = rows.filter((r) => (r.fields || {})['Dedupe Key'] === s.key && (r.fields || {}).Status !== 'Skipped')\n    .sort((a, b) => (Date.parse(a.createdTime) - Date.parse(b.createdTime)) || (a.id < b.id ? -1 : 1))[0];\n  const d = { key: s.key, logId: mine, channel: s.channel, to: s.to, body: s.body };\n  if (first && first.id !== mine) {\n    // Two copies of one form reserve within moments of each other. A message reserved long before belongs to an earlier\n    // enquiry: this one is not sent again today, but it is not a duplicate of it either (its job is kept).\n    const me = rows.find((r) => r.id === mine);\n    const together = !me || Math.abs(Date.parse(me.createdTime) - Date.parse(first.createdTime)) <= 10 * 60000;\n    const ref = first.fields['Log Ref'] || first.id;\n    return Object.assign(d, together ? { action: 'lost', reason: 'duplicate: ' + ref + ' already handles this message' }\n      : { action: 'repeat', reason: 'not sent: ' + ref + ' already sent this message earlier today' });\n  }\n  if (T && !allowed(toE164(s.to))) return Object.assign(d, { action: 'blocked', reason: 'not sent: ' + toE164(s.to) + ' is not on the live test allowlist' });\n  return Object.assign(d, { action: 'deliver', to164: toE164(s.to) });\n});\nconst go = decisions.filter((d) => d.action === 'deliver');\nif (!go.length) return [{ json: { none: true, decisions: decisions } }];\nreturn go.map((d, i) => ({ json: Object.assign({}, d, i === 0 ? { decisions: decisions } : {}) }));"
+        "jsCode": "\nconst CFG = {\"messaging\":{\"mode\":\"twilio\",\"provider\":\"twilio\",\"twilio\":{\"accountSid\":\"AC00000000000000000000000000000000\",\"from\":\"+61491570006\",\"messagingServiceSid\":null,\"credential\":{\"id\":\"ZZExampleTwilio1\",\"name\":\"ZZ example Twilio API key\"},\"inboundAuth\":\"signature\",\"signatureVariable\":\"LITE_TWILIO_AUTH_TOKEN\",\"inboundCredential\":null,\"allowedRecipients\":[\"+61491570156\",\"+61491570157\",\"+61491570158\",\"+61491570159\",\"+61491570110\"],\"allowAllRecipients\":false}}};\nconst clean = (s) => String(s == null ? '' : s).trim();\nconst normPhone = (s) => { let d = clean(s).replace(/[^0-9+]/g, ''); if (d.startsWith('+61')) d = '0' + d.slice(3); d = d.replace(/[^0-9]/g, ''); return /^0[2-478][0-9]{8}$/.test(d) ? d : ''; };\n/** Australian national number (04xx xxx xxx) to E.164 (+614xxxxxxxx), as Twilio needs it. */\nconst toE164 = (s) => { const n = normPhone(s); return n ? '+61' + n.slice(1) : ''; };\n/** An Airtable answer, or an Error that fails the execution (n8n records it; nothing is marked done). */\nconst records = (r, step) => {\n  if (!r || r.statusCode !== 200) { const b = (r && r.body) || {}; const e = b.error || (r && r.error) || {}; throw new Error(step + ': Airtable ' + (r && r.statusCode ? 'HTTP ' + r.statusCode : 'no response') + ' ' + clean(typeof e === 'string' ? e : (e.message || e.type))); }\n  if (!r.body || !Array.isArray(r.body.records)) throw new Error(step + ': Airtable answered without a record list');\n  return r.body.records;\n};\n/** Every record of a paginated list (one item per page). An Error if a page failed or the page limit cut it short. */\nconst allRecords = (items, step) => {\n  const out = [];\n  items.forEach((i) => { records(i.json, step).forEach((r) => out.push(r)); });\n  const last = items.length ? items[items.length - 1].json : null;\n  if (last && last.body && last.body.offset) throw new Error(step + ': more than ' + out.length + ' records; the list could not be read completely');\n  return out;\n};\n\nconst p = $('Plan Reactivation').first().json;\nconst created = $('Reservation Check').first().json.created;\nconst rows = $('Find Reservations').isExecuted ? records($('Find Reservations').first().json, 'find reservations') : [];\n// A number that replied STOP is never sent to, whatever its contact records say. If this list cannot be read completely,\n// the run fails here and nothing is sent.\nconst stopped = {}; ($('Find Suppressions').isExecuted ? allRecords($('Find Suppressions').all(), 'find suppressions') : [])\n  .forEach((r) => { stopped[clean((r.fields || {}).To).replace(/^from /, '')] = (r.fields || {})['Log Ref'] || r.id; });\nconst T = CFG.messaging.mode === 'twilio' ? CFG.messaging.twilio : null;\nconst allowed = (n) => !T || T.allowAllRecipients === true || T.allowedRecipients.indexOf(n) >= 0;\nconst decisions = p.sends.map((s) => {\n  const mine = created[s.key];\n  if (!mine) throw new Error('reserve messages: no Message Log row was written for ' + s.key);\n  const first = rows.filter((r) => (r.fields || {})['Dedupe Key'] === s.key && (r.fields || {}).Status !== 'Skipped')\n    .sort((a, b) => (Date.parse(a.createdTime) - Date.parse(b.createdTime)) || (a.id < b.id ? -1 : 1))[0];\n  const d = { key: s.key, logId: mine, channel: s.channel, to: s.to, body: s.body };\n  if (first && first.id !== mine) {\n    // Two copies of one form reserve within moments of each other. A message reserved long before belongs to an earlier\n    // enquiry: this one is not sent again today, but it is not a duplicate of it either (its job is kept).\n    const me = rows.find((r) => r.id === mine);\n    const together = !me || Math.abs(Date.parse(me.createdTime) - Date.parse(first.createdTime)) <= 10 * 60000;\n    const ref = first.fields['Log Ref'] || first.id;\n    return Object.assign(d, together ? { action: 'lost', reason: 'duplicate: ' + ref + ' already handles this message' }\n      : { action: 'repeat', reason: 'not sent: ' + ref + ' already sent this message earlier today' });\n  }\n  if (stopped[clean(s.to)]) return Object.assign(d, { action: 'blocked', reason: 'not sent: this number replied STOP (' + stopped[clean(s.to)] + ')' });\n  if (T && !allowed(toE164(s.to))) return Object.assign(d, { action: 'blocked', reason: 'not sent: ' + toE164(s.to) + ' is not on the live test allowlist' });\n  return Object.assign(d, { action: 'deliver', to164: toE164(s.to) });\n});\nconst go = decisions.filter((d) => d.action === 'deliver');\nif (!go.length) return [{ json: { none: true, decisions: decisions } }];\nreturn go.map((d, i) => ({ json: Object.assign({}, d, i === 0 ? { decisions: decisions } : {}) }));"
       }
     },
     {
@@ -403,7 +486,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        3380,
+        3640,
         0
       ],
       "parameters": {
@@ -434,7 +517,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
       "position": [
-        3640,
+        3900,
         0
       ],
       "parameters": {
@@ -489,7 +572,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3900,
+        4160,
         0
       ],
       "parameters": {
@@ -503,7 +586,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        4160,
+        4420,
         0
       ],
       "parameters": {
@@ -534,7 +617,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
       "position": [
-        4420,
+        4680,
         0
       ],
       "parameters": {
@@ -607,6 +690,17 @@
       ]
     },
     "Find Reservations": {
+      "main": [
+        [
+          {
+            "node": "Find Suppressions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Suppressions": {
       "main": [
         [
           {

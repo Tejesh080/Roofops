@@ -291,8 +291,9 @@ Show staff:
 - **Consent:** record consent taken by phone (tick the boxes and fill Source, Recorded At, Wording). The wording must
   name the purpose ([reviews], [marketing]). Never tick boxes without it.
 - **Alerts:** on the Overview and Alerts pages. Fix the cause, tick **Retry Requested** on the message, then set the
-  alert to Resolved. Lite never resends an **Unknown** message by itself. If it did not arrive, set it to Failed and
-  tick Retry Requested.
+  alert to Resolved. Lite resends only a message it can prove did not arrive (Twilio refused it, or Twilio reports it
+  failed). It never resends an **Unknown** message, even one set to Failed by hand. Check with the person, and send it
+  by hand if needed.
 - **Opt-outs:** the "Do not contact" list. Never untick Opted Out unless the person asks.
 
 ## Undo

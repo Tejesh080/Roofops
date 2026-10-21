@@ -39,13 +39,15 @@ touches Advanced RoofOps tables, workflows, invoices or Xero.
    A Twilio 21610 (unsubscribed recipient) opts the contact out. Receipts later turn Sent into **Delivered**, or into
    Failed.
 
-Staff tick **Retry Requested** on a Failed or Unknown message. `[Lite] Monitor` first asks Twilio whether it went out:
-- **Found by its Message SID:** the row is corrected and nothing is resent.
-- **A message to that number, but no SID to prove it is this one:** nothing is sent or linked; a person checks.
-- **Failed and not found:** it is resent once, through the same reservation.
-- **Unknown and not found:** not resent by itself. Staff set it to Failed (they decide it did not go), and the next
-  run sends it once.
-- **Never resent:** opted-out contacts, 21610 errors, or messages that could not be checked.
+Staff tick **Retry Requested** on a Failed message. `[Lite] Monitor` resends it once, through the same reservation,
+only with proof that it did not arrive:
+- **Twilio refused it when it was sent** (a Twilio error code, and no Message SID: no message was created).
+- **Twilio reports it failed or undelivered**, asked by its own Message SID. If Twilio says it went, the row is
+  corrected instead.
+
+Anything else is held, not resent, and raised as an alert: an Unknown message, a status changed by hand, a SID Twilio
+cannot find, or Twilio not answering. A message Twilio does not list is never taken as proof that it failed. Opted-out
+contacts and 21610 errors are never resent either.
 
 A delivery receipt changes only the message with its exact Message SID. One that matches no recorded message changes
 nothing and becomes an alert (a failure always; any receipt while an unconfirmed message to that number exists).
@@ -80,7 +82,7 @@ npx tsx lite/demo/run-demo.ts lite/config/example-plumbing-twilio.json lite/demo
 
 Both run the workflows' **actual n8n node code** against an in-memory Airtable that enforces the Lite schema.
 
-Tests: 67, the same code, acceptance tests A–H.
+Tests: 70, the same code, acceptance tests A–H.
 ```bash
 npx vitest run test/lite.test.ts
 ```

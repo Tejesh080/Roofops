@@ -5,7 +5,8 @@
 //      updates to make once it is sent), together with the Skipped rows.
 //   2. Confirm: the log is read back by Dedupe Key. If another run reserved the same message earlier, this run's row
 //      loses (Skipped, "duplicate") and nothing is sent: Airtable has no conditional write, so the earliest row wins.
-//      In twilio mode, numbers that are not on the live test allowlist are blocked here.
+//      A number that replied STOP (an Opt-Out row in the Message Log) is blocked here, read just before sending; so, in
+//      twilio mode, are numbers that are not on the live test allowlist.
 //   3. Deliver: the TEST sink (Simulated Sent) or Twilio, one request per message.
 //   4. Record: each row gets its outcome (Simulated Sent / Sent / Failed / Unknown, Message SID, error code), the CRM
 //      updates of the messages that went out are made, and a Twilio "unsubscribed" (21610) opts the contact out.
@@ -24,14 +25,22 @@ const created = {};
 if ($('Write Reservations').isExecuted) $('Write Reservations').all().forEach((i) => records(i.json, 'reserve messages').forEach((r) => {
   if ((r.fields || {}).Status === 'Sending') created[r.fields['Dedupe Key']] = r.id; }));
 const keys = p.sends.map((s) => s.key);
+const tos = Array.from(new Set(p.sends.map((s) => clean(s.to)).filter(Boolean)));
 return [{ json: { none: !keys.length, created: created,
-  formula: keys.length ? 'OR(' + keys.map((k) => "{Dedupe Key}='" + formulaText(k) + "'").join(',') + ')' : 'FALSE()' } }];`);
+  formula: keys.length ? 'OR(' + keys.map((k) => "{Dedupe Key}='" + formulaText(k) + "'").join(',') + ')' : 'FALSE()',
+  suppressionFormula: tos.length ? "AND({Status}='Opt-Out',OR(" + tos.map((t) => "{To}='from " + formulaText(t) + "'").join(',') + '))' : 'FALSE()' } }];`);
   const anySends = OK_IF('Messages To Confirm?', '{{ $json.none !== true }}');
   const findRows = airtableList('Find Reservations', T.messages, '{{ $json.formula }}');
+  // Every number (or email) that replied STOP, read just before sending: its Opt-Out row in the Message Log suppresses it.
+  const findStops = airtableListAll('Find Suppressions', T.messages, "{{ $('Reservation Check').first().json.suppressionFormula }}");
   const pick = code('Pick Winners', `
 const p = $('${plan}').first().json;
 const created = $('Reservation Check').first().json.created;
 const rows = $('Find Reservations').isExecuted ? records($('Find Reservations').first().json, 'find reservations') : [];
+// A number that replied STOP is never sent to, whatever its contact records say. If this list cannot be read completely,
+// the run fails here and nothing is sent.
+const stopped = {}; ($('Find Suppressions').isExecuted ? allRecords($('Find Suppressions').all(), 'find suppressions') : [])
+  .forEach((r) => { stopped[clean((r.fields || {}).To).replace(/^from /, '')] = (r.fields || {})['Log Ref'] || r.id; });
 const T = CFG.messaging.mode === 'twilio' ? CFG.messaging.twilio : null;
 const allowed = (n) => !T || T.allowAllRecipients === true || T.allowedRecipients.indexOf(n) >= 0;
 const decisions = p.sends.map((s) => {
@@ -49,6 +58,7 @@ const decisions = p.sends.map((s) => {
     return Object.assign(d, together ? { action: 'lost', reason: 'duplicate: ' + ref + ' already handles this message' }
       : { action: 'repeat', reason: 'not sent: ' + ref + ' already sent this message earlier today' });
   }
+  if (stopped[clean(s.to)]) return Object.assign(d, { action: 'blocked', reason: 'not sent: this number replied STOP (' + stopped[clean(s.to)] + ')' });
   if (T && !allowed(toE164(s.to))) return Object.assign(d, { action: 'blocked', reason: 'not sent: ' + toE164(s.to) + ' is not on the live test allowlist' });
   return Object.assign(d, { action: 'deliver', to164: toE164(s.to) });
 });
@@ -99,7 +109,7 @@ return items.length ? items.map((x, i) => ({ json: Object.assign(x, i === 0 ? { 
   // The chain, ending in the workflow's own summary node.
   const chain = reserve.to(anyRows.onTrue(writeRows.to(check)).onFalse(check));
   const links = [
-    [check, anySends.onTrue(findRows.to(pick)).onFalse(pick)],
+    [check, anySends.onTrue(findRows.to(findStops).to(pick)).onFalse(pick)],
     [pick, anyDeliveries.onTrue(deliver.to(recordResults)).onFalse(recordResults)],
     [recordResults, anyUpdates.onTrue(writeUpdates.to(summaryNode)).onFalse(summaryNode)],
   ];

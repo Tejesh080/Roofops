@@ -282,7 +282,7 @@ const TW = structuredClone(base);
 // For the tests the live allowlist holds the synthetic fixture numbers (and the operator's); everyone else stays blocked.
 TW.reviews.delayDays = 2;   // as in the demo, so Grace (finished yesterday) is not due yet
 TW.messaging.twilio!.allowedRecipients = [...['101','103', '105', '106', '107', '109', '111', '112', '113', '201', '202', '301', '302', '303', '304', '305',
-  '121', '122', '123', '124', '131', '132', '133', '141', '142'].map((n) => `+61400000${n}`), '+61491570110'];
+  '121', '122', '123', '124', '131', '132', '133', '141', '142', '143'].map((n) => `+61400000${n}`), '+61491570110'];
 let tw: FakeTwilio;
 let tat: FakeAirtable;
 let tids: Seeded;
@@ -440,12 +440,12 @@ describe('G. Twilio: failed delivery is logged, raised and recoverable', () => {
     expect(tw.sent.filter((m) => m.to === TW.monitoring.operatorPhone)).toHaveLength(1);     // nothing new, no text
   });
 
-  it('G. after fixing the number, Retry Requested resends it once (Twilio is checked first); the job then moves to Contacted; another run resends nothing', () => {
+  it('G. after fixing the number, Retry Requested resends it once (Twilio refused it, so no message was created); the job then moves to Contacted; another run resends nothing', () => {
     const row = ack('301');
     tat.http({ method: 'PATCH', url: `https://api.airtable.com/v0/${TW.airtable.baseId}/${encodeURIComponent(TW.airtable.tables.messages)}`, query: {},
       body: { records: [{ id: row.id, fields: { To: '0400000302', 'Retry Requested': true } }] } });
     expect(monitor()).toMatchObject({ retry_requests: 1, retried: 1, resent: 1 });
-    expect(tw.calls.some((c) => c.method === 'GET' && c.url.includes('To=%2B61400000302'))).toBe(true);   // checked before sending
+    expect(tw.calls.some((c) => c.method === 'GET')).toBe(false);                         // Twilio's refusal is the proof: nothing to look up
     expect(tw.sent.filter((m) => m.to === '+61400000302')).toHaveLength(1);
     const retry = tlog().find((x) => x['Retry Of'] === row['Log Ref'])!;
     expect(retry).toMatchObject({ Status: 'Sent', Purpose: 'Operational', 'Dedupe Key': `${String(row['Dedupe Key'])}:retry:2` });
@@ -455,7 +455,7 @@ describe('G. Twilio: failed delivery is logged, raised and recoverable', () => {
     expect(tw.sent.filter((m) => m.to === '+61400000302')).toHaveLength(1);
   });
 
-  it('an unanswered send (timeout) is Unknown, not resent by itself; on Retry Requested, Twilio has a message to that number that cannot be proven to be it: nothing is sent or linked', () => {
+  it('an unanswered send (timeout) is Unknown, never resent: on Retry Requested nothing proves it did not arrive, so nothing is sent or linked and staff are alerted', () => {
     tw.rules.set('+61400000303', 'timeout-after-send');
     expect(tpost(person('303'))).toMatchObject({ body: { acknowledgement: { status: 'Unknown' } } });
     expect(tw.sent.filter((m) => m.to === '+61400000303')).toHaveLength(1);              // it did go out
@@ -466,26 +466,24 @@ describe('G. Twilio: failed delivery is logged, raised and recoverable', () => {
     expect(monitor()).toMatchObject({ retry_held: 1, found_already_sent: 0, retried: 0 });
     expect(tw.sent.filter((m) => m.to === '+61400000303')).toHaveLength(1);
     expect(tlog().find((x) => x.id === row.id)).toMatchObject({ Status: 'Unknown', 'Retry Requested': false,
-      Reason: expect.stringMatching(/^not resent: Twilio has a message to this number since this attempt \(SM[0-9a-f]{32}, sent\)/) as unknown });
-    expect(tlog().find((x) => x.id === row.id)!['Provider Message ID']).toBeFalsy();     // not linked to it
+      Reason: expect.stringMatching(/^not resent: no proof it was not delivered \(no_response\)/) as unknown });
+    expect(tlog().find((x) => x.id === row.id)!['Provider Message ID']).toBeFalsy();     // not linked to anything
+    expect(tw.calls.some((c) => c.method === 'GET')).toBe(false);                         // and Twilio's list is not taken as proof either way
     expect(tat.all('jobs').find((j) => j.id === (row.Job as string[])[0])!.fields.Stage).toBe('New Lead');   // its On Success waits for a person
   });
 
-  it('a Twilio server error (not sent) is Unknown; a retry is postponed while Twilio cannot be checked, then held for a person; set Failed, it is sent once', () => {
+  it('a Twilio server error is Unknown (it may have been created): a retry is held, and setting it Failed by hand does not authorise a resend either', () => {
     tw.rules.set('+61400000304', 'server-error');
     expect(tpost(person('304'))).toMatchObject({ body: { acknowledgement: { status: 'Unknown' } } });
     const row = ack('304');
+    tw.rules.delete('+61400000304');
     const patch = (fields: R) => tat.http({ method: 'PATCH', url: `https://api.airtable.com/v0/${TW.airtable.baseId}/${encodeURIComponent(TW.airtable.tables.messages)}`, query: {}, body: { records: [{ id: row.id, fields }] } });
     patch({ 'Retry Requested': true });
-    const down = (r: HttpReq) => (r.method === 'GET' && r.url.startsWith('https://api.twilio.com/') ? { statusCode: 503, body: {} } : http(r));
-    expect(runNow(twf.monitor, down, { vars: VARS }).summary).toMatchObject({ retry_postponed: 1, retried: 0 });
+    expect(monitor()).toMatchObject({ retry_held: 1, retried: 0 });
+    patch({ Status: 'Failed', 'Retry Requested': true });                                // a local edit is not proof
+    expect(monitor()).toMatchObject({ retry_held: 1, retried: 0 });
     expect(tw.sent.filter((m) => m.to === '+61400000304')).toHaveLength(0);
-    tw.rules.delete('+61400000304');
-    expect(monitor()).toMatchObject({ retry_held: 1, retried: 0 });                       // Twilio shows nothing, but the result is still unknown
-    expect(tw.sent.filter((m) => m.to === '+61400000304')).toHaveLength(0);
-    patch({ Status: 'Failed', 'Retry Requested': true });                                // a person decides it did not go
-    expect(monitor()).toMatchObject({ retried: 1, resent: 1 });
-    expect(tw.sent.filter((m) => m.to === '+61400000304')).toHaveLength(1);
+    expect(tlog().find((x) => x.id === row.id)).toMatchObject({ Reason: expect.stringMatching(/^not resent: no proof it was not delivered \(http_500\)/) as unknown });
   });
 
   it('never resent: an opted-out contact, a Twilio 21610, or a message that is not Failed or Unknown', () => {
@@ -917,12 +915,12 @@ describe('Factory review: the eleven reproduced defects stay fixed', () => {
     tpatch('messages', row.id, { 'Retry Requested': true });
     expect(monitor()).toMatchObject({ retry_held: 1 });
     expect(jobOf(row).Stage).toBe('Paid');
-    tw.rules.set('+61400000304', 'server-error');
+    tw.rules.set('+61400000304', 'invalid');                                             // refused by Twilio: proof it was not sent
     tpost(person('304'));
     const r4 = ackOf('304');
     tw.rules.delete('+61400000304');
     tpatch('jobs', (r4.Job as string[])[0]!, { Stage: 'Paid', 'Invoice Status': 'Paid' });
-    tpatch('messages', r4.id, { Status: 'Failed', 'Retry Requested': true });          // a person decided it did not go
+    tpatch('messages', r4.id, { 'Retry Requested': true });
     expect(monitor()).toMatchObject({ retried: 1, resent: 1 });
     expect(jobOf(r4).Stage).toBe('Paid');
   });
@@ -1031,10 +1029,10 @@ describe('Factory release gate: the four confirmed blockers stay fixed', () => {
     const p = tw.inbound('+61400000133', FROM(), 'STOP');
     let err: Error | null = null;
     try { runWebhook(twf['inbound-replies'], flaky, p, signed(p)); } catch (e) { err = e as Error; }
-    expect(err?.message).toMatch(/STOP from 0400000133 was not fully applied: 1 of 3 opt-out batches failed/);
+    expect(err?.message).toMatch(/STOP from 0400000133 is saved and the number is suppressed, but 1 of 3 contact updates failed/);
     expect(left(some)).toHaveLength(10);
     runError(twf.monitor, http, { execution: { id: '9301', lastNodeExecuted: 'After Contact', error: { message: err!.message }, mode: 'webhook' }, workflow: { id: 'wfIn', name: '[Lite] Inbound Replies' } }, { vars: VARS });
-    expect(tat.all('alerts').find((a) => a.fields.Kind === 'Workflow Failed')!.fields.Detail).toMatch(/not fully applied/);
+    expect(tat.all('alerts').find((a) => a.fields.Kind === 'Workflow Failed')!.fields.Detail).toMatch(/1 of 3 contact updates failed/);
   });
 
   it("FIX 3. Factory's case: message B's early failure receipt is never bound to unrelated Unknown message A by its number, and A (still queued at Twilio) is not resent", () => {
@@ -1059,23 +1057,24 @@ describe('Factory release gate: the four confirmed blockers stay fixed', () => {
     expect(to('141')).toHaveLength(2);                                                     // A (queued) and B: no third
     expect(tlog().find((x) => x.id === a.id)).toMatchObject({ Status: 'Unknown', 'Retry Requested': false, Reason: expect.stringMatching(/^not resent: /) as unknown });
     expect(tlog().find((x) => x.id === a.id)!['Provider Message ID']).toBeFalsy();
-    // A send whose fate Twilio cannot show either (no message to the number since) is not resent by itself: a person
-    // decides, by setting it Failed; only then is it sent again, once.
+    // A send whose fate Twilio cannot show (a timeout, no message to the number since) is not resent either, even once a
+    // person sets it Failed (release gate 2: a local edit is not proof).
     tw.rules.set('+61400000142', 'timeout');
     tpost(person('142'));
     tw.rules.delete('+61400000142');
     const c = ackOf('142');
     tpatch('messages', c.id, { 'Retry Requested': true });
     expect(monitor()).toMatchObject({ retried: 0, retry_held: 1 });
-    expect(to('142')).toHaveLength(0);
     tpatch('messages', c.id, { Status: 'Failed', 'Retry Requested': true });
-    expect(monitor()).toMatchObject({ retried: 1, resent: 1 });
-    expect(to('142')).toHaveLength(1);
-    // A receipt for the confirmed message (by its SID) still updates it, and never backwards.
-    const sid = String(tlog().find((x) => x['Retry Of'] === c['Log Ref'])!['Provider Message ID']);
+    expect(monitor()).toMatchObject({ retried: 0, retry_held: 1 });
+    expect(to('142')).toHaveLength(0);
+    // A receipt for a recorded message (by its SID) still updates it, and never backwards.
+    tpost(person('143'));
+    const d = ackOf('143');
+    const sid = String(d['Provider Message ID']);
     sms(tw.statusCallback(sid, 'delivered'), { status: true });
     sms(tw.statusCallback(sid, 'sent'), { status: true });
-    expect(tlog().find((x) => x['Retry Of'] === c['Log Ref'])).toMatchObject({ Status: 'Delivered' });
+    expect(tlog().find((x) => x.id === d.id)).toMatchObject({ Status: 'Delivered' });
   });
 
   it("FIX 4. Factory's case: a different enquiry two minutes after a paid job is its own job (acknowledged, not Lost); an identical form arriving twice is still one enquiry", () => {
@@ -1098,5 +1097,126 @@ describe('Factory release gate: the four confirmed blockers stay fixed', () => {
     const mine = tlog().find((x) => x['Dedupe Key'] === key && x['Log Ref'] !== 'LM-OTHER-RUN')!;
     expect(mine).toMatchObject({ Status: 'Skipped', Reason: 'duplicate: LM-OTHER-RUN already handles this message' });
     expect(tat.get('jobs', (mine.Job as string[])[0]!)!.fields.Stage).toBe('Lost');
+  });
+});
+
+// ---- Factory release gate 2 (2026-10-21): three SMS safety failures, each written to fail before its fix ---------------
+describe('Factory release gate 2: the three SMS safety failures stay fixed', () => {
+  beforeAll(async () => { if (!(twf as Wfs | undefined)) twf = await buildAll(TW, 'twilio'); }, 60_000);
+  const FROM = () => TW.messaging.twilio!.from!;
+  const table = (t: 'messages' | 'contacts') => encodeURIComponent(TW.airtable.tables[t]);
+  const tpatch = (t: 'messages' | 'jobs' | 'contacts', id: string, fields: R) => tat.http({ method: 'PATCH',
+    url: `https://api.airtable.com/v0/${TW.airtable.baseId}/${encodeURIComponent(TW.airtable.tables[t])}`, query: {}, body: { records: [{ id, fields }] } });
+  const person = (n: string, o: R = {}) => lead({ name: `ZZ Lite Demo Test ${n}`, first_name: 'Sam', phone: `0400 000 ${n}`, email: `test${n}@example.test`, ...o });
+  const ackOf = (n: string) => tlog().find((x) => String(x['Dedupe Key']).startsWith(`lead-ack:0400000${n}:${today()}:`))!;
+  const to = (n: string) => tw.sent.filter((m) => m.to === `+61400000${n}`);
+  const signed = (params: Record<string, string>) => ({ vars: VARS, headers: { 'X-Twilio-Signature': tw.sign(hookUrl(false), params) } });
+  const dupes = (n: string, count: number) => Array.from({ length: count }, (_x, k) => tat.insert('contacts', { Name: `ZZ Lite Demo Dup ${n}-${k}`, Phone: `0400 000 ${n}`, 'Phone Normalized': `0400000${n}`,
+    'Consent SMS': true, 'Marketing Opt-In': true, 'Review Opt-In': true, 'Consent Source': 'Phone call with staff', 'Consent Recorded At': daysAgo(300),
+    'Consent Wording': 'Agreed by phone to occasional offers [marketing] and review requests [reviews].', 'Demo Data': true }).id);
+  const left = (list: string[]) => list.filter((id) => !tat.get('contacts', id)!.fields['Opted Out']);
+  const run = (w: 'inbound-replies', h: (r: HttpReq) => { statusCode: number; body: unknown }, p: Record<string, string>) => {
+    try { runWebhook(twf[w], h, p, signed(p)); return null; } catch (e) { return e as Error; }
+  };
+
+  it("SMS FIX 1. Factory's case: STOP to 11 contacts whose second contact update gets a 503: no workflow messages that number again (it is suppressed first, by number)", () => {
+    tfresh();
+    const eleven = dupes('131', 11);
+    tat.insert('jobs', { 'Job Ref': 'LJ-DEMO-S11Q', Contact: [eleven[10]!], Stage: 'Quoted', 'Lead Received At': daysAgo(200), 'Last Activity At': daysAgo(190), 'Demo Data': true });
+    tat.insert('jobs', { 'Job Ref': 'LJ-DEMO-S11C', Contact: [eleven[10]!], Stage: 'Completed', 'Lead Received At': daysAgo(30), 'Last Activity At': daysAgo(5), 'Completed At': daysAgo(5), 'Demo Data': true });
+    let patches = 0;
+    const flaky = (r: HttpReq) => (r.method === 'PATCH' && r.url.endsWith(table('contacts')) && ++patches === 2 ? { statusCode: 503, body: { error: { message: 'service unavailable' } } } : http(r));
+    const before = tat.requests.length;
+    const err = run('inbound-replies', flaky, tw.inbound('+61400000131', FROM(), 'STOP'));
+    expect(err).not.toBeNull();                                                            // the failed contact update is raised
+    expect(left(eleven)).toEqual([eleven[10]]);                                            // the eleventh contact's record was not updated
+    // The eleventh contact still looks messageable on its own record; its follow-up and review request are stopped by the number.
+    expect(runNow(twf['lead-reactivation'], http).summary).toMatchObject({ blocked: 1 });   // (Daniel, also due, is followed up)
+    runNow(twf['review-requests'], http);
+    const stoppedRows = tlog().filter((x) => String(x.Reason).startsWith('not sent: this number replied STOP'));
+    expect(stoppedRows.map((x) => x.Workflow).sort()).toEqual(['Reactivation', 'Review Request']);
+    expect(tpost(lead({ name: 'ZZ Lite Demo Dup 131-10', first_name: 'Dee', phone: '0400 000 131', email: '', consent_sms: true })))
+      .toMatchObject({ body: { acknowledgement: { status: 'Skipped' } } });
+    expect(to('131')).toHaveLength(0);                                                     // no follow-up, no review request, no acknowledgement
+    // The suppression is the STOP's Opt-Out record in the Message Log, saved before any contact update.
+    const writes = tat.requests.slice(before).filter((r) => r.method !== 'GET');
+    expect(writes[0]).toMatchObject({ method: 'POST', url: expect.stringContaining(table('messages')) as unknown });
+    expect(err!.message).toMatch(/STOP from 0400000131 is saved and the number is suppressed, but 1 of 2 contact updates failed/);
+    // Saving the suppression is retried once; if Airtable refuses both, the run fails saying so (the contacts are still opted out).
+    const three = dupes('132', 3);
+    const down = (r: HttpReq) => (r.method === 'POST' && r.url.endsWith(table('messages')) ? { statusCode: 503, body: { error: { message: 'service unavailable' } } } : http(r));
+    expect(run('inbound-replies', down, tw.inbound('+61400000132', FROM(), 'STOP'))?.message).toMatch(/STOP from 0400000132 could not be saved/);
+    expect(left(three)).toEqual([]);
+    let posts = 0;
+    const once = (r: HttpReq) => (r.method === 'POST' && r.url.endsWith(table('messages')) && ++posts === 1 ? { statusCode: 503, body: { error: { message: 'busy' } } } : http(r));
+    const two = dupes('133', 2);
+    expect(run('inbound-replies', once, tw.inbound('+61400000133', FROM(), 'STOP'))).toBeNull();   // saved on the second try
+    expect(tlog().filter((x) => x.To === 'from 0400000133' && x.Status === 'Opt-Out')).toHaveLength(1);
+    expect(left(two)).toEqual([]);
+    // A repeated STOP is recorded again and changes nothing else.
+    expect(run('inbound-replies', http, tw.inbound('+61400000133', FROM(), 'STOP'))).toBeNull();
+    expect(tlog().filter((x) => x.To === 'from 0400000133' && x.Status === 'Opt-Out')).toHaveLength(2);
+  });
+
+  it("SMS FIX 2. Factory's case: an unconfirmed follow-up at history record 101, or 150, holds the job; a failed history page sends nothing", () => {
+    const history = (key: string, status: string, attempted: string, job?: string) => tat.insert('messages', { 'Log Ref': `RA-H-${tat.all('messages').length}`, Workflow: 'Reactivation', Purpose: 'Marketing',
+      Channel: 'SMS', To: '0400000106', Status: status, 'Dedupe Key': key, ...(job ? { Job: [job] } : {}), 'Attempted At': attempted, 'Demo Data': true });
+    const period = (k: number) => daysAgo(400 + k).slice(0, 7);
+    // 101: a hundred follow-ups for other jobs come first, then Daniel's unconfirmed one.
+    tfresh();
+    for (let k = 0; k < 100; k++) history(`reactivation:recOTHERJOB${String(k).padStart(5, '0')}:${period(k)}`, 'Sent', daysAgo(400 + k));
+    history(`reactivation:${tids.jobs.A1!}:${daysAgo(40).slice(0, 7)}`, 'Unknown', daysAgo(40), tids.jobs.A1);
+    expect(runNow(twf['lead-reactivation'], http).summary).toMatchObject({ exclusion_reasons: expect.objectContaining({ 'earlier attempt awaits a retry decision': 1 }) as unknown });
+    expect(to('106')).toHaveLength(0);
+    // 150: Daniel's own history is 149 old follow-ups (outside the cooldown) and then the unconfirmed one: a second page.
+    tfresh();
+    for (let k = 0; k < 149; k++) history(`reactivation:${tids.jobs.A1!}:${period(k)}-${k}`, 'Sent', daysAgo(400 + k), tids.jobs.A1);
+    history(`reactivation:${tids.jobs.A1!}:${daysAgo(40).slice(0, 7)}`, 'Unknown', daysAgo(40), tids.jobs.A1);
+    expect(runNow(twf['lead-reactivation'], http).summary).toMatchObject({ exclusion_reasons: expect.objectContaining({ 'earlier attempt awaits a retry decision': 1 }) as unknown });
+    expect(to('106')).toHaveLength(0);
+    // A history page that cannot be read: the run stops before sending anything; with the page readable, Daniel (due) is followed up.
+    tfresh();
+    for (let k = 0; k < 149; k++) history(`reactivation:${tids.jobs.A1!}:${period(k)}-${k}`, 'Sent', daysAgo(400 + k), tids.jobs.A1);
+    const page2Down = (r: HttpReq) => (r.method === 'GET' && r.url.endsWith(table('messages')) && r.query.offset ? { statusCode: 503, body: { error: { message: 'service unavailable' } } } : http(r));
+    expect(() => runNow(twf['lead-reactivation'], page2Down)).toThrow(/find earlier follow-ups: Airtable HTTP 503/);
+    expect(tw.sent).toHaveLength(0);
+    runNow(twf['lead-reactivation'], http);
+    expect(to('106')).toHaveLength(1);
+  });
+
+  it("SMS FIX 3. Factory's case: an accepted SMS (its Twilio record on the second history page) is not resent because staff changed it from Unknown to Failed; only proof of non-delivery allows a resend", () => {
+    tfresh();
+    tw.rules.set('+61400000141', 'timeout-after-send');                                   // Twilio accepted and sent it; Lite got no answer
+    tpost(person('141'));
+    tw.rules.delete('+61400000141');
+    const a = ackOf('141');
+    expect(a).toMatchObject({ Status: 'Unknown' });
+    for (let k = 0; k < 60; k++) tw.http({ method: 'POST', url: `https://api.twilio.com/2010-04-01/Accounts/${tw.accountSid}/Messages.json`, query: {}, contentType: 'form-urlencoded',
+      body: { To: '+61400000141', From: FROM(), Body: `another message ${k}` }, credentials: { httpBasicAuth: {} } });   // pushes it to Twilio's second page
+    tpatch('messages', a.id, { Status: 'Failed', 'Retry Requested': true });              // a local status edit
+    expect(monitor()).toMatchObject({ retried: 0, retry_held: 1 });
+    expect(to('141')).toHaveLength(61);                                                    // no second copy
+    expect(tlog().find((x) => x.id === a.id)).toMatchObject({ 'Retry Requested': false, Reason: expect.stringMatching(/^not resent: no proof it was not delivered/) as unknown });
+    expect(tat.all('alerts').map((x) => x.fields).find((x) => x['Dedupe Key'] === `msg:${a.id}:retry-held`)).toMatchObject({ Kind: 'Delivery Unknown', Status: 'Open' });
+    tpatch('messages', a.id, { 'Retry Requested': true });                                 // asking again changes nothing
+    expect(monitor()).toMatchObject({ retried: 0, retry_held: 1 });
+    expect(to('141')).toHaveLength(61);
+    // Proof of non-delivery: Twilio refused it when it was sent (no message was created) ...
+    tw.rules.set('+61400000142', 'invalid');
+    tpost(person('142'));
+    tw.rules.delete('+61400000142');
+    tpatch('messages', ackOf('142').id, { 'Retry Requested': true });
+    expect(monitor()).toMatchObject({ retried: 1, resent: 1 });
+    expect(to('142')).toHaveLength(1);
+    // ... or Twilio reports the message, by its own Message SID, as undelivered.
+    tpost(person('143'));
+    const c = ackOf('143');
+    sms(tw.statusCallback(String(c['Provider Message ID']), 'undelivered', '30003'), { status: true });
+    tpatch('messages', c.id, { 'Retry Requested': true });
+    const twilioDown = (r: HttpReq) => (r.method === 'GET' && r.url.startsWith('https://api.twilio.com/') ? { statusCode: 503, body: {} } : http(r));
+    expect(runNow(twf.monitor, twilioDown, { vars: VARS }).summary).toMatchObject({ retried: 0, retry_postponed: 1 });   // Twilio cannot be asked: held
+    expect(to('143')).toHaveLength(1);
+    expect(monitor()).toMatchObject({ retried: 1, resent: 1 });
+    expect(to('143')).toHaveLength(2);
   });
 });

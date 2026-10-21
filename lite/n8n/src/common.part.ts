@@ -28,11 +28,12 @@ const airtableListAll = (name, url, formula, pages = 20) => node({ type: 'n8n-no
     queryParameters: { parameters: [{ name: 'filterByFormula', value: expr(formula) }, { name: 'pageSize', value: '100' }] },
     options: { ...RAW, pagination: { pagination: { paginationMode: 'updateAParameterInEachRequest',
       parameters: { parameters: [{ type: 'qs', name: 'offset', value: expr('{{ $response.body.offset }}') }] },
-      paginationCompleteWhen: 'other', completeExpression: expr('{{ !$response.body || !$response.body.offset }}'), limitPagesFetched: true, maxRequests: pages, requestInterval: 200 } } } },
+      paginationCompleteWhen: 'other', completeExpression: expr('{{ !$response.body || !$response.body.offset }}'), limitPagesFetched: true, maxRequests: pages, requestInterval: 250 } } } },
   credentials: CRED }, output: [{ statusCode: 200, body: { records: [] } }] });
-const airtableWrite = (name, method, url, body = '{{ JSON.stringify($json.request) }}') => node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name, onError: 'continueRegularOutput',
+// `options` adds n8n request options, such as batching for a node that may send many requests (Airtable: 5 per second).
+const airtableWrite = (name, method, url, body = '{{ JSON.stringify($json.request) }}', options = {}) => node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name, onError: 'continueRegularOutput',
   parameters: { method, url, authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi', sendBody: true, contentType: 'json', specifyBody: 'json',
-    jsonBody: expr(body), options: RAW },
+    jsonBody: expr(body), options: { ...RAW, ...options } },
   credentials: CRED }, output: [{ statusCode: 200, body: { records: [{ id: 'rec' }] } }] });
 // PATCH to the table each item names ({ url, request }): one node writes Message Log, Jobs and Contacts updates.
 const airtablePatch = (name) => airtableWrite(name, 'PATCH', expr('{{ $json.url }}'));

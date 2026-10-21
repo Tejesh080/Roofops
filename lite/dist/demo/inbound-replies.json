@@ -400,7 +400,7 @@
               "completeExpression": "={{ !$response.body || !$response.body.offset }}",
               "limitPagesFetched": true,
               "maxRequests": 20,
-              "requestInterval": 200
+              "requestInterval": 250
             }
           }
         }
@@ -478,7 +478,7 @@
               "completeExpression": "={{ !$response.body || !$response.body.offset }}",
               "limitPagesFetched": true,
               "maxRequests": 20,
-              "requestInterval": 200
+              "requestInterval": 250
             }
           }
         }
@@ -634,7 +634,13 @@
               "neverError": true
             }
           },
-          "timeout": 20000
+          "timeout": 20000,
+          "batching": {
+            "batch": {
+              "batchSize": 4,
+              "batchInterval": 1000
+            }
+          }
         }
       },
       "credentials": {

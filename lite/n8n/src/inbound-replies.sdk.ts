@@ -155,7 +155,7 @@ return [{ json: { known: !!contact, optOut: optOut, from: R.from, optOutRequests
 const needOptOut = OK_IF('Opt Out Contact?', '{{ $json.hasContactUpdate }}');
 const optOutBatches = code('Opt Out Batches', `
 return $('Classify Reply').first().json.optOutRequests.map((r) => ({ json: { request: r } }));`);
-const optOutContact = airtableWrite('Opt Out Contact', 'PATCH', T.contacts);
+const optOutContact = airtableWrite('Opt Out Contact', 'PATCH', T.contacts, undefined, { batching: { batch: { batchSize: 4, batchInterval: 1000 } } });   // within Airtable's 5 per second
 const afterContact = code('After Contact', `
 const c = $('Classify Reply').first().json;
 // Every batch must land: a STOP that is only partly applied fails the run with the reason ([Lite] Monitor raises it).

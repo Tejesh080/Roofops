@@ -309,7 +309,7 @@ const n14 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
           "completeExpression": expr("{{ !$response.body || !$response.body.offset }}"),
           "limitPagesFetched": true,
           "maxRequests": 20,
-          "requestInterval": 200
+          "requestInterval": 250
         }
       }
     }
@@ -372,7 +372,7 @@ const n16 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
           "completeExpression": expr("{{ !$response.body || !$response.body.offset }}"),
           "limitPagesFetched": true,
           "maxRequests": 20,
-          "requestInterval": 200
+          "requestInterval": 250
         }
       }
     }
@@ -493,7 +493,13 @@ const n22 = node({ type: "n8n-nodes-base.httpRequest", version: 4.5, config: {
           "neverError": true
         }
       },
-      "timeout": 20000
+      "timeout": 20000,
+      "batching": {
+        "batch": {
+          "batchSize": 4,
+          "batchInterval": 1000
+        }
+      }
     }
   },
   "credentials": {

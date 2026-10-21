@@ -1020,6 +1020,10 @@ describe('Factory release gate: the four confirmed blockers stay fixed', () => {
     expect(left(many)).toEqual([]);
     const sizes = tat.requests.filter((r) => r.method === 'PATCH' && r.url.endsWith(CONTACTS)).map((r) => (r.body as { records: unknown[] }).records.length);
     expect(Math.max(...sizes)).toBeLessThanOrEqual(10);
+    // On n8n the batches are paced within Airtable's 5 requests per second, and the pages are read 250 ms apart.
+    const node = (name: string) => imports('twilio', 'inbound-replies').nodes.find((x) => x.name === name)!.parameters as { options: R };
+    expect(node('Opt Out Contact').options.batching).toEqual({ batch: { batchSize: 4, batchInterval: 1000 } });
+    expect(node('Find Sender').options.pagination).toMatchObject({ pagination: { paginationMode: 'updateAParameterInEachRequest', limitPagesFetched: true, maxRequests: 20, requestInterval: 250 } });
     // A batch that Airtable refuses: the run fails with the reason (n8n's error workflow, [Lite] Monitor, raises it), never a quiet partial opt-out.
     const some = dupes('133', 25);
     let patches = 0;

@@ -1,4 +1,4 @@
-# RoofOps Lite demo run (2026-10-21T11:47:21.030Z)
+# RoofOps Lite demo run (2026-10-21T11:54:25.042Z)
 
 Config: `lite/config/demo.json` (Harbourside Roofing (Lite demo)). Messaging: **test-sink**: nothing was sent to a real phone or inbox.
 Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up (34 nodes), [Lite] Google Review Requests (20 nodes), [Lite] Lead Reactivation (20 nodes), [Lite] Inbound Replies (30 nodes), [Lite] Monitor (34 nodes).
@@ -13,7 +13,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
  "body": {
   "ok": true,
   "duplicate": false,
-  "job_ref": "LJ-20261021-38Z9",
+  "job_ref": "LJ-20261021-K6HK",
   "new_contact": true,
   "stage": "Contacted",
   "acknowledgement": {
@@ -33,7 +33,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
  "body": {
   "ok": true,
   "duplicate": true,
-  "job_ref": "LJ-20261021-38Z9",
+  "job_ref": "LJ-20261021-K6HK",
   "message": "We already have this enquiry and will be in touch."
  }
 }
@@ -61,7 +61,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
  "body": {
   "ok": true,
   "duplicate": false,
-  "job_ref": "LJ-20261021-6X8P",
+  "job_ref": "LJ-20261021-E7SG",
   "new_contact": true,
   "stage": "New Lead",
   "acknowledgement": {
@@ -78,7 +78,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-21T11:47:20.951Z",
+ "ran_at": "2026-10-21T11:54:24.960Z",
  "mode": "test-sink",
  "sent": 2,
  "failed": 0,
@@ -105,7 +105,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-21T11:47:20.959Z",
+ "ran_at": "2026-10-21T11:54:24.968Z",
  "mode": "test-sink",
  "sent": 0,
  "failed": 0,
@@ -129,7 +129,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-21T11:47:20.972Z",
+ "ran_at": "2026-10-21T11:54:24.983Z",
  "mode": "test-sink",
  "sent": 2,
  "failed": 0,
@@ -155,7 +155,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-21T11:47:20.979Z",
+ "ran_at": "2026-10-21T11:54:24.989Z",
  "mode": "test-sink",
  "sent": 0,
  "failed": 0,
@@ -209,7 +209,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-21T11:47:21.015Z",
+ "ran_at": "2026-10-21T11:54:25.026Z",
  "mode": "test-sink",
  "sent": 0,
  "failed": 0,
@@ -235,7 +235,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-21T11:47:21.028Z",
+ "ran_at": "2026-10-21T11:54:25.041Z",
  "mode": "test-sink",
  "alerts_raised": 1,
  "problem_messages": 0,
@@ -259,8 +259,8 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
 
 | Stage | Jobs |
 |---|---|
-| New Lead | LJ-DEMO-A3, LJ-20261021-6X8P |
-| Contacted | LJ-DEMO-A2, LJ-DEMO-A5, LJ-20261021-38Z9 |
+| New Lead | LJ-DEMO-A3, LJ-20261021-E7SG |
+| Contacted | LJ-DEMO-A2, LJ-DEMO-A5, LJ-20261021-K6HK |
 | Quoted | LJ-DEMO-A1, LJ-DEMO-A4, LJ-DEMO-A6, LJ-DEMO-A7 |
 | Accepted | LJ-DEMO-P1 |
 | Job In Progress | LJ-DEMO-P2 |
@@ -273,9 +273,9 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
 
 | Workflow | Purpose | Contact | Job | Channel | Status | Reason / To |
 |---|---|---|---|---|---|---|
-| Lead Follow-Up | Operational | ZZ Lite Demo Emma Walsh | LJ-20261021-38Z9 | SMS | Simulated Sent | 0400000201 |
-| Lead Follow-Up | Operational | ZZ Lite Demo Emma Walsh | LJ-20261021-38Z9 |  | Skipped | repeat enquiry within 30 days of LJ-20261021-38Z9 |
-| Lead Follow-Up | Operational | ZZ Lite Demo Ethan Cole | LJ-20261021-6X8P |  | Skipped | no consent or no reachable contact detail |
+| Lead Follow-Up | Operational | ZZ Lite Demo Emma Walsh | LJ-20261021-K6HK | SMS | Simulated Sent | 0400000201 |
+| Lead Follow-Up | Operational | ZZ Lite Demo Emma Walsh | LJ-20261021-K6HK |  | Skipped | repeat enquiry within 30 days of LJ-20261021-K6HK |
+| Lead Follow-Up | Operational | ZZ Lite Demo Ethan Cole | LJ-20261021-E7SG |  | Skipped | no consent or no reachable contact detail |
 | Review Request | Review | ZZ Lite Demo Priya Nair | LJ-DEMO-R3 |  | Skipped | opted out |
 | Review Request | Review | ZZ Lite Demo Tom Fraser | LJ-DEMO-R4 |  | Skipped | no permission for review requests |
 | Review Request | Review | ZZ Lite Demo Ben Carter | LJ-DEMO-R6 |  | Skipped | no permission for review requests |

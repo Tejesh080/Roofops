@@ -192,6 +192,24 @@ describe('D. review requests (test sink)', () => {
     expect(messages('Review Request').filter((m) => m.Status === 'Simulated Sent')).toHaveLength(2);
   });
 
+  it('a job dragged to Completed without a Completed At date is not forgotten: the run records the date, and the request goes once the delay has passed', () => {
+    const r8 = at.insert('jobs', { 'Job Ref': 'LJ-DEMO-R8', Contact: [ids.contacts.olivia!], Stage: 'Completed', Service: 'roof restoration', 'Demo Data': true });
+    expect(runNow(wf['review-requests'], at.http).summary).toMatchObject({ sent: 0, completed_at_recorded: 1, not_due_yet: 2 });   // R8 and R5 (finished yesterday)
+    const f = () => at.get('jobs', r8.id)!.fields;
+    expect(Date.parse(String(f()['Completed At']))).toBeGreaterThan(Date.now() - 60_000);
+    expect(f()['Review Status']).toBeUndefined();
+    f()['Completed At'] = daysAgo(config.reviews.delayDays + 1);   // the delay has passed
+    expect(runNow(wf['review-requests'], at.http).summary).toMatchObject({ sent: 1, completed_at_recorded: 0 });
+    expect(f()).toMatchObject({ 'Review Status': 'Sent' });
+  });
+
+  it('Monitor, which runs more often, records a missing Completed At too, instead of raising an alarm about it', () => {
+    const r7 = at.insert('jobs', { 'Job Ref': 'LJ-DEMO-R7', Contact: [ids.contacts.olivia!], Stage: 'Completed', Service: 'gutter replacement', 'Demo Data': true });
+    expect(runNow(wf.monitor, at.http).summary).toMatchObject({ completed_at_recorded: 1 });
+    expect(Date.parse(String(at.get('jobs', r7.id)!.fields['Completed At']))).toBeGreaterThan(Date.now() - 60_000);
+    expect(at.all('alerts').filter((a) => a.fields.Kind === 'Incomplete Job')).toHaveLength(0);
+  });
+
   it('consent.reviewRequests "service": SMS/email consent is enough (Ben and Tom differ: Ben consented to SMS, Tom to nothing)', async () => {
     const svc = structuredClone(config); svc.consent.reviewRequests = 'service';
     const w = await buildAll(svc, 'service-reviews');
@@ -242,6 +260,13 @@ describe('E. lead reactivation and replies (test sink)', () => {
     expect(post('inbound-replies', { from: '0400 999 999', text: 'who is this?' })).toMatchObject({ status: 200, body: { known_contact: false } });
     expect(messages('Inbound Reply').at(-1)).toMatchObject({ Status: 'Received', Reason: 'sender is not in the CRM' });
     expect(post('inbound-replies', { from: '0400 999 999', text: ' ' })).toMatchObject({ status: 400 });
+  });
+
+  it('a reply about a finished job is logged on that job, which stays finished', () => {
+    const before = { ...job('R2') };
+    expect(post('inbound-replies', { from: 'marcus.webb@example.test', text: 'Thanks, the gutters look great' })).toMatchObject({ status: 200, body: { known_contact: true, job_ref: 'LJ-DEMO-R2' } });
+    expect(messages('Inbound Reply').at(-1)).toMatchObject({ Status: 'Received', Job: [ids.jobs.R2], Reason: 'reply recorded on the finished job (not reopened)' });
+    expect(job('R2')).toMatchObject({ Stage: 'Paid', 'Last Activity At': before['Last Activity At'] });
   });
 
   it('in test-sink mode only the configured Airtable base is called: no message provider, no other host', () => {

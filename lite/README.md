@@ -74,7 +74,7 @@ npx tsx lite/demo/run-demo.ts lite/config/example-plumbing-twilio.json lite/demo
 
 Both run the workflows' **actual n8n node code** against an in-memory Airtable that enforces the Lite schema.
 
-Tests: 49, the same code, acceptance tests A–H.
+Tests: 52, the same code, acceptance tests A–H.
 ```bash
 npx vitest run test/lite.test.ts
 ```

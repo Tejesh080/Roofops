@@ -24,12 +24,14 @@ const jobs = records($('Find Finished Jobs').first().json, 'find finished jobs')
 const contacts = {}; records($('Find Contacts').first().json, 'find contacts').forEach((c) => { contacts[c.id] = c; });
 const earlier = {}; records($input.first().json, 'find earlier requests').forEach((m) => { const f = m.fields || {}; if (ATTEMPTED.indexOf(f.Status) >= 0) earlier[f['Dedupe Key']] = f.Status; });
 const sends = []; const logs = []; const updates = [];
-const summary = { finished_jobs: jobs.length, planned: 0, skipped: 0, skip_reasons: {}, not_due_yet: 0, already_requested: 0, awaiting_retry: 0, deferred_to_next_run: 0 };
+const summary = { finished_jobs: jobs.length, planned: 0, skipped: 0, skip_reasons: {}, not_due_yet: 0, already_requested: 0, awaiting_retry: 0, deferred_to_next_run: 0, completed_at_recorded: 0 };
 const due = NOW.getTime() - days(CFG.reviews.delayDays);
 for (const j of jobs) {
   const f = j.fields || {}; const key = 'review:' + j.id;
-  const finished = Date.parse(f['Completed At'] || '');
-  if (!finished || finished > due) { summary.not_due_yet++; continue; }
+  let finished = Date.parse(f['Completed At'] || '');
+  // Staff often just drag the card to Completed: the first run that sees it finished records the date for them.
+  if (!finished) { finished = NOW.getTime(); summary.completed_at_recorded++; updates.push({ table: 'jobs', id: j.id, fields: { 'Completed At': iso(NOW) } }); }
+  if (finished > due) { summary.not_due_yet++; continue; }
   const before = earlier[key];
   if (before === 'Failed' || before === 'Unknown' || before === 'Sending') { summary.awaiting_retry++; continue; }   // a person decides (Retry Requested); never resent by itself
   if (before) { summary.already_requested++; updates.push({ table: 'jobs', id: j.id, fields: { 'Review Status': 'Sent' } }); continue; }   // asked before; only the job was not marked

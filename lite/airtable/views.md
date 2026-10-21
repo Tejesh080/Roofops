@@ -19,7 +19,7 @@ New Lead → Contacted → Quoted → Accepted → Job In Progress → Completed
 | → Contacted | **Lead Follow-Up**, once the acknowledgement has gone out, and **Inbound Replies** when a New Lead replies. Otherwise staff. |
 | → Quoted | Staff: create a **Lite Quotes** record (Status Sent) linked to the job, then set the Stage. |
 | → Accepted | Staff: set the quote to Accepted, then the Stage. |
-| → Job In Progress, → Completed | Staff. Set **Completed At** when the work is finished; the review request depends on it. |
+| → Job In Progress, → Completed | Staff. Moving the card to Completed is enough: the next Monitor or review run records **Completed At**, and the review request follows. Set the date yourself only if the work finished on another day. |
 | → Invoiced, → Paid | Staff, with **Invoice Status** and **Invoice Amount**. This is tracking only: Lite never creates invoices or touches Xero. |
 
 The automations only ever move a job forward to **Contacted**. Every other stage belongs to the business.
@@ -57,12 +57,26 @@ The demo base has the published Interface **"Lite Quote-to-Paid"** (`pbdAzDJhyiI
 | Page | Type | Configuration |
 |---|---|---|
 | Overview | dashboard | One section per figure, each with its own record filter. **Numbers:** New leads (count, Stage is New Lead); To invoice (count, Completed and Not Invoiced); Owed (sum of Invoice Amount, Invoice Status Invoiced); Paid (sum, Invoice Status Paid); Logged messages. **Grids:** New leads, Latest messages. |
-| Pipeline | Kanban on Lite Jobs | Stacked by Stage, with a count per stack. Cards: Job Ref, Contact, Service, Last Activity At, Invoice Amount. Newest activity first. |
+| Pipeline | Kanban on Lite Jobs | Stacked by Stage, with a count per stack. Cards: Job Ref, Contact, Service, Last Activity At, Invoice Amount. Newest activity first. **Clicking a card opens the Job detail page** (below): create that page first and pass its id as `recordDetailPageId`. |
+| Job (record detail) | sidesheet on Lite Jobs, editable | Title: Job Ref. Its sections are listed below the table. |
 | Jobs | grid on Lite Jobs | The nine job views above as tabs, except Pipeline. Row colour by Stage; sum of Invoice Amount. |
 | Message Log | grid | Grouped by Workflow, newest first. Columns include Purpose, Status, Error Code, Provider Message ID, Retry Requested (editable). Tabs: **Needs attention** (Status Failed or Unknown), Problems (Failed or Skipped), Replies and opt-outs. |
 | Contacts | grid | Columns include Consent SMS, Review Opt-In, Marketing Opt-In, Consent Source, Consent Recorded At, Opted Out. Tabs: Do not contact, Marketing list (Marketing Opt-In, a Consent Recorded At, not Opted Out), **Consent not recorded** (a box ticked but no Consent Recorded At). |
 | Quotes | grid | Sum of Amount, newest first. |
 | **Alerts** | grid on Lite Alerts | Open first, newest first; Status editable (Open / Resolved). Tabs: Open, Delivery, Leads and jobs, Workflow failures. Add an **Open alerts** number to the Overview. |
+
+**Job detail page sections:**
+1. **Job:** Stage, Service, Enquiry Message, Property, Source, Lead Received At.
+2. **Customer:** the Contact link shown as an embedded grid, with Name, Phone, Email, Opted Out, Consent SMS, Review
+   Opt-In and Marketing Opt-In. Staff see the number to call and the consent at a glance.
+3. **Quotes:** the Lite Quotes link as an embedded grid, with link and unlink allowed. Columns: Quote Ref, Amount,
+   Status, Sent At, Accepted At.
+4. **Finishing and invoicing:** Completed At, Invoice Status, Invoice Amount.
+5. **Messages:** the Message Log link as an embedded grid, newest first. Columns: Attempted At, Workflow, Channel,
+   Status, Body, Reason.
+6. **Set by the automations:** Last Activity At, the Review fields and the Reactivation fields.
+
+A detail page is either all editable or all read-only. So label section 6 "leave these as they are".
 
 A **Record review** page on Lite Jobs, for working through new leads, is a useful extra.
 

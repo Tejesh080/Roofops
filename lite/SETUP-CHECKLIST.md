@@ -53,4 +53,4 @@ Tick each line. Full detail: [DEPLOY.md](DEPLOY.md).
 - [ ] Publish: Monitor, Inbound Replies, Lead Follow-Up, Review Requests, Lead Reactivation
 - [ ] Error workflow = [Lite] Monitor on the other four; one deliberate production failure shows a Workflow Failed alert
 - [ ] Demo data removed
-- [ ] Staff shown: pipeline, Completed At, recording consent, alerts and Retry Requested, Do not contact
+- [ ] Staff shown: the Pipeline (drag cards, open a job, add its quote), recording consent, alerts and Retry Requested, Do not contact

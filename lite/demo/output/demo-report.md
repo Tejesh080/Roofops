@@ -1,4 +1,4 @@
-# RoofOps Lite demo run (2026-10-20T12:21:16.363Z)
+# RoofOps Lite demo run (2026-10-21T02:35:33.271Z)
 
 Config: `lite/config/demo.json` (Harbourside Roofing (Lite demo)). Messaging: **test-sink**: nothing was sent to a real phone or inbox.
 Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up (34 nodes), [Lite] Google Review Requests (20 nodes), [Lite] Lead Reactivation (20 nodes), [Lite] Inbound Replies (24 nodes), [Lite] Monitor (33 nodes).
@@ -13,7 +13,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
  "body": {
   "ok": true,
   "duplicate": false,
-  "job_ref": "LJ-20261020-848S",
+  "job_ref": "LJ-20261021-C9JH",
   "new_contact": true,
   "stage": "Contacted",
   "acknowledgement": {
@@ -33,7 +33,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
  "body": {
   "ok": true,
   "duplicate": true,
-  "job_ref": "LJ-20261020-848S",
+  "job_ref": "LJ-20261021-C9JH",
   "message": "We already have this enquiry and will be in touch."
  }
 }
@@ -61,7 +61,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
  "body": {
   "ok": true,
   "duplicate": false,
-  "job_ref": "LJ-20261020-9359",
+  "job_ref": "LJ-20261021-2WGK",
   "new_contact": true,
   "stage": "New Lead",
   "acknowledgement": {
@@ -78,7 +78,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-20T12:21:16.293Z",
+ "ran_at": "2026-10-21T02:35:33.201Z",
  "mode": "test-sink",
  "sent": 2,
  "failed": 0,
@@ -95,7 +95,8 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
  "not_due_yet": 1,
  "already_requested": 0,
  "awaiting_retry": 0,
- "deferred_to_next_run": 0
+ "deferred_to_next_run": 0,
+ "completed_at_recorded": 0
 }
 ```
 
@@ -104,7 +105,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-20T12:21:16.300Z",
+ "ran_at": "2026-10-21T02:35:33.208Z",
  "mode": "test-sink",
  "sent": 0,
  "failed": 0,
@@ -118,7 +119,8 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
  "not_due_yet": 1,
  "already_requested": 0,
  "awaiting_retry": 0,
- "deferred_to_next_run": 0
+ "deferred_to_next_run": 0,
+ "completed_at_recorded": 0
 }
 ```
 
@@ -127,7 +129,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-20T12:21:16.313Z",
+ "ran_at": "2026-10-21T02:35:33.221Z",
  "mode": "test-sink",
  "sent": 2,
  "failed": 0,
@@ -153,7 +155,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-20T12:21:16.319Z",
+ "ran_at": "2026-10-21T02:35:33.228Z",
  "mode": "test-sink",
  "sent": 0,
  "failed": 0,
@@ -197,7 +199,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
   "ok": true,
   "known_contact": true,
   "opted_out": true,
-  "job_ref": null
+  "job_ref": "LJ-DEMO-R1"
  }
 }
 ```
@@ -207,7 +209,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-20T12:21:16.349Z",
+ "ran_at": "2026-10-21T02:35:33.259Z",
  "mode": "test-sink",
  "sent": 0,
  "failed": 0,
@@ -233,7 +235,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
 ```json
 {
  "ok": true,
- "ran_at": "2026-10-20T12:21:16.362Z",
+ "ran_at": "2026-10-21T02:35:33.270Z",
  "mode": "test-sink",
  "alerts_raised": 1,
  "problem_messages": 0,
@@ -242,7 +244,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
  "unknown": 0,
  "retry_requests": 0,
  "stale_leads": 1,
- "incomplete_jobs": 0,
+ "completed_at_recorded": 0,
  "retried": 0,
  "found_already_sent": 0,
  "retry_postponed": 0,
@@ -256,8 +258,8 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
 
 | Stage | Jobs |
 |---|---|
-| New Lead | LJ-DEMO-A3, LJ-20261020-9359 |
-| Contacted | LJ-DEMO-A2, LJ-DEMO-A5, LJ-20261020-848S |
+| New Lead | LJ-DEMO-A3, LJ-20261021-2WGK |
+| Contacted | LJ-DEMO-A2, LJ-DEMO-A5, LJ-20261021-C9JH |
 | Quoted | LJ-DEMO-A1, LJ-DEMO-A4, LJ-DEMO-A6, LJ-DEMO-A7 |
 | Accepted | LJ-DEMO-P1 |
 | Job In Progress | LJ-DEMO-P2 |
@@ -270,9 +272,9 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
 
 | Workflow | Purpose | Contact | Job | Channel | Status | Reason / To |
 |---|---|---|---|---|---|---|
-| Lead Follow-Up | Operational | ZZ Lite Demo Emma Walsh | LJ-20261020-848S | SMS | Simulated Sent | 0400000201 |
-| Lead Follow-Up | Operational | ZZ Lite Demo Emma Walsh | LJ-20261020-848S |  | Skipped | repeat enquiry within 30 days of LJ-20261020-848S |
-| Lead Follow-Up | Operational | ZZ Lite Demo Ethan Cole | LJ-20261020-9359 |  | Skipped | no consent or no reachable contact detail |
+| Lead Follow-Up | Operational | ZZ Lite Demo Emma Walsh | LJ-20261021-C9JH | SMS | Simulated Sent | 0400000201 |
+| Lead Follow-Up | Operational | ZZ Lite Demo Emma Walsh | LJ-20261021-C9JH |  | Skipped | repeat enquiry within 30 days of LJ-20261021-C9JH |
+| Lead Follow-Up | Operational | ZZ Lite Demo Ethan Cole | LJ-20261021-2WGK |  | Skipped | no consent or no reachable contact detail |
 | Review Request | Review | ZZ Lite Demo Priya Nair | LJ-DEMO-R3 |  | Skipped | opted out |
 | Review Request | Review | ZZ Lite Demo Tom Fraser | LJ-DEMO-R4 |  | Skipped | no permission for review requests |
 | Review Request | Review | ZZ Lite Demo Ben Carter | LJ-DEMO-R6 |  | Skipped | no permission for review requests |
@@ -281,7 +283,7 @@ Workflows built into `lite\demo\output\workflows`: [Lite] Instant Lead Follow-Up
 | Reactivation | Marketing | ZZ Lite Demo Mia Rossi | LJ-DEMO-A6 | Email | Simulated Sent | mia.rossi@example.test |
 | Reactivation | Marketing | ZZ Lite Demo Daniel Brooks | LJ-DEMO-A1 | SMS | Simulated Sent | 0400000106 |
 | Inbound Reply | Inbound | ZZ Lite Demo Daniel Brooks | LJ-DEMO-A1 | SMS | Received | reply recorded; enquiry reopened for a call |
-| Inbound Reply | Inbound | ZZ Lite Demo Olivia Chen |  | SMS | Opt-Out | contact opted out of all messages |
+| Inbound Reply | Inbound | ZZ Lite Demo Olivia Chen | LJ-DEMO-R1 | SMS | Opt-Out | contact opted out of all messages |
 
 ## Lite Alerts
 

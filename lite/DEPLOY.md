@@ -282,7 +282,10 @@ Twilio's text never matches Lite's.
 ## 9. Handover
 
 Show staff:
-- **Pipeline:** move a job Quoted → Paid; set **Completed At** (review requests need it).
+- **Pipeline:** drag a job from stage to stage, and click a card to open the job (customer phone, quotes, messages).
+  Moving it to Completed is enough: Lite records Completed At, and the review request follows.
+- **Imported old jobs:** fill in Completed At, or set Review Status to Skipped. Otherwise Lite treats them as finished
+  today, and asks for a review.
 - **Consent:** record consent taken by phone (tick the boxes and fill Source, Recorded At, Wording). Never tick boxes
   without it.
 - **Alerts:** on the Overview and Alerts pages. Fix the cause, tick **Retry Requested** on the message, then set the

@@ -15,11 +15,17 @@
       "name": "Lite Quote-to-Paid",
       "pages": {
         "Overview": "pagXFR1yZ7q3TAwXz",
-        "Pipeline": "pagSoRoOHL8eClVBC",
+        "Pipeline": "pagLDm2qi1CrHjfZD",
         "Jobs": "pagweElqH06yKZeXg",
         "Message Log": "pagXBMMy90Crh9v3Q",
         "Contacts": "pag03vKa1GUUsao5Y",
         "Quotes": "pagYpUijUAOhMnXoj"
+      },
+      "recordDetailPages": {
+        "Job (Job Detail 2)": "pagwUYRZgQB8QSSp5"
+      },
+      "removed": {
+        "Pipeline (first version, no detail page)": "pagSoRoOHL8eClVBC"
       }
     },
     "seeded": {
@@ -426,6 +432,26 @@
         },
         "advancedRecords": 234
       }
+    },
+    "packageDemo": {
+      "done": "2026-10-21 (AEST), test sink, no live SMS",
+      "contacts": {
+        "ZZ Demo Hannah Reid": "recJGNLX5roFQgwMU",
+        "ZZ Demo Peter Vance": "recFkYJNa91Aw5XbE"
+      },
+      "properties": [
+        "rec0gUJHLNA6Sp2Ae",
+        "recJv8bRqjahb1LvI"
+      ],
+      "jobs": {
+        "LJ-20261021-0IXB (Hannah, Paid)": "recD0HQWTTFXlOMwe",
+        "LJ-20261021-9QZG (Peter, Quoted, reactivated)": "rec5Y22oO58cBWVZz"
+      },
+      "quotes": {
+        "LQ-DEMO-HANNAH": "rec3sO0gY32OCnyqF",
+        "LQ-DEMO-PETER": "recDL6XuqFaHB6kGc"
+      },
+      "note": "created by the real form and the workflows; ticked Demo Data afterwards; Peter time-shifted 120 days for the reactivation step"
     }
   },
   "n8n": {
@@ -560,6 +586,20 @@
         "3240": "pre-check re-run on the second fictional number (not stored)"
       },
       "twilio": "no Webhook Setting or Rule created yet (waits for approval)"
+    },
+    "packageDemo": {
+      "leadFollowUpPublished": "about 2 minutes, 2026-10-21 02:24-02:26 UTC, then unpublished",
+      "executions": {
+        "3242": "form: Hannah (production webhook)",
+        "3248": "form: Peter (production webhook)",
+        "3260": "review run 1: Completed At recorded",
+        "3263": "review run 2: one review request (simulated)",
+        "3270": "reactivation: one follow-up to Peter (simulated)",
+        "3274": "reply from Peter (simulated), logged on his job",
+        "3277": "reply from Hannah (simulated), logged on her finished job",
+        "3284": "Monitor run"
+      },
+      "mode": "test-sink build (lite/dist/demo) on all five, unpublished"
     }
   }
 }

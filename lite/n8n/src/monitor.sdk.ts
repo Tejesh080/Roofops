@@ -5,7 +5,8 @@ import { workflow, node, trigger, ifElse, expr } from '@n8n/workflow-sdk';
 // - Workflow Failed (Error Trigger): set this workflow as the "Error workflow" of the other four (n8n.errorWorkflowId).
 //   Every failed production run becomes a Lite Alerts row (workflow, execution, the node that failed, the error).
 // - Every few hours (and Run Now): messages stuck in Sending become Unknown; Failed and Unknown messages, leads nobody
-//   contacted, and Completed jobs without a Completed At date are raised as alerts (once each).
+//   contacted are raised as alerts (once each). A Completed job without a Completed At date gets today's date (staff
+//   usually just drag the card), so its review request still goes out.
 // - Retry Requested (ticked by staff on a Failed or Unknown message): Lite first asks Twilio whether the message went out
 //   (by Message SID, or by recipient and text). Found: the row is corrected and nothing is resent. Not found: it is sent
 //   again once, through the same reserve-and-confirm pipeline, so two runs cannot both resend it. Opted-out contacts,
@@ -35,7 +36,7 @@ const msgs = records($('Find Message Problems').first().json, 'find message prob
 const contacts = {}; records($('Find Retry Contacts').first().json, 'find retry contacts').forEach((c) => { contacts[c.id] = c; });
 const jobs = records($input.first().json, 'find stale jobs');
 const M = CFG.monitoring; const alerts = []; const updates = []; const retries = [];
-const summary = { problem_messages: msgs.length, stuck_sending: 0, failed: 0, unknown: 0, retry_requests: 0, stale_leads: 0, incomplete_jobs: 0 };
+const summary = { problem_messages: msgs.length, stuck_sending: 0, failed: 0, unknown: 0, retry_requests: 0, stale_leads: 0, completed_at_recorded: 0 };
 const recent = (f, m) => NOW.getTime() - (Date.parse(f['Attempted At'] || m.createdTime) || 0) < days(14);   // older problems were raised already
 const alert = (kind, ref, key, detail, demo, wf) => alerts.push({ 'Alert Ref': logRef('AL'), Kind: kind, Status: 'Open', Detail: detail, Workflow: wf || '', 'Record Ref': clean(ref),
   'Dedupe Key': key, 'Raised At': iso(NOW), 'Demo Data': !!demo });
@@ -64,8 +65,7 @@ for (const j of jobs) {
   const f = j.fields || {};
   if (f.Stage === 'New Lead' && NOW.getTime() - (Date.parse(f['Lead Received At'] || j.createdTime) || 0) > M.staleLeadHours * 3600000) {
     summary.stale_leads++; alert('Stuck Lead', f['Job Ref'], 'job:' + j.id + ':stale', 'New Lead for more than ' + M.staleLeadHours + ' hours: nobody has contacted them yet.', f['Demo Data']); }
-  if (f.Stage === 'Completed' && !f['Completed At']) {
-    summary.incomplete_jobs++; alert('Incomplete Job', f['Job Ref'], 'job:' + j.id + ':no-completed-at', 'Completed without a Completed At date: the review request will never go out.', f['Demo Data']); }
+  if (f.Stage === 'Completed' && !f['Completed At']) { summary.completed_at_recorded++; updates.push({ table: 'jobs', id: j.id, fields: { 'Completed At': iso(NOW) } }); }
 }
 return [{ json: { alerts: alerts, updates: updates, retries: retries, summary: summary } }];`);
 

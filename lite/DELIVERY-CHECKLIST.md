@@ -87,7 +87,7 @@ This list covers what must be true before, at and after handover to a trade busi
 ## 7. Handover
 
 - [ ] **Staff walkthrough** (DEPLOY.md step 9):
-  - the pipeline and Completed At;
+  - the Pipeline: drag the cards, click one to open the job, and add the quote there;
   - recording consent taken by phone;
   - alerts and Retry Requested;
   - the "Do not contact" list.

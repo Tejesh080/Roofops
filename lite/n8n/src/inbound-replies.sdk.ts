@@ -101,13 +101,16 @@ const optOut = CFG.replies.optOutKeywords.some((k) => words === k || words.index
 const optIn = !optOut && (words === 'START' || words === 'UNSTOP');
 const recent = (x) => Date.parse((x.fields || {})['Lead Received At'] || '') || 0;
 const open = jobs.filter((j) => ['Paid', 'Lost', 'Completed', 'Invoiced'].indexOf((j.fields || {}).Stage) < 0).sort((a, b) => recent(b) - recent(a));
-const job = open[0] || null;
+// The reply is logged on their open job, or else on their latest finished one (which is not reopened).
+const job = open[0] || jobs.slice().sort((a, b) => recent(b) - recent(a))[0] || null;
+const reopen = !!job && open.indexOf(job) >= 0;
 const contactUpdate = contact && optOut ? { typecast: false, records: [{ id: contact.id, fields: { 'Opted Out': true, 'Opted Out At': iso(NOW), 'Marketing Opt-In': false } }] } : null;
 const jf = { 'Last Activity At': iso(NOW) };
 if (job && job.fields.Stage === 'New Lead') jf.Stage = 'Contacted';
-const jobUpdate = job && contact && !optOut && !optIn ? { typecast: false, records: [{ id: job.id, fields: jf }] } : null;
+const jobUpdate = reopen && contact && !optOut && !optIn ? { typecast: false, records: [{ id: job.id, fields: jf }] } : null;
 const reason = !contact ? 'sender is not in the CRM' : optOut ? 'contact opted out of all messages'
-  : optIn ? 'asked to receive messages again: staff must confirm and untick Opted Out (Lite never does this automatically)' : 'reply recorded; enquiry reopened for a call';
+  : optIn ? 'asked to receive messages again: staff must confirm and untick Opted Out (Lite never does this automatically)'
+  : job && !reopen ? 'reply recorded on the finished job (not reopened)' : 'reply recorded; enquiry reopened for a call';
 const lf = { 'Log Ref': logRef('IN'), Workflow: 'Inbound Reply', Purpose: 'Inbound', Channel: R.channel, To: 'from ' + R.from, Body: R.text,
   Status: optOut ? 'Opt-Out' : 'Received', Reason: reason, 'Dedupe Key': 'reply:' + (R.sid || R.from + ':' + iso(NOW)), 'Provider Message ID': R.sid,
   Provider: CFG.messaging.provider, 'Attempted At': iso(NOW), 'Demo Data': R.demo };

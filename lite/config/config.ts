@@ -38,16 +38,32 @@ export interface TwilioConfig {
   /** The sender: an E.164 number that can receive replies (needed for STOP). Or set messagingServiceSid. */
   from?: string | null;
   messagingServiceSid?: string | null;
-  /** n8n "Basic Auth" credential used to call Twilio: API Key SID + Secret (recommended) or Account SID + Auth Token. */
+  /**
+   * Trial accounts only: the Twilio template key sent as the Body (Twilio's trial accepts only its own templates and
+   * picks the trial sender, so from and messagingServiceSid stay empty). The Message Log keeps Lite's real wording.
+   */
+  trialTemplate?: string | null;
+  /** The n8n credential used to call Twilio. */
   credential: Cred;
+  /** "twilioApi": n8n's own Twilio credential (Account SID + Auth Token, or an API key). "httpBasicAuth" (default): a Basic Auth credential, API Key SID + Secret. */
+  credentialType?: 'twilioApi' | 'httpBasicAuth';
   /**
    * How Twilio's webhooks are checked. "signature": X-Twilio-Signature with the Auth Token kept in the n8n Variable
-   * signatureVariable (n8n Cloud Pro/Enterprise). "basic-auth": the webhook needs the n8n Basic Auth credential
-   * inboundCredential, and Twilio's webhook URLs carry those credentials (set in the Twilio console).
+   * signatureVariable (n8n Cloud Pro/Enterprise only). "basic-auth": the webhook needs the n8n Basic Auth credential
+   * inboundCredential; Twilio sends those credentials (from a Twilio Webhook Rule, or from the webhook URL).
+   * "header-auth": the webhook needs the n8n Header Auth credential inboundCredential, sent by a relay that has
+   * checked Twilio's signature first (lite/twilio/reply-relay.js, a Protected Twilio Function).
    */
-  inboundAuth: 'signature' | 'basic-auth';
+  inboundAuth: 'signature' | 'basic-auth' | 'header-auth';
   signatureVariable?: string;
   inboundCredential?: Cred | null;
+  /**
+   * Ask Twilio for delivery receipts (StatusCallback, a plain URL: never with a password in it). Default: on with
+   * "signature". With "basic-auth", turn it on once a Twilio Webhook Rule sends the credentials for the n8n address.
+   */
+  statusCallbacks?: boolean;
+  /** Where receipts go when not straight to n8n, e.g. the reply relay: https://<function>/reply?event=status. Never with credentials in it. */
+  statusCallbackUrl?: string | null;
   /** Live safety: only these numbers get real messages. Required until allowAllRecipients is true. */
   allowedRecipients: string[];
   allowAllRecipients?: boolean;
@@ -60,6 +76,9 @@ type Incomplete<T> = { [K in keyof T]?: T[K] extends readonly unknown[] ? T[K] :
 
 const CRED_ID = /^[A-Za-z0-9]{16}$/;
 const E164 = /^\+[1-9][0-9]{7,14}$/;
+/** The bodies a Twilio trial account may send (twilio.com/docs/usage/trials/try-out-sms, 2026-08). */
+export const TWILIO_TRIAL_TEMPLATES = ['sms_2fa', 'sms_appointment_reminders', 'sms_order_confirmation', 'sms_delivery_updates', 'sms_customer_support',
+  'sms_marketing_promotions', 'sms_event_notifications', 'sms_account_alerts', 'sms_feedback_surveys', 'sms_internal_alerts'];
 
 /** Every problem with a config, or [] when it is usable. */
 export function configProblems(input: LiteConfig | Incomplete<LiteConfig>): string[] {
@@ -85,13 +104,21 @@ export function configProblems(input: LiteConfig | Incomplete<LiteConfig>): stri
     if (!t) p.push('messaging.twilio is required when messaging.mode is "twilio"');
     else {
       if (!/^AC[0-9a-f]{32}$/.test(t.accountSid ?? '')) p.push('messaging.twilio.accountSid must be an Account SID (AC + 32 hex characters)');
-      if (!t.from === !t.messagingServiceSid) p.push('messaging.twilio needs exactly one of from (an E.164 number) or messagingServiceSid');
+      if (t.trialTemplate) {
+        if (t.from || t.messagingServiceSid) p.push("messaging.twilio.trialTemplate sends from Twilio's trial number: leave from and messagingServiceSid empty");
+        if (!TWILIO_TRIAL_TEMPLATES.includes(t.trialTemplate)) p.push(`messaging.twilio.trialTemplate must be one of Twilio's trial templates (${TWILIO_TRIAL_TEMPLATES.join(', ')})`);
+      } else if (!t.from === !t.messagingServiceSid) p.push('messaging.twilio needs exactly one of from (an E.164 number) or messagingServiceSid');
       if (t.from && !E164.test(t.from)) p.push('messaging.twilio.from must be an E.164 phone number (+61...): an alphanumeric sender cannot receive STOP replies, so it cannot be used');
       if (t.messagingServiceSid && !/^MG[0-9a-f]{32}$/.test(t.messagingServiceSid)) p.push('messaging.twilio.messagingServiceSid must be MG + 32 hex characters');
       cred(t.credential, 'messaging.twilio.credential');
+      const credType = t.credentialType as string | null | undefined;   // read from JSON: any value may arrive
+      if (credType != null && credType !== 'twilioApi' && credType !== 'httpBasicAuth') p.push('messaging.twilio.credentialType must be "twilioApi" or "httpBasicAuth"');
       if (t.inboundAuth === 'signature') { if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(t.signatureVariable ?? '')) p.push('messaging.twilio.signatureVariable must name the n8n Variable that holds the Twilio Auth Token'); }
-      else if (t.inboundAuth === 'basic-auth') cred(t.inboundCredential, 'messaging.twilio.inboundCredential');
-      else p.push('messaging.twilio.inboundAuth must be "signature" or "basic-auth"');
+      else if (t.inboundAuth === 'basic-auth' || t.inboundAuth === 'header-auth') cred(t.inboundCredential, 'messaging.twilio.inboundCredential');
+      else p.push('messaging.twilio.inboundAuth must be "signature", "basic-auth" or "header-auth"');
+      if (t.statusCallbacks != null && typeof t.statusCallbacks !== 'boolean') p.push('messaging.twilio.statusCallbacks must be true or false');
+      if (t.statusCallbackUrl != null && (!/^https:\/\/[^\s/@]+\/\S*\?event=status$/.test(t.statusCallbackUrl)))
+        p.push('messaging.twilio.statusCallbackUrl must be an https URL ending in ?event=status, with no credentials in it');
       const list = t.allowedRecipients;
       if (!Array.isArray(list) || list.some((n) => typeof n !== 'string' || !E164.test(n))) p.push('messaging.twilio.allowedRecipients must be a list of E.164 numbers');
       else if (!list.length && t.allowAllRecipients !== true) p.push('messaging.twilio.allowedRecipients is empty: add the approved test number, or set allowAllRecipients at go-live');

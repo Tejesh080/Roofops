@@ -93,8 +93,7 @@ return [{ json: { raised: saved.length, to164: phone, body: CFG.business.name + 
   + Object.keys(kinds).map((k) => kinds[k] + ' ' + k).join(', ') + '. See Lite Alerts in Airtable.' } }];`);
 const notify = OK_IF('Notify Operator?', '{{ $json.none !== true }}');
 const alertOperator = TWILIO
-  ? twilioCall('Alert Operator', 'POST', `${TWILIO_API}/Messages.json`, [{ name: 'To', value: expr('{{ $json.to164 }}') },
-    TWILIO.from ? { name: 'From', value: TWILIO.from } : { name: 'MessagingServiceSid', value: TWILIO.messagingServiceSid }, { name: 'Body', value: expr('{{ $json.body }}') }])
+  ? twilioCall('Alert Operator', 'POST', `${TWILIO_API}/Messages.json`, smsForm('{{ $json.body }}', false))
   : code('Alert Operator', `
 // TEST sink: the alert text is not sent anywhere; the Lite Alerts rows are the record.
 return $input.all().map((i) => ({ json: { statusCode: 201, body: { sid: 'SIM-operator', status: 'simulated' }, text: i.json.body } }));`);
@@ -121,7 +120,9 @@ h.retries.forEach((r, i) => {
     const c = checks[i] || {}; const b = c.body || {};
     if (c.statusCode === 200) {
       const since = (Date.parse(f['Attempted At'] || '') || 0) - 120000;
-      const list = b.sid ? [b] : (b.messages || []).filter((x) => clean(x.body) === clean(f.Body) && (Date.parse(x.date_created) || 0) >= since);
+      // On a trial account Twilio sent its template text, not Lite's wording: any message to them since the attempt counts.
+      const sameText = (x) => (CFG.messaging.twilio.trialTemplate ? true : clean(x.body) === clean(f.Body));
+      const list = b.sid ? [b] : (b.messages || []).filter((x) => sameText(x) && (Date.parse(x.date_created) || 0) >= since);
       found = list.find((x) => ['failed', 'undelivered', 'canceled'].indexOf(x.status) < 0) || null;   // failed/undelivered: Twilio confirms it did not arrive
     } else if (c.statusCode !== 404) {   // could not check (no answer, refused, test credentials): never resend blind
       summary.retry_postponed++;

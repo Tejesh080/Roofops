@@ -8,9 +8,11 @@ const TWILIO = CONFIG.messaging.mode === 'twilio' ? CONFIG.messaging.twilio : nu
 // Lead webhook protection (optional): n8n Header Auth with the configured credential.
 const HOOK_AUTH = CONFIG.webhookAuth ? { authentication: 'headerAuth' } : {};
 const HOOK_CRED = CONFIG.webhookAuth ? { credentials: { httpHeaderAuth: { id: CONFIG.webhookAuth.id, name: CONFIG.webhookAuth.name } } } : {};
-// Reply webhook: Twilio's requests are checked by signature (in the Verify node) or by n8n Basic Auth; the test sink uses the lead webhook's setting.
-const REPLY_AUTH = TWILIO ? (TWILIO.inboundAuth === 'basic-auth' ? { authentication: 'basicAuth' } : {}) : HOOK_AUTH;
-const REPLY_CRED = TWILIO ? (TWILIO.inboundAuth === 'basic-auth' ? { credentials: { httpBasicAuth: { id: TWILIO.inboundCredential.id, name: TWILIO.inboundCredential.name } } } : {}) : HOOK_CRED;
+// Reply webhook: Twilio's requests are checked by signature (in the Verify node), by n8n Basic Auth, or by n8n Header Auth
+// (a relay that checked the signature sends the header); the test sink uses the lead webhook's setting.
+const INBOUND = TWILIO ? ({ 'basic-auth': ['basicAuth', 'httpBasicAuth'], 'header-auth': ['headerAuth', 'httpHeaderAuth'] })[TWILIO.inboundAuth] : null;
+const REPLY_AUTH = TWILIO ? (INBOUND ? { authentication: INBOUND[0] } : {}) : HOOK_AUTH;
+const REPLY_CRED = TWILIO ? (INBOUND ? { credentials: { [INBOUND[1]]: { id: TWILIO.inboundCredential.id, name: TWILIO.inboundCredential.name } } } : {}) : HOOK_CRED;
 const RAW = { response: { response: { fullResponse: true, neverError: true } }, timeout: 20000 };
 const OK_IF = (name, leftValue) => ifElse({ version: 2.3, config: { name, parameters: { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'loose' },
   conditions: [{ leftValue: expr(leftValue), rightValue: true, operator: { type: 'boolean', operation: 'true', singleValue: true } }], combinator: 'and' } } } });
@@ -25,13 +27,25 @@ const airtableWrite = (name, method, url, body = '{{ JSON.stringify($json.reques
   credentials: CRED }, output: [{ statusCode: 200, body: { records: [{ id: 'rec' }] } }] });
 // PATCH to the table each item names ({ url, request }): one node writes Message Log, Jobs and Contacts updates.
 const airtablePatch = (name) => airtableWrite(name, 'PATCH', expr('{{ $json.url }}'));
-// Twilio REST API calls, authenticated with the n8n Basic Auth credential (API Key SID + Secret).
+// Twilio REST API calls: with n8n's own Twilio credential ("twilioApi"), or a Basic Auth credential (API Key SID + Secret).
+const TW_AUTH = !TWILIO ? null : TWILIO.credentialType === 'twilioApi'
+  ? { params: { authentication: 'predefinedCredentialType', nodeCredentialType: 'twilioApi' }, credentials: { twilioApi: { id: TWILIO.credential.id, name: TWILIO.credential.name } } }
+  : { params: { authentication: 'genericCredentialType', genericAuthType: 'httpBasicAuth' }, credentials: { httpBasicAuth: { id: TWILIO.credential.id, name: TWILIO.credential.name } } };
 const twilioCall = (name, method, url, form) => node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name, onError: 'continueRegularOutput',
-  parameters: Object.assign({ method, url, authentication: 'genericCredentialType', genericAuthType: 'httpBasicAuth' },
+  parameters: Object.assign({ method, url }, TW_AUTH.params,
     form ? { sendBody: true, contentType: 'form-urlencoded', specifyBody: 'keypair', bodyParameters: { parameters: form } } : {},
     { options: { response: { response: { fullResponse: true, neverError: true } }, timeout: 15000 } }),
-  credentials: { httpBasicAuth: { id: TWILIO.credential.id, name: TWILIO.credential.name } } }, output: [{ statusCode: 201, body: { sid: 'SM' } }] });
+  credentials: TW_AUTH.credentials }, output: [{ statusCode: 201, body: { sid: 'SM' } }] });
 const TWILIO_API = TWILIO ? `https://api.twilio.com/2010-04-01/Accounts/${TWILIO.accountSid}` : '';
+// Delivery receipts go to the reply webhook. The URL never carries a password: with Basic Auth, Twilio sends the
+// credentials from a Twilio Webhook Rule for the n8n address.
+const STATUS_CALLBACKS = TWILIO ? (TWILIO.statusCallbacks ?? TWILIO.inboundAuth === 'signature') : false;
+// The "create message" form. A trial account may only send To, a Twilio template key as Body, and StatusCallback
+// (Twilio picks its trial number as the sender).
+const smsForm = (bodyExpr, receipts = true) => [{ name: 'To', value: expr('{{ $json.to164 }}') },
+  ...(TWILIO.trialTemplate ? [] : [TWILIO.from ? { name: 'From', value: TWILIO.from } : { name: 'MessagingServiceSid', value: TWILIO.messagingServiceSid }]),
+  { name: 'Body', value: TWILIO.trialTemplate || expr(bodyExpr) },
+  ...(receipts && STATUS_CALLBACKS ? [{ name: 'StatusCallback', value: TWILIO.statusCallbackUrl || `${CONFIG.n8n.baseUrl}/webhook/${CONFIG.replies.webhookPath}?event=status` }] : [])];
 const respond = (name) => TWILIO && name.startsWith('Respond Reply')
   ? node({ type: 'n8n-nodes-base.respondToWebhook', version: 1.1, config: { name,   // Twilio expects TwiML (an empty <Response/> sends nothing back)
     parameters: { respondWith: 'text', responseBody: expr('{{ $json.response.text }}'), options: { responseCode: expr('{{ $json.response.status }}'),
@@ -122,7 +136,9 @@ const patches = (list) => {
 };
 /** Twilio error codes where sending again cannot work, with a plain reason. */
 const PERMANENT = { '21211': 'invalid phone number', '21614': 'not a mobile number', '21612': 'Twilio cannot reach this number', '21408': 'sending to this country is not enabled',
-  '21610': 'the person unsubscribed from this sender (replied STOP)', '21606': 'the sender number cannot send SMS', '21659': 'the sender is not a Twilio number on this account', '21617': 'message too long' };
+  '21610': 'the person unsubscribed from this sender (replied STOP)', '21606': 'the sender number cannot send SMS', '21659': 'the sender is not a Twilio number on this account', '21617': 'message too long',
+  '572002': 'trial account: the number is not a verified recipient', '21608': 'trial account: the number is not a verified recipient', '14111': 'trial account: the number is not a verified recipient', '21607': 'trial account: only the Twilio trial number can send',
+  '10002': 'trial account: Twilio does not allow this until the account is upgraded' };
 /**
  * The outcome of one Twilio "create message" call. Sent: Twilio accepted it (it has a Message SID). Failed: Twilio
  * refused it, so nothing was sent. Unknown: no clear answer (timeout, server error): it may have been sent, so it is

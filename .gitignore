@@ -37,3 +37,7 @@ lite/demo/output/airtable-after.json
 lite/demo/output-twilio/workflows/
 lite/demo/output-twilio/airtable-after.json
 lite/**/*.tmp.ts
+
+# RoofOps Lite: account-specific configs and their builds (Account SID, verified phone numbers): never committed
+lite/config/*.local.json
+lite/dist/*.local/

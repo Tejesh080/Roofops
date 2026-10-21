@@ -6,10 +6,17 @@
  * (X-Twilio-Signature: HMAC-SHA1 of URL + sorted parameters with the Auth Token), as Twilio sends them.
  */
 import { createHmac, randomBytes } from 'node:crypto';
+import { TWILIO_TRIAL_TEMPLATES } from '../config/config.js';
 import type { HttpReq } from '../tools/runner.js';
 
 export type Behaviour = 'invalid' | 'landline' | 'unsubscribed' | 'rate-limit' | 'server-error' | 'timeout' | 'timeout-after-send';
 export interface TwMessage { sid: string; to: string; from: string; body: string; status: string; date_created: string; date_sent: string | null; error_code: number | null }
+/**
+ * A trial account: only verified recipients, only Twilio's template keys as Body, no From (Twilio uses its trial
+ * number). An unverified recipient gets HTTP 422 and code 572002, as the real API answered on 2026-10-21. Which codes Twilio gives a From or a custom
+ * body on a trial is not documented; 21607 and 21618 stand in for them here, and Lite never sends either.
+ */
+export interface FakeTwilioOptions { trial?: { verified: string[]; number?: string } }
 
 const ERRORS: Record<string, { code: number; message: string }> = {
   invalid: { code: 21211, message: "The 'To' number is not a valid phone number." },
@@ -21,7 +28,7 @@ export class FakeTwilio {
   readonly messages: TwMessage[] = [];
   readonly calls: HttpReq[] = [];
   readonly rules = new Map<string, Behaviour>();
-  constructor(readonly accountSid: string, readonly authToken = 'zz-test-auth-token') {}
+  constructor(readonly accountSid: string, readonly authToken = 'zz-test-auth-token', readonly options: FakeTwilioOptions = {}) {}
 
   /** Real sends: accepted "create message" calls. */
   get sent() { return this.messages; }
@@ -30,17 +37,25 @@ export class FakeTwilio {
     this.calls.push(req);
     const u = new URL(req.url);
     const base = `/2010-04-01/Accounts/${this.accountSid}/Messages`;
-    if (!(req.credentials as { httpBasicAuth?: unknown } | undefined)?.httpBasicAuth) return { statusCode: 401, body: { code: 20003, message: 'Authenticate' } };
+    const cred = req.credentials as { httpBasicAuth?: unknown; twilioApi?: unknown } | undefined;
+    if (!cred?.httpBasicAuth && !cred?.twilioApi) return { statusCode: 401, body: { code: 20003, message: 'Authenticate' } };
     if (req.method === 'POST' && u.pathname === `${base}.json`) {
       const b = (req.body ?? {}) as Record<string, string>;
       if (req.contentType !== 'form-urlencoded') return { statusCode: 400, body: { code: 21603, message: 'expected a form body' } };
-      if (!b.To || !(b.From || b.MessagingServiceSid) || !b.Body) return { statusCode: 400, body: { code: 21604, message: 'To, From and Body are required' } };
+      const trial = this.options.trial;
+      if (trial) {
+        if (b.From || b.MessagingServiceSid) return { statusCode: 400, body: { code: 21607, message: "The 'from' phone number must be the sandbox phone number for trial accounts." } };
+        if (!b.To || !TWILIO_TRIAL_TEMPLATES.includes(b.Body ?? '')) return { statusCode: 400, body: { code: 21618, message: 'The message body cannot be sent' } };
+        if (!trial.verified.includes(b.To)) return { statusCode: 422, body: { code: 572002, message: "No Twilio trial phone number is assigned for messaging to this destination number. Please add the 'to' number as a verified recipient.", status: 422 } };
+      } else if (!b.To || !(b.From || b.MessagingServiceSid) || !b.Body) return { statusCode: 400, body: { code: 21604, message: 'To, From and Body are required' } };
       const rule = this.rules.get(b.To);
       if (rule && ERRORS[rule]) return { statusCode: 400, body: { ...ERRORS[rule], status: 400, more_info: `https://www.twilio.com/docs/errors/${ERRORS[rule].code}` } };
       if (rule === 'rate-limit') return { statusCode: 429, body: { code: 20429, message: 'Too Many Requests' } };
       if (rule === 'server-error') return { statusCode: 500, body: { code: 20500, message: 'Internal Server Error' } };
       if (rule === 'timeout') throw new Error('ETIMEDOUT');
-      const m: TwMessage = { sid: `SM${randomBytes(16).toString('hex')}`, to: b.To, from: b.From ?? 'MG', body: b.Body, status: 'queued', date_created: new Date().toUTCString(), date_sent: null, error_code: null };
+      // On a trial Twilio sends its template's own text from its trial number.
+      const m: TwMessage = { sid: `SM${randomBytes(16).toString('hex')}`, to: b.To, from: trial ? (trial.number ?? '+61491570006') : (b.From ?? 'MG'),
+        body: trial ? `Twilio template text (${b.Body ?? ''})` : (b.Body ?? ''), status: 'queued', date_created: new Date().toUTCString(), date_sent: null, error_code: null };
       this.messages.push(m);
       if (rule === 'timeout-after-send') { m.status = 'sent'; m.date_sent = new Date().toUTCString(); throw new Error('ESOCKETTIMEDOUT'); }
       return { statusCode: 201, body: { ...m } };

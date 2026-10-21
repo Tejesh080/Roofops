@@ -7,6 +7,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { runInNewContext } from 'node:vm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { build, WORKFLOWS } from '../lite/build.js';
 import { configProblems, loadConfig, type LiteConfig } from '../lite/config/config.js';
@@ -68,6 +69,21 @@ describe('configuration and build', () => {
     expect(configProblems(bad).join('\n')).toMatch(/accountSid[\s\S]*alphanumeric sender cannot receive STOP[\s\S]*allowedRecipients is empty/);
     bad.messaging.twilio = null;
     expect(configProblems(bad).join()).toMatch(/messaging\.twilio is required/);
+  });
+
+  it('trial and n8n Starter options are checked: a Twilio template instead of a sender, the credential type, Basic or Header Auth needing their credential', () => {
+    const t = loadConfig('lite/config/example-plumbing-twilio.json');
+    const trial = structuredClone(t);
+    Object.assign(trial.messaging.twilio!, { from: null, trialTemplate: 'sms_appointment_reminders', credentialType: 'twilioApi', inboundAuth: 'basic-auth',
+      inboundCredential: { id: 'ZZExampleHook001', name: 'ZZ reply webhook login' }, statusCallbacks: true });
+    expect(configProblems(trial)).toEqual([]);
+    const bad = structuredClone(trial);
+    Object.assign(bad.messaging.twilio!, { from: '+61491570006', credentialType: 'apiKey' });
+    expect(configProblems(bad).join('\n')).toMatch(/trialTemplate sends from Twilio's trial number: leave from and messagingServiceSid empty[\s\S]*credentialType must be "twilioApi" or "httpBasicAuth"/);
+    Object.assign(bad.messaging.twilio!, { from: null, trialTemplate: 'my_own_text', credentialType: 'twilioApi', inboundAuth: 'header-auth', inboundCredential: null });
+    expect(configProblems(bad).join('\n')).toMatch(/trialTemplate must be one of Twilio's trial templates \(sms_2fa, [\s\S]*inboundCredential must be/);
+    Object.assign(bad.messaging.twilio!, { trialTemplate: null });
+    expect(configProblems(bad).join()).toMatch(/needs exactly one of from \(an E\.164 number\) or messagingServiceSid/);
   });
 
   it('builds five inactive n8n imports with the business timezone, every connection to a real node, every Airtable call on the configured base and credential', () => {
@@ -459,6 +475,119 @@ describe('G. Twilio: failed delivery is logged, raised and recoverable', () => {
     const a = tat.all('alerts').filter((x) => x.fields.Kind === 'Workflow Failed');
     expect(a.map((x) => x.fields)).toEqual([expect.objectContaining({ Workflow: '[Lite] Instant Lead Follow-Up', Execution: failure.execution.url, Status: 'Open',
       Detail: 'Stopped at "Create Job": create job: Airtable HTTP 503 down' })]);
+  });
+});
+
+// ---- Twilio trial account on n8n Starter (no Variables): the set-up of the live test -------------------------------
+// A trial may send only To, a Twilio template key as Body, and StatusCallback; Twilio picks the trial sender and accepts
+// verified recipients only. n8n Starter has no Variables, so webhooks use n8n's own Basic Auth (or a relay's header).
+const TRIAL = structuredClone(TW);
+Object.assign(TRIAL.messaging.twilio!, { from: null, trialTemplate: 'sms_appointment_reminders', credentialType: 'twilioApi',
+  credential: { id: 'ZZExampleTwiApi1', name: 'ZZ example Twilio account' }, inboundAuth: 'basic-auth', signatureVariable: undefined,
+  inboundCredential: { id: 'ZZExampleHook001', name: 'ZZ example reply webhook login' }, statusCallbacks: true,
+  allowedRecipients: ['+61400000201', '+61400000202', '+61491570156'] });
+const VERIFIED = ['+61400000201', '+61400000202'];
+
+describe('Twilio trial account on n8n Starter: template messages, n8n credentials, no Variables', () => {
+  let x: Wfs; let xt: FakeTwilio; let xa: FakeAirtable; let xhttp: (r: HttpReq) => { statusCode: number; body: unknown };
+  const xlog = () => xa.all('messages').map((m): R & { id: string } => ({ ...m.fields, id: m.id }));
+  const xpost = (body: unknown) => runWebhook(x['lead-follow-up'], xhttp, body).response!;   // no vars: Starter has none
+  const xsms = (params: Record<string, string>, status = false) => runWebhook(x['inbound-replies'], xhttp, params, { query: status ? { event: 'status' } : {} }).response!;
+  const ack = (n: string) => xlog().find((m) => String(m['Dedupe Key']) === `lead-ack:0400000${n}:${today()}`)!;
+  beforeAll(async () => {
+    x = await buildAll(TRIAL, 'trial');
+    xa = new FakeAirtable(TRIAL.airtable.baseId, TRIAL.airtable.tables); seed(xa);
+    xt = new FakeTwilio(TRIAL.messaging.twilio!.accountSid, 'zz-test-auth-token', { trial: { verified: VERIFIED } }); xhttp = route(xt, xa.http);
+  }, 60_000);
+
+  it('the build calls Twilio with the n8n Twilio credential, protects the reply webhook with n8n Basic Auth, and no node reads $vars', () => {
+    for (const w of WORKFLOWS) {
+      const j = imports('trial', w);
+      for (const n of j.nodes.filter((y) => y.type === 'n8n-nodes-base.httpRequest' && String((y.parameters as R).url).includes('api.twilio.com'))) {
+        expect(n.parameters, `${w}: ${String(n.name)}`).toMatchObject({ authentication: 'predefinedCredentialType', nodeCredentialType: 'twilioApi' });
+        expect(n.credentials, `${w}: ${String(n.name)}`).toEqual({ twilioApi: TRIAL.messaging.twilio!.credential });
+      }
+      for (const n of j.nodes.filter((y) => y.type === 'n8n-nodes-base.code')) expect(String((n.parameters as R).jsCode), `${w}: ${String(n.name)}`).not.toContain('$vars');
+    }
+    const hook = imports('trial', 'inbound-replies').nodes.find((n) => n.name === 'Reply Webhook')!;
+    expect(hook.parameters).toMatchObject({ authentication: 'basicAuth' });
+    expect(hook.credentials).toEqual({ httpBasicAuth: TRIAL.messaging.twilio!.inboundCredential });
+  });
+
+  it('a lead gets one SMS as Twilio\'s template (no From, no custom text) with a StatusCallback URL that carries no password; the log keeps the real wording and says why', () => {
+    expect(xpost(lead())).toMatchObject({ status: 200, body: { stage: 'Contacted', acknowledgement: { status: 'Sent', channel: 'SMS' } } });
+    expect(xt.sent).toHaveLength(1);
+    const call = xt.calls.find((c) => c.method === 'POST')!;
+    expect(call.body).toEqual({ To: '+61400000201', Body: 'sms_appointment_reminders', StatusCallback: `${TRIAL.n8n.baseUrl}/webhook/${TRIAL.replies.webhookPath}?event=status` });
+    expect(call.credentials).toEqual({ twilioApi: TRIAL.messaging.twilio!.credential });
+    expect(ack('201')).toMatchObject({ Status: 'Sent', 'Provider Message ID': xt.sent[0]!.sid, Body: expect.stringMatching(/^Hi Emma, thanks for contacting ZZ Example Plumbing/) as unknown,
+      Reason: 'Twilio trial: sent as the Twilio template sms_appointment_reminders (a trial account cannot send this text)' });
+  });
+
+  it('an allowlisted number that is not a verified trial recipient is refused by Twilio: nothing sent, logged Failed with a plain reason', () => {
+    expect(xpost(lead({ name: 'ZZ Lite Demo Fiction Test', first_name: 'Sam', phone: '0491 570 156', email: 'fiction@example.test' })))
+      .toMatchObject({ body: { stage: 'New Lead', acknowledgement: { status: 'Failed', reason: 'trial account: the number is not a verified recipient (not sent)' } } });
+    expect(xlog().find((m) => String(m['Dedupe Key']).startsWith('lead-ack:0491570156'))).toMatchObject({ Status: 'Failed', 'Error Code': '572002' });
+    expect(xt.sent).toHaveLength(1);
+  });
+
+  it('a retry never resends a message that Twilio already sent as its template text (the log holds Lite\'s wording, Twilio holds the template)', () => {
+    xt.rules.set('+61400000202', 'timeout-after-send');
+    expect(xpost(lead({ name: 'ZZ Lite Demo Chloe Hart', first_name: 'Chloe', phone: '0400 000 202', email: 'chloe.hart@example.test' })))
+      .toMatchObject({ body: { acknowledgement: { status: 'Unknown' } } });
+    expect(xt.sent.filter((m) => m.to === '+61400000202')).toHaveLength(1);
+    const row = ack('202');
+    xa.http({ method: 'PATCH', url: `https://api.airtable.com/v0/${TRIAL.airtable.baseId}/${encodeURIComponent(TRIAL.airtable.tables.messages)}`, query: {}, body: { records: [{ id: row.id, fields: { 'Retry Requested': true } }] } });
+    expect(runNow(x.monitor, xhttp).summary).toMatchObject({ found_already_sent: 1, retried: 0 });
+    expect(xt.sent.filter((m) => m.to === '+61400000202')).toHaveLength(1);
+  });
+
+  it('with Basic Auth on the webhook, a STOP reply and a delivery receipt are processed without any Variable; a request for another account changes nothing', () => {
+    const sid = String(ack('201')['Provider Message ID']);
+    expect(xsms(xt.statusCallback(sid, 'delivered'), true)).toMatchObject({ status: 200 });
+    expect(ack('201').Status).toBe('Delivered');
+    const stop = xt.inbound('+61400000201', '+61491570006', 'STOP');
+    expect(xsms({ ...stop, AccountSid: 'AC11111111111111111111111111111111' })).toMatchObject({ status: 403, body: 'request is not for this Twilio account' });
+    expect(xsms(stop)).toEqual({ status: 200, body: '<?xml version="1.0" encoding="UTF-8"?><Response></Response>' });
+    expect(xa.all('contacts').find((c) => c.fields['Phone Normalized'] === '0400000201')!.fields).toMatchObject({ 'Opted Out': true });
+  });
+
+  it('a relay that checks Twilio\'s signature can sit in front: the reply webhook then requires the n8n Header Auth credential, and receipts go to the relay', async () => {
+    const relay = structuredClone(TRIAL);
+    const fn = 'https://lite-relay-0000.twil.io/reply?event=status';
+    Object.assign(relay.messaging.twilio!, { inboundAuth: 'header-auth', inboundCredential: { id: 'ZZExampleRelay01', name: 'ZZ reply relay key' }, statusCallbackUrl: fn });
+    expect(configProblems(relay)).toEqual([]);
+    expect(configProblems({ ...relay, messaging: { ...relay.messaging, twilio: { ...relay.messaging.twilio!, statusCallbackUrl: 'https://user:pw@lite-relay.twil.io/reply?event=status' } } }).join())
+      .toMatch(/statusCallbackUrl must be an https URL ending in \?event=status, with no credentials in it/);
+    await buildAll(relay, 'relay');
+    const hook = imports('relay', 'inbound-replies').nodes.find((n) => n.name === 'Reply Webhook')!;
+    expect(hook.parameters).toMatchObject({ authentication: 'headerAuth' });
+    expect(hook.credentials).toEqual({ httpHeaderAuth: relay.messaging.twilio!.inboundCredential });
+    const send = imports('relay', 'lead-follow-up').nodes.find((n) => n.name === 'Send SMS (Twilio)')!;
+    expect(((send.parameters as R).bodyParameters as { parameters: { name: string; value: string }[] }).parameters).toContainEqual({ name: 'StatusCallback', value: fn });
+  }, 60_000);
+
+  it('the relay (lite/twilio/reply-relay.js) forwards Twilio\'s parameters to n8n with the secret header and answers empty TwiML; if n8n refuses, it tells Twilio (502)', async () => {
+    const src = readFileSync('lite/twilio/reply-relay.js', 'utf8');
+    const posts: { url: string; init: RequestInit }[] = [];
+    let answer = 200;
+    class TwilioResponse { status = 200; body: unknown = null; setStatusCode(s: number) { this.status = s; } setBody(b: unknown) { this.body = b; } }
+    class MessagingResponse { toString() { return '<?xml version="1.0" encoding="UTF-8"?><Response/>'; } }
+    const mod = { exports: {} as { handler?: (c: R, e: R, cb: (err: unknown, r: unknown) => void) => Promise<void> } };
+    runInNewContext(src, { exports: mod.exports, module: mod, URLSearchParams, Object, String,
+      fetch: (url: string, init: RequestInit) => { posts.push({ url, init }); return Promise.resolve({ ok: answer >= 200 && answer < 300 }); },
+      Twilio: { Response: TwilioResponse, twiml: { MessagingResponse } } });
+    const ctx = { N8N_REPLY_URL: 'https://zz-example.app.n8n.cloud/webhook/zz-plumbing/sms', RELAY_HEADER_NAME: 'X-Lite-Relay-Key', RELAY_SECRET: 'zz-relay-secret' };
+    const call = (e: R) => new Promise<unknown>((ok) => { void mod.exports.handler!(ctx, e, (_err, r) => { ok(r); }); });
+    const sms = { AccountSid: 'AC00000000000000000000000000000000', From: '+61491570156', Body: 'STOP', request: { headers: { 'x-twilio-signature': 'abc' } } };
+    expect(await call(sms)).toBeInstanceOf(MessagingResponse);
+    expect(posts[0]!.url).toBe(ctx.N8N_REPLY_URL);
+    expect(posts[0]!.init.headers).toMatchObject({ 'X-Lite-Relay-Key': 'zz-relay-secret', 'content-type': 'application/x-www-form-urlencoded' });
+    expect(Object.fromEntries(new URLSearchParams(posts[0]!.init.body as string))).toEqual({ AccountSid: sms.AccountSid, From: sms.From, Body: 'STOP' });
+    expect(await call({ AccountSid: sms.AccountSid, MessageSid: 'SM' + '0'.repeat(32), MessageStatus: 'delivered', event: 'status' })).toBe('');
+    expect(posts[1]!.url).toBe(`${ctx.N8N_REPLY_URL}?event=status`);
+    answer = 401;
+    expect(await call(sms)).toMatchObject({ status: 502 });
   });
 });
 

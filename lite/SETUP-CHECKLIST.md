@@ -7,17 +7,22 @@ Tick each line. Full detail: [DEPLOY.md](DEPLOY.md).
 - [ ] Message and consent wording approved by the client
 - [ ] Review requests: separate tick (`express`, AU default) or service consent (`service`), written down
 - [ ] Twilio account in the business's name; Australian mobile number (can send and receive); API key created
+- [ ] On a Twilio trial: `trialTemplate` set, `from` empty, only your own verified phone (DEPLOY.md, "Twilio trial accounts")
 
 ## Accounts (cloud)
 - [ ] A new Airtable base for the client (not shared with other automations)
 - [ ] n8n project or folder for the client
 - [ ] n8n credential: Airtable token (this base only, `data.records:read` + `data.records:write`)
-- [ ] n8n credential: Basic Auth = Twilio API Key SID + Secret
-- [ ] Inbound check: n8n Variable `LITE_TWILIO_AUTH_TOKEN` (Pro/Enterprise), **or** a Basic Auth login for the reply webhook
+- [ ] n8n credential: Basic Auth = Twilio API Key SID + Secret, **or** n8n's Twilio API credential (`credentialType: "twilioApi"`)
+- [ ] Inbound check, one of:
+  - n8n Variable `LITE_TWILIO_AUTH_TOKEN` (Pro/Enterprise);
+  - a Basic Auth login for the reply webhook (Starter; tests only);
+  - the reply relay with Header Auth (Starter; customer release).
+- [ ] Receipts with Basic Auth: a Twilio Webhook Rule sends the login, then `statusCallbacks: true` (never a password in a URL Lite sends)
 - [ ] No secret written anywhere else (repository, chat, config file)
 
 ## Config and build (local)
-- [ ] `lite/config/<client>.json` from `template.json`, every `<placeholder>` replaced, `messaging.mode: "test-sink"`
+- [ ] `lite/config/<client>.local.json` from `template.json`, every `<placeholder>` replaced, `messaging.mode: "test-sink"` (`.local` keeps the Account SID and numbers out of git)
 - [ ] `npx tsx lite/build.ts lite/config/<client>.json`: no errors
 - [ ] `npx tsx lite/demo/run-demo.ts lite/config/<client>.json lite/demo/output-<client>`: report reads correctly
 
@@ -36,9 +41,9 @@ Tick each line. Full detail: [DEPLOY.md](DEPLOY.md).
 
 ## First real SMS (live, approved: sender, ONE recipient, the test)
 - [ ] `messaging.mode: "twilio"`, `allowedRecipients: [approved phone]`, `allowAllRecipients: false`; rebuilt and re-imported
-- [ ] Twilio number: "A message comes in" → reply webhook URL
-- [ ] Inbound Replies published (it rejects unsigned requests)
-- [ ] One lead → one SMS → log Sent with SID → Delivered
+- [ ] Twilio number: "A message comes in" → reply webhook URL (trial: Try out SMS › Auto-Reply › Custom webhook)
+- [ ] Inbound Replies published (it rejects requests without the signature, login or relay header)
+- [ ] One lead → one SMS → log Sent with SID → Delivered (if receipts are on)
 - [ ] STOP from that phone → Opted Out → a new lead from it is not messaged
 
 ## Go live (client decision)

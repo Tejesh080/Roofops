@@ -34,9 +34,11 @@ every Lite write woke `[RoofOps] 06`; it ignored them, but each one cost an n8n 
 | Credential | Type | Value | Used by |
 |---|---|---|---|
 | Airtable | Airtable Personal Access Token | A token for the client's base only, with `data.records:read` and `data.records:write` | Every Airtable node |
-| Twilio (outbound) | **Basic Auth** | User: a Twilio **API Key SID** (SK…); password: its **Secret** | Sending SMS and checking delivery |
+| Twilio (outbound) | **Basic Auth** (`credentialType: "httpBasicAuth"`, the default) | User: a Twilio **API Key SID** (SK…); password: its **Secret** | Sending SMS and checking delivery |
+| Twilio (outbound), alternative | n8n's own **Twilio API** credential (`credentialType: "twilioApi"`) | Account SID + Auth Token, or an API key | The same; use it when that credential already exists |
 | Twilio (inbound), signature mode | **n8n Variable** (Settings › Variables; n8n Cloud Pro or Enterprise) | `LITE_TWILIO_AUTH_TOKEN` = the Twilio account's **Auth Token** | Verifying Twilio's webhook signatures |
-| Twilio (inbound), basic-auth mode | **Basic Auth** | A username and long random password | Plans without Variables: the reply webhook requires this login, and Twilio's webhook URLs carry it |
+| Twilio (inbound), basic-auth mode | **Basic Auth** | A username and long random password | Plans without Variables (n8n Starter): the reply webhook requires this login |
+| Twilio (inbound), header-auth mode | **Header Auth** | A header name and long random value | The reply relay (see "n8n Starter" below): the webhook accepts only the relay |
 
 - **Twilio API key:** create it under Twilio Console › Account › API keys. Using a key keeps the main Auth Token out
   of n8n's outbound credential.
@@ -62,6 +64,9 @@ Fill in every `<placeholder>`:
 - `leadIntake.services`, the templates, the timings, and `monitoring`.
 
 Keep `messaging.mode` at **`"test-sink"`** for now.
+
+**Keep account details out of git.** A config with a real Account SID or real phone numbers goes in
+`lite/config/<client>.local.json`, and builds to `lite/dist/<client>.local/`. Git ignores both.
 
 ```bash
 npx tsx lite/build.ts lite/config/acme-plumbing.json
@@ -140,26 +145,93 @@ publishing Monitor.
    - Delivery checks are not available with test credentials, so a retry check is "postponed". That is the designed
      safe behaviour.
 
+## n8n Starter and Twilio trial accounts
+
+### n8n Starter (no Variables)
+
+Signature mode needs an n8n Variable, and Starter has none. Everything else in Lite works on Starter, including data
+tables, error workflows and the public API.
+
+| Need | On Starter |
+|---|---|
+| Outbound | Either credential type works. `twilioApi` was checked on 2026-10-21: account fetch, message list, and a create that Twilio refused. |
+| Inbound replies | `inboundAuth: "basic-auth"`. |
+| Delivery receipts | `statusCallbacks: false` until Twilio can log in (below). |
+
+**How `basic-auth` works.** n8n's Webhook node requires the Basic Auth credential before the workflow runs.
+- No login: `401`, with `WWW-Authenticate: Basic realm="Webhook"`.
+- Wrong login (user, password, or a Bearer token): `401`.
+- Rejected requests create no execution.
+
+These were tested against n8n 2.34.6 on 2026-10-21. After the login, Lite still refuses a request for another Twilio
+account (`403`).
+
+**Twilio can send the login in two ways:**
+- **In the webhook URL,** `https://user:password@<n8n>/webhook/<path>`. Twilio's documented behaviour is to post
+  first without credentials, then repeat with them after the `401` challenge.
+- **A Twilio Webhook Rule:** a Basic AuthProfile, a Setting, and a `PREFIX_MATCH` Rule for `https://<n8n>/webhook/`
+  (webhooks.twilio.com). Twilio keeps the login, so no URL carries it. Twilio refuses Basic on the default Rule.
+
+**Receipts.** Lite never puts a password in `StatusCallback`: it would sit in every workflow and every message
+resource. With `basic-auth`, turn `statusCallbacks` on only once a Webhook Rule logs in for the n8n address. Until
+then, Sent stays Sent. Failed messages are still caught, because Twilio refuses them when Lite sends, before any receipt.
+
+**What Basic Auth does not prove.** It shows the caller knows the password. It does not show the caller is Twilio,
+and it does not sign the content. That is acceptable for a test with one phone, but not for a customer release.
+
+**For the customer release, use one of:**
+1. **Signature mode,** on n8n Pro or Enterprise.
+2. **The reply relay, on Starter:**
+   - **What it is:** [twilio/reply-relay.js](twilio/reply-relay.js), deployed as a **Protected** Twilio Function. Twilio checks
+     `X-Twilio-Signature` before a Protected Function runs. The function then forwards the same parameters to n8n with a
+     secret header.
+   - **n8n side:** n8n checks the header with Header Auth (`inboundAuth: "header-auth"`).
+   - **Twilio side:** point the number's "A message comes in" webhook and `statusCallbackUrl` at the function.
+   - **Function variables:** `N8N_REPLY_URL`, `RELAY_HEADER_NAME`, `RELAY_SECRET`.
+   - **Account:** this needs an upgraded Twilio account. Trials cannot run Functions, and Functions beyond Twilio's
+     free allowance are billed.
+
+### Twilio trial accounts
+
+Twilio's current trial is not the old one. Set `trialTemplate` (a key from `TWILIO_TRIAL_TEMPLATES`, for example
+`sms_appointment_reminders`) and leave `from` and `messagingServiceSid` empty.
+
+| Rule | What Lite does |
+|---|---|
+| The Body must be one of Twilio's template keys. Twilio sends its own text from a trial number it assigns. | Lite sends the key. The Message Log keeps Lite's wording, with the Reason "Twilio trial: sent as the Twilio template …". |
+| Only verified recipients: the sign-up number automatically, and up to 5 in all. | Any other number gets HTTP 422, code **572002**. Lite logs Failed, "trial account: the number is not a verified recipient (not sent)", and never retries it on its own. |
+| Replies reach a webhook only through Console › Messaging › Try out SMS › Auto-Reply › Custom webhook. | Set that to the reply URL. |
+| Sign-up country only (Australia), 100 free SMS, 30 days. No Functions, TwiML Bins or Proxy. | The relay waits for an upgraded account. |
+
+**Template text.** Twilio's template text does not name the business or say "Reply STOP". Send trial messages only to
+your own verified phone, never to customers.
+
+On a retry, Monitor still asks Twilio first. A message sent since the first attempt counts as already sent, because
+Twilio's text never matches Lite's.
+
 ## 7. First real SMS (live, one at a time, with approval)
 
 1. **Agree first:** the sender number, the **one** recipient (a phone the client holds), and the exact test with the
    client.
 2. **Config:**
-   - real credentials, `from` = the client's Twilio number;
+   - real credentials, `from` = the client's Twilio number (on a trial, `trialTemplate` instead: see above);
    - `allowedRecipients = ["+614…the approved phone"]`;
    - `allowAllRecipients: false`;
    - mode `"twilio"`.
 
    Rebuild and re-import.
-3. **Twilio webhook:** point the number's "A message comes in" at `https://<n8n>/webhook/<replies.webhookPath>`. In
-   basic-auth mode, the URL carries `user:password@`.
+3. **Twilio webhook:** point the number's "A message comes in" at `https://<n8n>/webhook/<replies.webhookPath>`. On a
+   trial, use Try out SMS › Auto-Reply › Custom webhook.
+   - **Basic-auth mode:** the URL carries `user:password@`, or a Webhook Rule sends the login.
+   - **Header-auth mode:** the URL is the relay function's.
 4. **Publish only Inbound Replies.** It must receive Twilio's posts.
    - Signature mode rejects anything unsigned.
    - Basic-auth mode rejects anything without the login.
+   - Header-auth mode rejects anything without the relay's header.
 5. **Send one lead** as a manual execution: the approved person, consent ticked. Check that:
    - one SMS arrives;
    - the log row is Sent with a SID;
-   - Delivered follows.
+   - Delivered follows (only with receipts on).
 6. **Reply STOP from that phone.** Check that the contact is Opted Out, then that a new lead from it is not messaged.
 7. **Refused number (optional):** a lead with a number on the allowlist that Twilio refuses gives a Failed row, a
    Monitor alert, then Retry Requested.
@@ -194,5 +266,6 @@ Show staff:
 
 Nothing is deleted automatically.
 - **n8n:** unpublish, then archive, the five workflows.
-- **Twilio:** remove the webhook URL from the number.
+- **Twilio:** remove the webhook URL from the number (or from Try out SMS), and delete any Webhook Rule, Setting and
+  AuthProfile made for Lite.
 - **Airtable:** delete the base, or the six tables and the Interface.

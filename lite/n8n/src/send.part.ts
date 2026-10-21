@@ -50,11 +50,7 @@ return go.map((d, i) => ({ json: Object.assign({}, d, i === 0 ? { decisions: dec
   const anyDeliveries = OK_IF('Anything To Send?', '{{ $json.none !== true }}');
   const deliverName = TWILIO ? 'Send SMS (Twilio)' : 'Simulated Delivery';
   const deliver = TWILIO
-    ? twilioCall(deliverName, 'POST', `${TWILIO_API}/Messages.json`, [
-      { name: 'To', value: expr('{{ $json.to164 }}') },
-      TWILIO.from ? { name: 'From', value: TWILIO.from } : { name: 'MessagingServiceSid', value: TWILIO.messagingServiceSid },
-      { name: 'Body', value: expr('{{ $json.body }}') },
-      ...(TWILIO.inboundAuth === 'signature' ? [{ name: 'StatusCallback', value: `${CONFIG.n8n.baseUrl}/webhook/${CONFIG.replies.webhookPath}?event=status` }] : [])])
+    ? twilioCall(deliverName, 'POST', `${TWILIO_API}/Messages.json`, smsForm('{{ $json.body }}'))
     : code(deliverName, `
 // The TEST message sink: records what would be sent. No provider is called; nothing reaches a real phone or inbox.
 return $input.all().map((i) => ({ json: { statusCode: 201, body: { sid: 'SIM' + String(i.json.logId).slice(3), status: 'simulated' } } }));`);
@@ -65,6 +61,8 @@ const results = $('${deliverName}').isExecuted ? $('${deliverName}').all().map((
 const byKey = {}; p.sends.forEach((s) => { byKey[s.key] = s; });
 const list = (p.updates || []).slice();
 const tally = { sent: 0, failed: 0, unknown: 0, duplicates: 0, blocked: 0, results: [] };
+// On a trial account Twilio sends its own template text; the log keeps Lite's wording and says so.
+const trial = CFG.messaging.mode === 'twilio' && CFG.messaging.twilio.trialTemplate ? CFG.messaging.twilio.trialTemplate : null;
 let k = 0;
 for (const d of decisions) {
   const s = byKey[d.key];
@@ -72,7 +70,8 @@ for (const d of decisions) {
   if (d.action === 'deliver') {
     const r = results[k++];
     const c = CFG.messaging.mode === 'twilio' ? classify(r) : { status: 'Simulated Sent', sid: r.body.sid, errorCode: null, reason: null };
-    f = { Status: c.status, 'Provider Message ID': c.sid || null, 'Error Code': c.errorCode || null, Reason: c.reason || null };
+    const note = trial && c.status === 'Sent' ? 'Twilio trial: sent as the Twilio template ' + trial + ' (a trial account cannot send this text)' : null;
+    f = { Status: c.status, 'Provider Message ID': c.sid || null, 'Error Code': c.errorCode || null, Reason: c.reason || note };
     if (c.status === 'Sent' || c.status === 'Simulated Sent') { tally.sent++; s.onSuccess.forEach((x) => list.push(x)); }
     else if (c.status === 'Failed') tally.failed++;
     else tally.unknown++;

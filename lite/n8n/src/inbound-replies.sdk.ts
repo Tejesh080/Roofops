@@ -3,7 +3,8 @@ import { workflow, node, trigger, ifElse, expr } from '@n8n/workflow-sdk';
 // [Lite] Inbound Replies (and, with Twilio, delivery receipts). Twilio POSTs every SMS a person sends to the business
 // number here, and every status change of a message Lite sent (?event=status). In twilio mode each request is checked
 // first: the X-Twilio-Signature (HMAC-SHA1 of the URL and parameters with the Auth Token from an n8n Variable), or n8n
-// Basic Auth, and the Account SID. A refused request changes nothing.
+// Basic Auth, or n8n Header Auth (sent by a relay that checked the signature), and the Account SID. A refused request
+// changes nothing; one refused by n8n's Basic or Header Auth does not even start an execution.
 // - A reply: STOP (or another opt-out word) marks the contact Opted Out, removes marketing permission and is logged as
 //   Opt-Out; no Lite workflow messages them again. START is logged for staff (no automatic re-subscribe). Any other reply
 //   is logged as Received and brings the person's open enquiry back to life (Last Activity now; a New Lead becomes Contacted).
@@ -13,6 +14,19 @@ import { workflow, node, trigger, ifElse, expr } from '@n8n/workflow-sdk';
 const hook = trigger({ type: 'n8n-nodes-base.webhook', version: 2, config: { name: 'Reply Webhook', ...REPLY_CRED,
   parameters: { httpMethod: 'POST', path: CONFIG.replies.webhookPath, responseMode: 'responseNode', ...REPLY_AUTH, options: {} } }, output: [{ body: {} }] });
 
+// The signature check exists only in "signature" mode: it needs an n8n Variable, which n8n Cloud Starter does not have.
+const SIGNATURE_CHECK = TWILIO && TWILIO.inboundAuth === 'signature' ? `
+  const secret = $vars[TW.signatureVariable];
+  if (!secret) return reject(503, 'Twilio signature secret is not configured (n8n Variable ' + TW.signatureVariable + ')');
+  // Twilio signs the exact URL it calls plus every POST parameter, sorted by name.
+  const url = CFG.n8n.baseUrl + '/webhook/' + CFG.replies.webhookPath + (event === 'status' ? '?event=status' : '');
+  const data = url + Object.keys(b).sort().map((k) => k + String(b[k])).join('');
+  const expected = require('crypto').createHmac('sha1', secret).update(data, 'utf8').digest('base64');
+  const got = String((h.headers || {})['x-twilio-signature'] || '');
+  let diff = got.length ^ expected.length;
+  for (let i = 0; i < Math.min(got.length, expected.length); i++) diff |= got.charCodeAt(i) ^ expected.charCodeAt(i);
+  if (!got || diff !== 0) return reject(403, 'invalid Twilio signature');` : `
+  // n8n's ${TWILIO && TWILIO.inboundAuth === 'header-auth' ? 'Header Auth (the relay checked the signature)' : 'Basic Auth'} let this request in.`;
 const validate = code('Verify Request', `
 const h = $input.first().json;
 const b = h.body || {}; const q = h.query || {};
@@ -21,19 +35,7 @@ const reject = (status, why) => [{ json: { ok: false, response: { status: status
 let reply;
 if (TW) {
   const event = q.event === 'status' ? 'status' : 'message';
-  if (Object.keys(q).some((k) => k !== 'event')) return reject(403, 'unexpected query parameters');
-  if (TW.inboundAuth === 'signature') {
-    const secret = $vars[TW.signatureVariable];
-    if (!secret) return reject(503, 'Twilio signature secret is not configured (n8n Variable ' + TW.signatureVariable + ')');
-    // Twilio signs the exact URL it calls plus every POST parameter, sorted by name.
-    const url = CFG.n8n.baseUrl + '/webhook/' + CFG.replies.webhookPath + (event === 'status' ? '?event=status' : '');
-    const data = url + Object.keys(b).sort().map((k) => k + String(b[k])).join('');
-    const expected = require('crypto').createHmac('sha1', secret).update(data, 'utf8').digest('base64');
-    const got = String((h.headers || {})['x-twilio-signature'] || '');
-    let diff = got.length ^ expected.length;
-    for (let i = 0; i < Math.min(got.length, expected.length); i++) diff |= got.charCodeAt(i) ^ expected.charCodeAt(i);
-    if (!got || diff !== 0) return reject(403, 'invalid Twilio signature');
-  }
+  if (Object.keys(q).some((k) => k !== 'event')) return reject(403, 'unexpected query parameters');${SIGNATURE_CHECK}
   if (b.AccountSid !== TW.accountSid) return reject(403, 'request is not for this Twilio account');
   if (event === 'status') {
     if (!/^(SM|MM)[0-9a-f]{32}$/.test(clean(b.MessageSid))) return reject(400, 'MessageSid is missing');

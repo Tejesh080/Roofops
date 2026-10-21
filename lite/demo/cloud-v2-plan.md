@@ -1,4 +1,4 @@
-# RoofOps Lite v2: cloud upgrade plan for the demo base (A and B done; C and D awaiting approval)
+# RoofOps Lite v2: cloud upgrade plan for the demo base (A, B and C done; D awaiting approval)
 
 This plan moves the cloud demo from Lite v1 (verified 2026-10-20, `evidence/lite-cloud-demo-20261020.md`) to v2:
 consent evidence, the send pipeline, Twilio (off by default), delivery receipts, and Monitor.
@@ -11,7 +11,8 @@ It is split into batches so that each can be approved on its own. No step touche
 | A, B | Approved 2026-10-21 |
 | A | **Done** 2026-10-21 (`evidence/lite-v2-batch-a-20261021.md`). The four Status options were added through the API, using one labelled setup row, instead of by hand. |
 | B | **Done** 2026-10-21 (`evidence/lite-v2-batch-b-20261021.md`). Five v2 workflows unpublished; tests A, C, D, E, F and G passed on the test sink; v1 archived. One Monitor defect was found and fixed. The error workflow is set at go-live, because n8n needs Monitor published first. |
-| C, D | Not approved yet. |
+| C | **Done** 2026-10-21, adapted to what exists: a Twilio trial and n8n Starter (`evidence/lite-twilio-starter-20261021.md`). The five workflows run in Twilio trial mode, all unpublished. Every test reached the real Twilio API with no SMS sent. |
+| D | Not approved yet. |
 
 ## Batch A: Airtable additions (no messages, additive only)
 
@@ -76,7 +77,17 @@ In n8n (tejesh08.app.n8n.cloud), project Roofops:
 4. **Hand back:** reconnect the connector, or tell me the five ids. I then run the acceptance tests as manual
    executions (test sink: no SMS).
 
-## Batch C: Twilio without real SMS (needs you)
+## Batch C: Twilio without real SMS (done 2026-10-21)
+
+**What was done instead of the plan below.** The owner already had n8n's **Twilio API** credential (Account SID + Auth
+Token) and n8n **Starter**, which has no Variables.
+- **Lite now accepts both.** It has `credentialType: "twilioApi"`, `inboundAuth: "basic-auth"` (n8n Webhook Basic Auth),
+  and `trialTemplate` for Twilio's new trial.
+- **No SMS was sent.** The real API refused each send, because the number was not a verified recipient (code 572002).
+- **The relay for the customer release:** `lite/twilio/reply-relay.js`, behind `inboundAuth: "header-auth"`.
+
+The original plan, kept for reference:
+
 
 1. **You** create a Twilio API key, then an n8n **Basic Auth** credential with it (SID as user, secret as password).
    Never paste the secret into chat.
@@ -87,10 +98,12 @@ In n8n (tejesh08.app.n8n.cloud), project Roofops:
 
 ## Batch D: first real SMS (needs your explicit approval of sender, recipient and test)
 
-Follow `lite/DEPLOY.md` step 7, exactly one recipient at a time:
-- `allowedRecipients: ["+614… your approved phone"]`;
-- only Inbound Replies published, and only so Twilio can post replies and receipts;
-- one lead, then one STOP.
+Follow `lite/DEPLOY.md` step 7, exactly one recipient at a time. The exact approval list for the trial is in
+`evidence/lite-twilio-starter-20261021.md`, "What to approve".
+- `allowedRecipients: ["+614… your verified phone"]`;
+- a Twilio template (`trialTemplate`);
+- only Inbound Replies published, with Basic Auth, and only so Twilio can post replies;
+- one lead, then one reply and one STOP.
 
 Acceptance tests **B** (one real SMS) and **F** (a real STOP) become **live-verified** here.
 
@@ -100,4 +113,5 @@ Acceptance tests **B** (one real SMS) and **F** (a real STOP) become **live-veri
 |---|---|
 | A | The new fields and table can be hidden or deleted by the owner; existing data is untouched. |
 | B | Restore the archived v1 workflows, and archive v2. |
-| C, D | Delete the n8n credentials and variable, and remove the Twilio webhook URL. |
+| C | Rebuild from `lite/config/demo.json` (test sink) and replace the five workflows. Archive the two `[Lite] Twilio Account …` check workflows, and delete the data table `Lite Twilio Account Facts`. |
+| D | Unpublish Inbound Replies. Clear the Try out SMS webhook. Delete any Webhook Rule, Setting and AuthProfile. Reset the allowlist to the fictional numbers. |

@@ -434,7 +434,7 @@
       "id": "4kSuZdSc0Opp3juv",
       "name": "Roofops"
     },
-    "state": "v2: five workflows, all unpublished (active false, triggerCount 0). v1: archived 2026-10-21 (reversible).",
+    "state": "v2: five workflows, all unpublished (active false, triggerCount 0), in Twilio trial mode since 2026-10-21 (built from a local-only config). v1: archived 2026-10-21 (reversible).",
     "workflows": {
       "monitor": "Tmk4lj7VrbHix9A9",
       "lead-follow-up": "9BjHeFBUKqnmQqHl",
@@ -477,6 +477,64 @@
         "3115": "Test 6 reply YES",
         "3118": "Test 6 reply STOP",
         "3121": "reactivation run 3 after replies"
+      }
+    },
+    "twilioStarter": {
+      "done": "2026-10-21 (AEST)",
+      "note": "Twilio trial + n8n Starter. Account SID and phone numbers are kept out of this public repository: the build config is lite/config/demo-twilio.local.json (git-ignored).",
+      "twilioAccount": {
+        "sidTail": "…942f",
+        "type": "Trial",
+        "status": "active",
+        "primary": true,
+        "messagingServices": 0,
+        "ownedNumbers": 0,
+        "messagesBefore": 0,
+        "webhookSettings": 0,
+        "webhookRules": 0
+      },
+      "mode": {
+        "messaging": "twilio",
+        "trialTemplate": "sms_appointment_reminders",
+        "credentialType": "twilioApi",
+        "inboundAuth": "basic-auth",
+        "statusCallbacks": false,
+        "allowedRecipients": "two ACMA fictional numbers (+614915701xx), neither a verified recipient",
+        "allowAllRecipients": false
+      },
+      "credentials": {
+        "twilio": {
+          "id": "yn5dth1lLs9RwFgE",
+          "name": "Twilio account",
+          "type": "twilioApi",
+          "by": "owner"
+        },
+        "replyWebhook": {
+          "id": "Wr8mnbEnSWrPqLZJ",
+          "name": "Lite reply webhook (Basic Auth)",
+          "type": "httpBasicAuth",
+          "note": "login kept in the local .env.local only"
+        }
+      },
+      "diagnostics": {
+        "workflows": {
+          "[Lite] Twilio Account Check (read-only)": "VcTE56qoxldxCeDt",
+          "[Lite] Twilio Account SID (saves no execution data)": "HWJdTkYMLBFXE5bn"
+        },
+        "dataTable": {
+          "Lite Twilio Account Facts": "jiLCIinOmUXtzWc8"
+        },
+        "state": "unpublished, no trigger; safe to archive"
+      },
+      "executions": {
+        "3194": "T1 lead to a number not on the allowlist: Skipped, Twilio not called",
+        "3198": "T2 lead to an allowlisted, unverified number: real Twilio POST, 422 code 572002, logged Failed (raw Twilio text: led to the 572002 fix)",
+        "3202": "T3a reply for another Twilio account: 403, nothing written",
+        "3203": "T3b STOP from the T2 person: opted out, empty TwiML",
+        "3207": "T4 Monitor: Retry Requested on the opted-out person refused, 1 alert",
+        "3209": "T4b lead to the second allowlisted number: 572002, plain reason after the fix",
+        "3215": "T4b Monitor retry: real delivery check (none), one resend, 572002 again, Attempts 2, 1 alert",
+        "3186-3192": "read-only account checks (credential, services, numbers, messages, Webhooks configuration API)"
       }
     }
   }

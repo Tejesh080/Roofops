@@ -25,7 +25,9 @@ touches Advanced RoofOps tables, workflows, invoices or Xero.
    once it is sent).
 3. It reads the log back. If another run reserved the same message earlier, this one is Skipped as a duplicate.
    Airtable has no conditional writes, so the earliest row wins.
-4. It sends: test sink, or Twilio (`POST /Messages.json`, Basic Auth credential, delivery receipts to the reply webhook).
+4. It sends through the test sink or Twilio. Twilio mode calls `POST /Messages.json` with a Basic Auth credential or
+   n8n's Twilio credential, and receipts go to the reply webhook. A Twilio trial account sends a Twilio template; see
+   DEPLOY.md.
 5. It records the outcome:
 
    | Outcome | Meaning |

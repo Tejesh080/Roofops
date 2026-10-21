@@ -54,6 +54,10 @@ number), for two reasons:
 - **STOP replies:** people cannot reply STOP to an alphanumeric sender, so the unsubscribe would not work by SMS.
 - **The register:** since 1 July 2026, branded sender IDs must be on the ACMA's SMS Sender ID Register.
 
+**Twilio trial accounts are for testing only.** A trial sends Twilio's own template text from a trial number. That text
+does not name the business or offer STOP, so trial messages go only to the owner's own verified phone. A customer
+needs an upgraded account with the business's own number.
+
 ## Unsubscribe
 
 - Every review and marketing template must say "Reply STOP"; the build refuses one that does not.

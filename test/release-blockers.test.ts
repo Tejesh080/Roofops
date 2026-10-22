@@ -226,6 +226,10 @@ describe.each(TARGETS)('release blockers [%s]', (target) => {
       const withTax = await body([{ description: 'a', quantity: 1, unit_amount: 100.05, tax_amount: 9.10 }, { description: 'b', quantity: 1, unit_amount: 100.05, tax_amount: 9.09 }]);
       expect(withTax.LineItems.map((l) => l.TaxAmount)).toEqual([9.10, 9.09]);
       expect(withTax.LineAmountTypes).toBe('Inclusive');
+      // CC-04: a single line carries its tax share too, but 05 sends it only on a multi-line draft (which the switch gates), so a
+      // single-line draft is exactly today's request.
+      const single = await body([{ description: 'a', quantity: 1, unit_amount: 100.05, tax_amount: 9.10 }]);
+      expect(single.LineItems).toEqual([{ Description: 'a', Quantity: 1, UnitAmount: 100.05, AccountCode: '200', TaxType: 'OUTPUT' }]);
       const old = await body([{ description: 'a', quantity: 1, unit_amount: 100.05 }]);
       expect(old.LineItems).toEqual([{ Description: 'a', Quantity: 1, UnitAmount: 100.05, AccountCode: '200', TaxType: 'OUTPUT' }]);
     });

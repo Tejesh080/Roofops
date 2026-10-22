@@ -218,8 +218,12 @@ describe.each(TARGETS)('AC-13A: project and financial lifecycles never contradic
   });
 
   it('5 + 6. the final invoice is raised; fully invoiced but unpaid: checklist locked, cannot be cancelled or closed', async () => {
+    const finalCard = async () => (await one(`select status from v_dashboard_project_checklist where project_number = $1 and title = 'Final invoice approved'`, [P])).status;
+    expect(await finalCard()).toBe('OPEN');
     expect(await prepare(P)).toMatchObject({ outcome: 'PREVIEW_READY' });
     expect(await approve(P)).toMatchObject({ outcome: 'APPROVED' });
+    // LIFE-01: the project's checklist card shows the final invoice approved (the dashboard view follows its approval).
+    expect(await finalCard()).toBe('DONE');
     expect(await one(`select i.invoice_type, i.status, i.sync_status from invoices i join projects p on p.id = i.project_id where p.project_number = $1`, [P]))
       .toMatchObject({ invoice_type: 'FINAL', status: 'APPROVED', sync_status: 'PENDING' });
     expect(Number((await billing(P)).remaining)).toBe(0);

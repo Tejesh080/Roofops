@@ -185,7 +185,7 @@ const createInvoice = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, c
     sendBody: true, contentType: 'json', specifyBody: 'json',
     jsonBody: expr('{{ JSON.stringify({ Invoices: [{ Type: "ACCREC", Status: "DRAFT", Contact: { ContactID: $json.contact_id }, Date: ' + JOB + '.invoice_date, DueDate: ' + JOB + '.due_date, '
       + 'LineAmountTypes: "Inclusive", CurrencyCode: "AUD", InvoiceNumber: ' + JOB + '.xero_invoice_number, Reference: ' + JOB + '.reference, '
-      + 'LineItems: ' + JOB + '.lines.map(l => Object.assign({ Description: l.description, Quantity: l.quantity, UnitAmount: l.unit_amount, AccountCode: ' + JOB + '.xero_account_code, TaxType: ' + JOB + '.xero_tax_type }, l.tax_amount != null ? { TaxAmount: l.tax_amount } : {})) }] }) }}'),
+      + 'LineItems: ' + JOB + '.lines.map(l => Object.assign({ Description: l.description, Quantity: l.quantity, UnitAmount: l.unit_amount, AccountCode: ' + JOB + '.xero_account_code, TaxType: ' + JOB + '.xero_tax_type }, (l.tax_amount != null && ' + JOB + '.lines.length > 1) ? { TaxAmount: l.tax_amount } : {})) }] }) }}'),
     options: RAW }, credentials: XERO }, output: [{ statusCode: 200, body: { Invoices: [{ InvoiceID: 'i' }] } }] });
 const checkCreate = node({ type: 'n8n-nodes-base.code', version: 2, config: { name: 'Check Invoice Create',
   parameters: { mode: 'runOnceForAllItems', jsCode: FAIL_JS + `

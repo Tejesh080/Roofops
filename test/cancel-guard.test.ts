@@ -141,4 +141,78 @@ describe.each(TARGETS)('AC-15: a fully billed job is not cancelled, whatever its
         .toMatchObject({ status: 'FAIL', refs: [expect.stringMatching(/PRJ-2026-0008/) as unknown] });
     } finally { await db.exec('rollback to savepoint s'); }
   });
+
+  /**
+   * AC-15B (audit FIN-01 / CC-01): the refusal covered only Completed → Cancelled, while `cancelled_job_fully_billed`
+   * FAILs for every cancelled job that is fully billed. So a job fully billed by progress or deposit bills before it was
+   * completed (PRJ-2026-0012 In Progress, PRJ-2026-0015 Scheduled, PRJ-2026-0022 and PRJ-2026-0030 Materials Pending, all
+   * billed exactly to their value by one untyped imported bill) could be cancelled, and the integrity check then failed.
+   * The guard must not allow a state the integrity check fails: every transition into Cancelled is refused the same way.
+   */
+  const integrity = async () => (await one(`select status from integrity_check() where check_key = 'cancelled_job_fully_billed'`)).status;
+
+  it.each([
+    ['PRJ-2026-0012', 'IN_PROGRESS', 'In Progress'],
+    ['PRJ-2026-0015', 'SCHEDULED', 'Scheduled'],
+    ['PRJ-2026-0022', 'MATERIALS_PENDING', 'Materials Pending'],
+    ['PRJ-2026-0030', 'MATERIALS_PENDING', 'Materials Pending'],
+  ])('AC-15B: %s (%s, fully billed before completion): Cancelled from Airtable is refused, Airtable is put back, integrity stays PASS', async (project, from, label) => {
+    expect(await status(project)).toBe(from);
+    const b = await billing(project);
+    expect([Number(b.billed) > 0, Number(b.remaining)]).toEqual([true, 0]);
+    const r = await cancel(project);
+    expect([r.outcome, rejectedReason(r)]).toEqual(['REJECTED',
+      expect.stringMatching(new RegExp(`${project} is fully billed \\(billed .* against .*: INV-2026-\\d{4}\\); a fully billed job is not cancelled: void the final bill first, then cancel`))]);
+    expect(r.corrections).toMatchObject({ [F.status]: label });
+    expect(await status(project)).toBe(from);
+    expect(await integrity()).toBe('PASS');
+  });
+
+  it('AC-15B: an On Hold job that is fully billed is refused too', async () => {
+    expect(await change('PRJ-2026-0012', { [F.status]: 'On Hold', [F.reason]: 'Rain' })).toMatchObject({ outcome: 'APPLIED' });
+    const r = await cancel('PRJ-2026-0012');
+    expect([r.outcome, rejectedReason(r)]).toEqual(['REJECTED', expect.stringMatching(/PRJ-2026-0012 is fully billed/)]);
+    expect(r.corrections).toMatchObject({ [F.status]: 'On Hold' });
+    expect(await status('PRJ-2026-0012')).toBe('ON_HOLD');
+    expect(await integrity()).toBe('PASS');
+  });
+
+  it('AC-15B: a Planning job billed to its value by an untyped bill is refused too', async () => {
+    const left = String((await billing('PRJ-2026-0009')).remaining);
+    await force(`insert into invoices (invoice_number, project_id, customer_id, record_origin, status, total_inc_gst, gst_amount, subtotal_ex_gst, issue_date, due_date)
+                 select 'INV-TEST-PREPAID', id, customer_id, 'IMPORT', 'ISSUED', $2::numeric, round($2::numeric * 0.1 / 1.1, 2),
+                        $2::numeric - round($2::numeric * 0.1 / 1.1, 2), date '2026-09-01', date '2026-09-15'
+                   from projects where project_number = $1`, ['PRJ-2026-0009', left]);
+    expect(Number((await billing('PRJ-2026-0009')).remaining)).toBe(0);
+    const r = await cancel('PRJ-2026-0009');
+    expect([r.outcome, rejectedReason(r)]).toEqual(['REJECTED', expect.stringMatching(/PRJ-2026-0009 is fully billed .*INV-TEST-PREPAID/)]);
+    expect(r.corrections).toMatchObject({ [F.status]: 'Planning' });
+    expect(await status('PRJ-2026-0009')).toBe('PLANNING');
+  });
+
+  it('AC-15B: the guard holds for every path: a direct UPDATE of a fully billed In Progress job is refused', async () => {
+    expect(String((await one(`select project_transition_guard(p, 'CANCELLED') v from projects p where project_number = 'PRJ-2026-0012'`)).v)).toMatch(/PRJ-2026-0012 is fully billed/);
+    await expect(q(`update projects set status = 'CANCELLED', cancellation_reason = 'direct' where project_number = 'PRJ-2026-0012'`)).rejects.toThrow(/is fully billed/);
+  });
+
+  it.each([
+    ['PRJ-2026-0011', 'SCHEDULED'],
+    ['PRJ-2026-0013', 'PLANNING'],
+    ['PRJ-2026-0016', 'IN_PROGRESS'],
+    ['PRJ-2026-0014', 'MATERIALS_PENDING'],
+  ])('AC-15B: a partly billed job may still be cancelled from any state: %s (%s)', async (project, from) => {
+    expect(await status(project)).toBe(from);
+    expect(Number((await billing(project)).remaining)).toBeGreaterThan(0);
+    expect(await cancel(project)).toMatchObject({ outcome: 'APPLIED' });
+    expect(await status(project)).toBe('CANCELLED');
+    expect(await integrity()).toBe('PASS');
+  });
+
+  it('AC-15B: a partly billed job may still be cancelled from On Hold (PRJ-2026-0016)', async () => {
+    expect(await change('PRJ-2026-0016', { [F.status]: 'On Hold', [F.reason]: 'Rain' })).toMatchObject({ outcome: 'APPLIED' });
+    expect(Number((await billing('PRJ-2026-0016')).remaining)).toBeGreaterThan(0);
+    expect(await cancel('PRJ-2026-0016')).toMatchObject({ outcome: 'APPLIED' });
+    expect(await status('PRJ-2026-0016')).toBe('CANCELLED');
+    expect(await integrity()).toBe('PASS');
+  });
 });

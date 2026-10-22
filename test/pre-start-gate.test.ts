@@ -251,6 +251,38 @@ describe.each(TARGETS)('AC-13B: no job starts before its pre-start items are sat
     expect(await status(P)).toBe('SCHEDULED');
   });
 
+  it('AC-13C: nor on resume: Actual Start written directly, then On Hold, then In Progress with the SWMS open is refused', async () => {
+    // Audit D1-ONHOLD: the gate checked only Scheduled -> In Progress, so a job given an Actual Start directly could be
+    // paused and "resumed" into work it never passed the gate for (and integrity started_with_pre_start_open FAILed).
+    const P = await born();
+    expect(await change(P, { [F.materials]: 'Done' })).toMatchObject({ outcome: 'APPLIED' });
+    await force(`update projects set actual_start_date = app_today() where project_number = $1`, [P]);
+    expect(await change(P, { [F.status]: 'On Hold' }, { current: { [F.reason]: 'Waiting for the crew' } })).toMatchObject({ outcome: 'APPLIED' });
+    const r = await start(P);
+    expect([r.outcome, rejectedReason(r)]).toEqual(['REJECTED', expect.stringMatching(/pre-start items are still open \(Safe Work Method Statement signed\)/)]);
+    expect(r.corrections).toMatchObject({ [F.status]: 'On Hold' });
+    expect(await status(P)).toBe('ON_HOLD');
+    await expect(q(`update projects set status = 'IN_PROGRESS' where project_number = $1`, [P])).rejects.toThrow(/pre-start items are still open/);
+  });
+
+  it('AC-13C: a job that really started, then On Hold, resumes: its items were satisfied and are locked', async () => {
+    const P = await born();
+    await change(P, { [F.swms]: 'Done' });
+    await change(P, { [F.materials]: 'Waived' }, { current: { [F.materialsNote]: 'Customer supplies all materials' } });
+    expect(await start(P)).toMatchObject({ outcome: 'APPLIED' });
+    expect(await change(P, { [F.status]: 'On Hold' }, { current: { [F.reason]: 'Rain' } })).toMatchObject({ outcome: 'APPLIED' });
+    expect((await one(`select project_transition_guard(p, 'IN_PROGRESS') v from projects p where project_number = $1`, [P])).v).toBeNull();
+    expect(await start(P)).toMatchObject({ outcome: 'APPLIED' });
+    expect(await status(P)).toBe('IN_PROGRESS');
+  });
+
+  it('CC-10: an imported project has no pre-start items; the refusal names the item as Airtable does (SWMS Signed)', async () => {
+    const r = await change('PRJ-2026-0011', { [F.swms]: 'Done' });
+    expect([r.outcome, rejectedReason(r)]).toEqual(['REJECTED', 'PRJ-2026-0011 has no SWMS Signed item (not required for this project)']);
+    const m = await change('PRJ-2026-0011', { [F.materials]: 'Done' });
+    expect([m.outcome, rejectedReason(m)]).toEqual(['REJECTED', 'PRJ-2026-0011 has no Materials Reviewed item (not required for this project)']);
+  });
+
   it('the dashboard card follows the canonical item until work starts: a completed material-review task is not Materials Reviewed', async () => {
     const P = await born();
     await force(`update tasks set status = 'DONE', completed_at = now() where task_type = 'MATERIAL_REVIEW'

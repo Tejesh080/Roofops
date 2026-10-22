@@ -82,9 +82,11 @@ export async function chat(messages: Msg[], deps: ChatDeps = realDeps()): Promis
       last = new ProviderUnavailable(name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'busy', `DeepSeek request failed: ${(e as Error).message}`);
     }
     if (res?.ok) {
-      const body = (await res.json().catch(() => null)) as { choices?: { message: Msg }[]; model?: string } | null;
+      const body = (await res.json().catch(() => null)) as { choices?: { message: Msg; finish_reason?: string }[]; model?: string } | null;
       const message = body?.choices?.[0]?.message;
       if (!message) throw new ProviderUnavailable('bad_answer', 'DeepSeek returned no answer');
+      // An answer cut off at the length limit may carry a half-written tool call: never act on it.
+      if (body?.choices?.[0]?.finish_reason === 'length') throw new ProviderUnavailable('bad_answer', 'DeepSeek stopped mid-answer (length limit)');
       return { message, model: body?.model ?? model };
     }
     if (res) {
@@ -97,6 +99,32 @@ export async function chat(messages: Msg[], deps: ChatDeps = realDeps()): Promis
     else break;
   }
   throw last;
+}
+
+interface ParamSchema { properties?: Record<string, { type?: string; enum?: unknown[] }>; required?: string[]; additionalProperties?: boolean }
+
+/**
+ * The tool's arguments against its declared parameters: a JSON object, the required keys, declared keys only, strings
+ * where strings are declared, enum values only. The schemas are sent to the provider, but nothing obliges a model to
+ * follow them, so they are enforced here; a call that does not fit is answered with an error and never runs.
+ */
+export function checkArgs(raw: string, schema: ParamSchema): { ok: true; args: Record<string, unknown> } | { ok: false; error: Record<string, unknown> } {
+  let v: unknown;
+  try { v = JSON.parse(raw.trim() === '' ? '{}' : raw); } catch { return { ok: false, error: { error: 'invalid arguments', detail: 'the arguments are not valid JSON' } }; }
+  if (v === null || typeof v !== 'object' || Array.isArray(v)) return { ok: false, error: { error: 'invalid arguments', detail: 'the arguments must be an object' } };
+  const args = v as Record<string, unknown>;
+  const props = schema.properties ?? {};
+  for (const k of schema.required ?? []) if (!(k in args)) return { ok: false, error: { error: 'invalid arguments', detail: `${k} is required` } };
+  for (const [k, val] of Object.entries(args)) {
+    const p = props[k];
+    if (!p) {
+      if (schema.additionalProperties === false) return { ok: false, error: { error: 'invalid arguments', detail: `${k} is not an argument of this tool` } };
+      continue;
+    }
+    if (p.type === 'string' && typeof val !== 'string') return { ok: false, error: { error: 'invalid arguments', detail: `${k} must be text` } };
+    if (p.enum && !p.enum.includes(val)) return { ok: false, error: { error: 'invalid arguments', detail: `${k} must be one of the allowed values`, allowed: p.enum } };
+  }
+  return { ok: true, args };
 }
 
 export async function runCopilot(query: Query, history: ChatTurn[], requestId: string, actor?: string, deps?: ChatDeps, token?: string): Promise<CopilotReply> {
@@ -127,12 +155,15 @@ export async function runCopilot(query: Query, history: ChatTurn[], requestId: s
     messages.push({ role: 'assistant', content: message.content ?? '', tool_calls: calls });
     for (const call of calls) {
       const tool = TOOLS[call.function.name];
-      let args: Record<string, unknown> = {};
-      try { args = JSON.parse(call.function.arguments || '{}') as Record<string, unknown>; } catch { /* treated as no args */ }
+      const checked = tool ? checkArgs(call.function.arguments ?? '', tool.parameters as ParamSchema) : null;
+      const args: Record<string, unknown> = checked?.ok ? checked.args : {};
       let content: string;
       if (!tool) {
         content = JSON.stringify({ error: `Unknown tool ${call.function.name}` });
         steps.push({ tool: call.function.name, tier: 'NONE', args, ok: false });
+      } else if (checked && !checked.ok) {
+        content = JSON.stringify(checked.error);
+        steps.push({ tool: call.function.name, tier: tool.tier, args, ok: false });
       } else {
         try {
           const r = await tool.run(args, ctx);

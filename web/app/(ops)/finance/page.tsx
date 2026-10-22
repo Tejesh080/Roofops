@@ -60,7 +60,9 @@ export default async function FinancePage() {
             {ready.length === 0 ? <Empty icon={CheckCircle2} title="Nothing waiting to be invoiced" /> :
               <Rows rows={ready} right={(p) => <>
                 <span className="strong num">{money(p.invoice_amount_inc_gst)}</span>
-                {mayPrepare ? <PrepareInvoiceForm project={p.project_number} /> : <AskButton question={`Prepare invoice for ${p.project_number}`} text="Prepare with Copilot" />}
+                {/* While staff dispatch is off, a signed-in employee prepares in Airtable (the note above); the Copilot would refuse too. */}
+                {mayPrepare ? <PrepareInvoiceForm project={p.project_number} />
+                  : prepareOff ? null : <AskButton question={`Prepare invoice for ${p.project_number}`} text="Prepare with Copilot" />}
               </>} />}
           </div>
         </section>

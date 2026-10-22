@@ -9,6 +9,7 @@ import { importBundle } from '../src/import/importer.js';
 import { TARGETS, migratedDb } from './helpers/db.js';
 import { deletedReissueScenario } from './helpers/reissue-scenario.js';
 import { TOOLS } from '../web/lib/copilot/tools.ts';
+import { DISPATCH_OFF } from '../web/lib/dispatch.ts';
 
 type R = Record<string, unknown>;
 const PW = 'pilot test password 1';
@@ -222,13 +223,29 @@ describe.each(TARGETS)('staff invoice approval and Xero dispatch [%s]', (target)
     } finally { await db.exec('rollback'); }
   });
 
-  it('a Copilot preview asked for by a signed-in employee records that employee (run with the dashboard role\'s privileges)', async () => {
+  it('with staff dispatch off, the Copilot prepares nothing for a signed-in employee (the dashboard\'s own rule, CP-01)', async () => {
+    const approvals = async () => Number((await one(`select count(*)::int n from approvals where action_type = 'CREATE_INVOICE'`)).n);
+    const before = await approvals();
     await db.exec('begin; set local role roofops_dashboard;');
     let r: R;
     try {
       const asDashboard = ((sql: string, params: unknown[] = []) => db.query(sql, params)) as never;
       r = (await TOOLS.prepare_invoice!.run({ project_number: 'PRJ-2026-0002' },
-        { query: asDashboard, requestId: 'copilot-staff-test', lastUserMessage: 'Prepare invoice for PRJ-2026-0002', token: tok.finance! })).data as R;
+        { query: asDashboard, requestId: 'copilot-staff-off', lastUserMessage: 'Prepare invoice for PRJ-2026-0002', token: tok.finance!, env: {} })).data as R;
+    } finally { await db.exec('rollback'); }
+    expect(r).toEqual({ project: 'PRJ-2026-0002', prepared: false, refused: DISPATCH_OFF.copilotPrepare });
+    expect(await approvals()).toBe(before);
+  });
+
+  it('a Copilot preview asked for by a signed-in employee records that employee (run with the dashboard role\'s privileges)', async () => {
+    await db.exec('begin; set local role roofops_dashboard;');
+    let r: R;
+    try {
+      const asDashboard = ((sql: string, params: unknown[] = []) => db.query(sql, params)) as never;
+      // Staff dispatch on: only then may a signed-in employee prepare (CP-01).
+      r = (await TOOLS.prepare_invoice!.run({ project_number: 'PRJ-2026-0002' },
+        { query: asDashboard, requestId: 'copilot-staff-test', lastUserMessage: 'Prepare invoice for PRJ-2026-0002', token: tok.finance!,
+          env: { STAFF_XERO_DISPATCH: 'on' } })).data as R;
     } finally { await db.exec('commit'); }
     expect(r).toMatchObject({ outcome: 'Prepared: awaiting approval', requires_human_approval: true });
     expect(String(r.how_it_gets_approved)).toContain('Finance → Invoice approvals');

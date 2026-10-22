@@ -18,7 +18,10 @@ const WHY = 'RoofOps automation does not yet send dashboard work to Xero (the ow
 
 export const DISPATCH_OFF = {
   prepare: `Preparing final invoices in the dashboard is off: ${WHY}, and a preview prepared here could only be approved here. `
-    + 'Until then, prepare and approve it in Airtable (Projects › Invoice Action), or ask the Copilot to prepare it and approve it in Airtable.',
+    + 'Until then, prepare and approve it in Airtable (Projects › Invoice Action).',
+  // The Copilot, for a signed-in employee: their preview is a dashboard preview (only the dashboard may approve it).
+  copilotPrepare: `Preparing a final invoice from the Copilot is off while you are signed in: ${WHY}, and a preview you prepare could only be `
+    + 'approved in the dashboard. Nothing was prepared. Prepare and approve it in Airtable (Projects › Invoice Action).',
   approve: `Approving final invoices in the dashboard is off: ${WHY}. Nothing was approved. If this preview was prepared in the dashboard, `
     + 'reject it here with a reason and prepare it again in Airtable; if it was prepared in Airtable or by the Copilot, approve it in Airtable.',
   reissueRequest: `Reissues from the dashboard are off: ${WHY}, so a replacement draft could not be sent. Nothing was requested. `

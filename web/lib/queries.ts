@@ -198,7 +198,9 @@ export async function prepareInvoiceAsStaff(q: Query, projectNumber: string, tok
 }
 export async function prepareInvoice(q: Query, projectNumber: string, requestId: string, actor: string): Promise<PreparedInvoice> {
   if (!PROJECT_NUMBER.test(projectNumber)) return { outcome: 'INVALID_EVENT', message: `${projectNumber} is not a project number (PRJ-YYYY-NNNN)` };
-  const event = { event_id: `dashboard:copilot:${requestId}`, event_type: 'invoice.prepare_requested', source: 'roofops-dashboard',
+  // One request may prepare more than one project (AC-22): the event names the project, so each gets its own preview, and
+  // the same project asked twice in one request is still one preview.
+  const event = { event_id: `dashboard:copilot:${requestId}:${projectNumber}`, event_type: 'invoice.prepare_requested', source: 'roofops-dashboard',
                   actor_id: actor, occurred_at: new Date().toISOString(), payload: { project_number: projectNumber } };
   const [r] = await q<{ r: PreparedInvoice }>(`select wf_invoice_prepare($1::jsonb, 'dashboard') as r`, [JSON.stringify(event)]);
   return r!.r;
@@ -225,6 +227,23 @@ export const recentActivity = (q: Query, limit = 25) =>
                           actor, reference, reason, external_reference, channel
                    from v_dashboard_project_timeline where source = 'EVENT' and occurred_at > now() - interval '30 days'
                    order by v_dashboard_project_timeline.occurred_at desc limit $1`, [limit]);
+
+export interface PreStartBlocked { project_number: string; customer_name: string; status: string; planned_start_date: string | null;
+  project_manager: string | null; open_items: string[] }
+/** Jobs the pre-start gate holds (AC-13B): not started, with a required SWMS / materials item still open. */
+export async function listPreStartBlocked(q: Query): Promise<PreStartBlocked[]> {
+  return q<PreStartBlocked>(`select project_number, customer_name, status, planned_start_date::text, project_manager, open_items
+      from v_dashboard_pre_start_blocked order by planned_start_date nulls last, project_number`);
+}
+
+export interface PendingQuote { quote_number: string; status: string; customer_name: string; site: string; job_type: string | null; estimator: string | null;
+  total_inc_gst: number; created_on: string | null; sent_on: string | null; valid_until: string | null; in_airtable: boolean }
+/** Quotes still open with the customer: drafts not sent yet, and sent quotes not yet accepted, lost or expired. */
+export async function listPendingQuotes(q: Query): Promise<PendingQuote[]> {
+  const rows = await q<Record<string, unknown>>(`select quote_number, status, customer_name, site, job_type, estimator, total_inc_gst::text, created_on::text,
+      sent_on::text, valid_until::text, in_airtable from v_dashboard_quotes where status in ('DRAFT', 'SENT') order by status desc, coalesce(sent_on, created_on), quote_number`);
+  return rows.map((r) => ({ ...(r as unknown as PendingQuote), total_inc_gst: Number(r.total_inc_gst), in_airtable: Boolean(r.in_airtable) }));
+}
 
 export async function listOverdueInvoices(q: Query): Promise<(InvoiceLine & { project_number: string })[]> {
   const rows = await q<Record<string, unknown>>(`select invoice_number, project_number, status, sync_status, issue_date::text, due_date::text, total_inc_gst::text,

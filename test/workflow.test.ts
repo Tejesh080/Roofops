@@ -308,6 +308,146 @@ describe.each(TARGETS)('Quote Accepted -> Project workflow functions [%s]', (tar
     });
   });
 
+  // M2: quote acceptance is deterministic. Each case was a failing test first (20261022030000).
+  describe('acceptance is deterministic (AC-23, AC-25, AC-18)', () => {
+    const withPayload = (id: string, quote: string, version: number, payload: Record<string, unknown>) => {
+      const e = quoteAccepted(id, quote, version);
+      Object.assign(e.payload, payload);
+      return e;
+    };
+    const projectsOf = (quote: string) => count(db, `select count(*) v from projects where quote_id = (select id from quotes where quote_number = '${quote}')`);
+    const exceptionsOf = (quote: string) => count(db, `select count(*) v from workflow_exceptions where business_reference = '${quote}'`);
+    /** The quote's Airtable record, verified (as n8n 10's publish or the base load records it). */
+    const linkQuote = (quote: string, rec: string) => db.exec(`insert into external_links (provider, entity_type, entity_id, external_type, external_id, last_synced_at, verified_at)
+      select 'AIRTABLE', 'quote', id, 'Record', '${rec}', now(), now() from quotes where quote_number = '${quote}'`);
+    /** Staff set Status = Sent on the quote's Airtable record; n8n 06 hands the change over (the production path). */
+    const sentInAirtable = (rec: string, txn: number) => call(db, 'wf_airtable_change', {
+      event_id: `airtable:achTESTTESTTEST01:txn${String(txn)}:${rec}`, source: 'airtable', actor_id: 'usrSTAFFMEMBER01', occurred_at: '2026-09-29T01:00:00Z',
+      table_id: 'tblzenPRNVV5O7lZP', record_id: rec, changes: { fldQpTa5tvrzlNg1h: { current: 'Sent' } }, current: { fldQpTa5tvrzlNg1h: 'Sent' } }, 'test');
+
+    it('AC-23: an Accepted On before Sent On is a handled rejection (one exception, no project, no raise), also delivered twice', async () => {
+      // Q-2026-0032 was sent on 14 April; staff typed 13 April into Accepted On. This raised quotes_check4 before.
+      expect(await col(db, `select status || '|' || sent_on::text v from quotes where quote_number = 'Q-2026-0032'`)).toEqual(['SENT|2026-04-14']);
+      const bad = withPayload('EVT-T-AC23', 'Q-2026-0032', 1, { accepted_on: '2026-04-13' });
+      const r = await call(db, 'wf_quote_accepted', bad);
+      expect(r).toMatchObject({ status: 'REJECTED', outcome: 'INVALID_STATE', error_class: 'VALIDATION_ERROR', retryable: false,
+        message: 'Accepted On is before Q-2026-0032 was sent (2026-04-14): an acceptance cannot predate its quote' });
+      expect(r.exception_number).toMatch(/^EXC-\d{4}$/);
+      // The same event_id again (redelivery), and a new event with the same mistake: still that one exception.
+      expect(await call(db, 'wf_quote_accepted', bad)).toMatchObject({ ...r, duplicate: true, redelivery: true });
+      expect(await call(db, 'wf_quote_accepted', withPayload('EVT-T-AC23-B', 'Q-2026-0032', 1, { accepted_on: '2026-01-02' })))
+        .toMatchObject({ status: 'REJECTED', error_class: 'VALIDATION_ERROR', exception_number: r.exception_number });
+      expect(await col(db, `select status || '|' || coalesce(accepted_on::text, '-') v from quotes where quote_number = 'Q-2026-0032'`)).toEqual(['SENT|-']);
+      expect(await projectsOf('Q-2026-0032')).toBe(0);
+      expect(await exceptionsOf('Q-2026-0032')).toBe(1);
+      expect(await col(db, `select error_class || '|' || resolution_status || '|' || attempt_count::text v from workflow_exceptions where exception_number = '${r.exception_number as string}'`))
+        .toEqual(['VALIDATION_ERROR|OPEN|3']);
+      expect(await count(db, `select count(*) v from processed_events where idempotency_key = 'quote.accepted:Q-2026-0032:v1'`)).toBe(0);   // the fact stays unclaimed
+    });
+
+    it('AC-23: one bad Accepted On no longer stops the batch: the next acceptance in it is created', async () => {
+      // n8n 01 accepts a batch's events one after another and advances its cursor after them: a raise stopped every later one.
+      const batch = [withPayload('EVT-T-AC23-BATCH-1', 'Q-2026-0032', 1, { accepted_on: '2026-04-01' }), quoteAccepted('EVT-T-AC23-BATCH-2', 'Q-2026-0034', 2)];
+      const out: string[] = [];
+      for (const e of batch) out.push((await call(db, 'wf_quote_accepted', e)).status);
+      expect(out).toEqual(['REJECTED', 'CREATED']);
+      expect(await projectsOf('Q-2026-0034')).toBe(1);
+      expect(await exceptionsOf('Q-2026-0032')).toBe(1);
+    });
+
+    it('AC-23: an Accepted On from Sent On to today is kept as given, and a future one is refused, as before (owner decision)', async () => {
+      expect(await call(db, 'wf_quote_accepted', withPayload('EVT-T-AC23-OK', 'Q-2026-0032', 1, { accepted_on: '2026-04-14' }))).toMatchObject({ status: 'CREATED' });
+      expect(await col(db, `select status || '|' || accepted_on::text v from quotes where quote_number = 'Q-2026-0032'`)).toEqual(['ACCEPTED|2026-04-14']);
+      expect(await call(db, 'wf_quote_accepted', withPayload('EVT-T-AC23-FUTURE', 'Q-2026-0058', 1, { accepted_on: '2026-09-30' })))
+        .toMatchObject({ status: 'REJECTED', outcome: 'INVALID_EVENT', error_class: 'VALIDATION_ERROR', issues: ['payload.accepted_on: cannot be in the future'] });
+      expect(await projectsOf('Q-2026-0058')).toBe(0);
+    });
+
+    it('AC-25: an acceptance from an Airtable record that is not the quote\'s verified record (a duplicated row) is refused, naming both', async () => {
+      await linkQuote('Q-2026-0064', 'recQ0064ORIGINAL1');
+      const [id] = await col(db, `select id::text v from quotes where quote_number = 'Q-2026-0064'`);
+      // Airtable's "Duplicate record" copies Quote Number and RoofOps ID onto a new record id.
+      const dup = withPayload('EVT-T-AC25-DUP', 'Q-2026-0064', 1, { airtable_record_id: 'recQ0064DUPLICATE', quote_uuid: id });
+      const r = await call(db, 'wf_quote_accepted', dup);
+      expect(r).toMatchObject({ status: 'REJECTED', outcome: 'INVALID_STATE', error_class: 'RECONCILIATION_MISMATCH', retryable: false,
+        message: 'Acceptance came from Airtable record recQ0064DUPLICATE, but Q-2026-0064 is Airtable record recQ0064ORIGINAL1: accept the quote on its own record' });
+      expect(await call(db, 'wf_quote_accepted', dup)).toMatchObject({ ...r, duplicate: true });
+      expect(await col(db, `select status v from quotes where quote_number = 'Q-2026-0064'`)).toEqual(['SENT']);
+      expect(await projectsOf('Q-2026-0064')).toBe(0);
+      expect(await exceptionsOf('Q-2026-0064')).toBe(1);
+      // The quote's own record still accepts, and the project write-back links that record.
+      const ok = await call(db, 'wf_quote_accepted', withPayload('EVT-T-AC25-OK', 'Q-2026-0064', 1, { airtable_record_id: 'recQ0064ORIGINAL1', quote_uuid: id }));
+      expect(ok).toMatchObject({ status: 'CREATED' });
+      expect(await col(db, `select payload ->> 'quote_airtable_record_id' v from outbox where topic = 'airtable.project_writeback' and aggregate_id = '${ok.project_id as string}'`))
+        .toEqual(['recQ0064ORIGINAL1']);
+    });
+
+    it('AC-25: an event that names no Airtable record is judged as before, also for a quote with a verified record', async () => {
+      await linkQuote('Q-2026-0058', 'recQ0058ORIGINAL1');
+      const e = quoteAccepted('EVT-T-AC25-NOREC', 'Q-2026-0058', 1);
+      delete (e.payload as Record<string, unknown>).airtable_record_id;
+      expect(await call(db, 'wf_quote_accepted', e)).toMatchObject({ status: 'CREATED' });
+      expect(await projectsOf('Q-2026-0058')).toBe(1);
+    });
+
+    it('AC-18: an event_id rejected while the quote was Draft stays rejected when delivered again after it is Sent; a new event_id is accepted', async () => {
+      const REC = 'recQ0033RECORD001';
+      await linkQuote('Q-2026-0033', REC);
+      const ev = withPayload(`airtable:achTESTTESTTEST01:txn18:${REC}`, 'Q-2026-0033', 1, { airtable_record_id: REC });
+      const first = await call(db, 'wf_quote_accepted', ev);
+      expect(first).toMatchObject({ status: 'REJECTED', outcome: 'INVALID_STATE', error_class: 'INVALID_STATE', message: 'Quote Q-2026-0033 is DRAFT; only a SENT quote can be accepted' });
+      // The outcome is kept on the event row (the existing event log), exactly as it was returned.
+      expect((await db.query<{ r: unknown }>(`select metadata -> 'result' r from automation_events where event_key = $1`, [ev.event_id]))[0]!.r).toEqual(first);
+      expect(await sentInAirtable(REC, 19)).toMatchObject({ outcome: 'APPLIED' });
+      expect(await col(db, `select status v from quotes where quote_number = 'Q-2026-0033'`)).toEqual(['SENT']);
+      // The same event_id again (a redelivery, a drain, a replay of the cursor): its first outcome, and nothing changes.
+      expect(await call(db, 'wf_quote_accepted', ev)).toMatchObject({ ...first, duplicate: true, redelivery: true });
+      expect(await col(db, `select status v from quotes where quote_number = 'Q-2026-0033'`)).toEqual(['SENT']);
+      expect(await projectsOf('Q-2026-0033')).toBe(0);
+      expect(await count(db, `select count(*) v from processed_events where idempotency_key = 'quote.accepted:Q-2026-0033:v1'`)).toBe(0);
+      expect(await col(db, `select event_key || '|' || status || '|' || error_class v from automation_events where event_key like '${ev.event_id}%' order by event_key`))
+        .toEqual([`${ev.event_id}|REJECTED|INVALID_STATE`, `${ev.event_id}:redelivery:1|DUPLICATE_IGNORED|DUPLICATE_EVENT`]);
+      expect(await exceptionsOf('Q-2026-0033')).toBe(1);
+      // A fresh Airtable change (a new event_id: staff accept again now that it is Sent) is judged as the quote is now.
+      const fresh = await call(db, 'wf_quote_accepted', withPayload(`airtable:achTESTTESTTEST01:txn20:${REC}`, 'Q-2026-0033', 1, { airtable_record_id: REC }));
+      expect(fresh).toMatchObject({ status: 'CREATED' });
+      expect(await call(db, 'wf_quote_accepted', ev)).toMatchObject({ status: 'REJECTED', error_class: 'INVALID_STATE', duplicate: true });   // still its first outcome
+      expect(await projectsOf('Q-2026-0033')).toBe(1);
+      expect(await col(db, `select status v from integrity_check() where check_key = 'accepted_at_most_one_project'`)).toEqual(['PASS']);
+    });
+
+    it('AC-18: a delivery whose transaction failed was never recorded, so the same event_id is judged again', async () => {
+      const REC = 'recQ0046RECORD001';
+      await linkQuote('Q-2026-0046', REC);
+      const ev = withPayload(`airtable:achTESTTESTTEST01:txn30:${REC}`, 'Q-2026-0046', 1, { airtable_record_id: REC });
+      // Delivered while Draft, but the transaction fails before it commits (here: opening the exception raises).
+      await db.exec('begin');
+      try {
+        await db.exec(`create function test_ac18_crash() returns trigger language plpgsql as $$ begin raise exception 'simulated failure before commit'; end $$;
+                       create trigger test_ac18_crash before insert on workflow_exceptions for each row execute function test_ac18_crash();`);
+        await expect(call(db, 'wf_quote_accepted', ev)).rejects.toThrow(/simulated failure before commit/);
+      } finally {
+        await db.exec('rollback');
+      }
+      expect(await count(db, `select count(*) v from automation_events where event_key like '${ev.event_id}%'`)).toBe(0);
+      expect(await exceptionsOf('Q-2026-0046')).toBe(0);
+      expect(await sentInAirtable(REC, 31)).toMatchObject({ outcome: 'APPLIED' });
+      expect(await call(db, 'wf_quote_accepted', ev)).toMatchObject({ status: 'CREATED', duplicate: false });
+      expect(await projectsOf('Q-2026-0046')).toBe(1);
+    });
+
+    it('AC-18: a rejection recorded before this rule (no stored outcome) is answered from its event row', async () => {
+      const ev = quoteAccepted('EVT-T-AC18-OLD', 'Q-2026-0065', 1);
+      const first = await call(db, 'wf_quote_accepted', ev);
+      expect(first).toMatchObject({ status: 'REJECTED', error_class: 'INVALID_STATE' });
+      await db.exec(`update automation_events set metadata = metadata - 'result' where event_key = 'EVT-T-AC18-OLD'`);   // as an older version left it
+      await db.exec(`update quotes set status = 'SENT' where quote_number = 'Q-2026-0065'`);
+      expect(await call(db, 'wf_quote_accepted', ev)).toMatchObject({ status: 'REJECTED', outcome: 'INVALID_STATE', error_class: 'INVALID_STATE',
+        message: first.message, exception_number: first.exception_number, duplicate: true, redelivery: true });
+      expect(await projectsOf('Q-2026-0065')).toBe(0);
+    });
+  });
+
   describe.runIf(target === 'postgres')('real concurrency (two connections)', () => {
     it('two workers delivering the same fact at the same instant create exactly one project', async () => {
       const [a, b] = [await openPostgres(db.url!), await openPostgres(db.url!)];
@@ -340,6 +480,19 @@ describe.each(TARGETS)('Quote Accepted -> Project workflow functions [%s]', (tar
       try {
         const rs = await Promise.all([a, b].map((c, i) => call(c, 'wf_claim_side_effect', `drive:project-folder:${pid!}`, `w${i}`, 120)));
         expect(rs.map((r) => r.claimed).sort()).toEqual([false, true]);
+      } finally { await a.close(); await b.close(); }
+    });
+
+    it('AC-18: the same rejected event_id delivered concurrently gets one outcome: the second is its redelivery', async () => {
+      const [a, b] = [await openPostgres(db.url!), await openPostgres(db.url!)];
+      try {
+        const ev = quoteAccepted('EVT-RACE-DRAFT', 'Q-2026-0038', 1);   // Q-2026-0038 is Draft
+        const rs = await Promise.all([call(a, 'wf_quote_accepted', ev), call(b, 'wf_quote_accepted', ev)]);
+        expect(rs.map((r) => r.status)).toEqual(['REJECTED', 'REJECTED']);
+        expect(rs.map((r) => r.duplicate === true).sort()).toEqual([false, true]);
+        expect(rs[0].exception_number).toBe(rs[1].exception_number);
+        expect(await col(db, `select status v from automation_events where event_key like 'EVT-RACE-DRAFT%' order by event_key`)).toEqual(['REJECTED', 'DUPLICATE_IGNORED']);
+        expect(await count(db, `select count(*) v from workflow_exceptions where business_reference = 'Q-2026-0038'`)).toBe(1);
       } finally { await a.close(); await b.close(); }
     });
   });

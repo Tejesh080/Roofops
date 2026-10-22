@@ -67,7 +67,8 @@ const FINANCE = 'EMP-900';                            // FINANCE, active (the da
 const ADMIN = 'EMP-901';                              // ADMIN, active (scenario fixture): decides
 const REASON = 'Xero deleted the draft; the customer still owes the job';
 const T_PROJECTS = 'tblvUPIoebC3zoacv';
-const F = { status: 'fldi2Qwz1dAh2tcTE', start: 'fld8rf6RZLgfs6Ron', end: 'fldvZtiassZEgLMAN', photos: 'fldbbksVL3dT6cqyS', cert: 'fldf7iJiyHFxOQgUy' };
+const F = { status: 'fldi2Qwz1dAh2tcTE', start: 'fld8rf6RZLgfs6Ron', end: 'fldvZtiassZEgLMAN', photos: 'fldbbksVL3dT6cqyS', cert: 'fldf7iJiyHFxOQgUy',
+  swms: 'fldM6kgPz6QZagPAC', materials: 'fldozWSCU877wEZHq' };
 const P4 = 'PRJ-2026-0004';                           // imported: fully paid invoices, final 14,664.49 left to bill
 const Q_DELETED = 'Q-2026-0052';                      // cleanly acceptable quotes (no project yet in the import)
 const Q_VOIDED = 'Q-2026-0054';
@@ -160,7 +161,9 @@ describe.each(TARGETS)('AC-14C C: the end-to-end recovery lifecycle [%s]', (targ
     const project = String(created.project_number);
     await db.query(`insert into external_links (provider, entity_type, entity_id, external_type, external_id, last_synced_at, verified_at)
       select 'AIRTABLE', 'project', id, 'Record', $2, now(), now() from projects where project_number = $1`, [project, recFor(project)]);
-    for (const fields of [{ [F.start]: '2026-10-01', [F.end]: '2026-10-20' }, { [F.status]: 'Scheduled' }, { [F.status]: 'In Progress' },
+    // AC-13B: the job starts only once its pre-start items are satisfied (SWMS Done; materials Done).
+    for (const fields of [{ [F.start]: '2026-10-01', [F.end]: '2026-10-20' }, { [F.status]: 'Scheduled' },
+      { [F.swms]: 'Done' }, { [F.materials]: 'Done' }, { [F.status]: 'In Progress' },
       { [F.photos]: 'Done' }, { [F.cert]: 'Done' }, { [F.status]: 'Completed' }]) {
       expect(await airtableChange(project, fields), `${project} ${JSON.stringify(fields)}`).toMatchObject({ outcome: 'APPLIED' });
     }

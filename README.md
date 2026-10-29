@@ -24,7 +24,7 @@
 ![Twilio](https://img.shields.io/badge/Twilio-SMS_%28RoofOps_Lite%29-F22F46?style=flat-square&logo=twilio&logoColor=white)
 
 [![CI](https://github.com/Tejesh080/Roofops/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Tejesh080/Roofops/actions/workflows/ci.yml)
-![Tests](https://img.shields.io/badge/tests-1%2C335_passing-2EA44F?style=flat-square&logo=vitest&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-1%2C389_passing-2EA44F?style=flat-square&logo=vitest&logoColor=white)
 ![Engines](https://img.shields.io/badge/tested_on-PGlite_%2B_Postgres_17-4169E1?style=flat-square)
 ![Playwright](https://img.shields.io/badge/e2e-Playwright-2EAD33?style=flat-square&logo=playwright&logoColor=white)
 ![Promptfoo](https://img.shields.io/badge/AI_eval-Promptfoo_13%2F13-8A2BE2?style=flat-square)
@@ -420,7 +420,7 @@ from the invoice's current generation); Postgres keeps only the token's SHA-256 
 
 ## 🧪 Testing
 
-1,335 tests pass (37 skipped on PGlite only) across 67 Vitest files, on PGlite and real Postgres 17. External services
+1,389 tests pass (37 skipped on PGlite only) across 69 Vitest files, on PGlite and real Postgres 17. External services
 are simulated in these tests by calling the database functions with the payloads the workflows send, so live checks are
 recorded separately in [evidence/](evidence/).
 

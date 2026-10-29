@@ -245,20 +245,45 @@ Preconditions: Phase 0 done; the hosted head is still `20261017060000` (56 migra
 
 ### Task 1.2: Alerting that reaches a phone
 
-**Files:**
-- Modify: `n8n/07-reconcile.sdk.ts`, `n8n/08-health.sdk.ts`, `lite/n8n/src/monitor.ts` (last node: HTTP GET to the check's ping URL; on failure branch GET `<url>/fail`)
-- Create: `n8n/95-error-alert.sdk.ts` (Error Trigger → HTTP POST `<HC_ERRORS>/fail` with workflow name, execution id and URL in the body)
-- Create: `lite/n8n/src/error-alert.ts` (same, Lite's own check)
-- Modify: `web/app/api/healthz/route.ts` (create if `/health` needs a session: unauthenticated JSON `{integrity: {pass, warning, fail}, last_reconcile_at}` with no record data)
-- Test: runner suites assert the ping node is present and last; `web/e2e/smoke.spec.ts` asserts `/api/healthz` returns `fail: 0`.
+**Design (changed 29 Oct, simpler than per-workflow ping URLs):** the database already records every heartbeat. 08
+writes a health check for each service every 30 minutes; the nightly reconciliation writes Airtable's. So one public
+answer, `/api/healthz`, built from those records, and **one** outside uptime monitor on it cover everything:
+- a stopped health run or reconciliation: the stale check goes Unknown;
+- a service failing three times in a row;
+- an integrity FAIL;
+- a dead-lettered side effect.
 
-- [ ] **Step 1: Checks** on healthchecks.io: `roofops-07-reconcile` (period 24 h, grace 2 h), `roofops-08-health` (period = its schedule, grace 2×), `roofops-errors` (manual, alerts on `/fail`), `lite-monitor` (period 2 h, grace 1 h), `lite-errors`, `roofops-weekly-backup` (period 7 d; Task 1.6 pings it). Alert channel: the owner's email now; SMS later if wanted.
-- [ ] **Step 2: Uptime** for the dashboard: a Better Stack or UptimeRobot free HTTP monitor on `/api/healthz` with keyword `"fail":0`, 5-minute interval.
-- [ ] **Step 3: Code + tests** as above; `npm run check` exit 0.
-- [ ] **Step 4: 🔒 Publish** 07, 08-health and 95; 🔒 set 95 as the error workflow on every Advanced workflow; 🔒 publish Lite Monitor and set the Lite error workflow (Lite's go-live order in `lite/DELIVERY-CHECKLIST.md` §6 governs the rest).
-- [ ] **Step 5: Prove it:** 🔒 one deliberate failure via the existing fault toggle (`n8n/97-test-fault-toggle-drive-root.sdk.ts`, reversible) → an email within 5 minutes; 🔒 pause the 08-health schedule for one period (or skip its ping once) → a "down" email inside the grace period; restore. Record both in `evidence/alerting-proof-<date>.md`.
+No ping URL, address or secret goes into git, and n8n 07/08 need no change. Lite keeps its own Monitor alerts (Task L5).
 
-**Done when:** both emails arrived and are recorded; `/api/healthz` is monitored; a Lite Monitor heartbeat is visible on healthchecks.io.
+**Files (as built):**
+- `web/lib/health.ts`: `healthzVerdict()`.
+- `web/lib/healthz.ts`: `getHealthz()`, which runs `integrity_check()` once.
+- `web/app/api/healthz/route.ts`: 200 or 503, `no-store`, through the dashboard role.
+- `web/proxy.ts`: lets only that path through without a session.
+- `n8n/95-error-alert.sdk.ts`: Error Trigger → `wf_record_health` as a failed n8n check, carrying the workflow, execution, node and a 300-character message, never the stack.
+- Tests: `test/healthz.test.ts` (11), `test/n8n-error-alert.test.ts` (7, the real node code against PGlite and Postgres 17).
+
+- [x] **Step 1: Code and tests.** Checked in a local dev server against the local Docker database:
+  - `/api/healthz` answers without a session: 503, `no-store`;
+  - `/projects` still redirects to sign-in, and `/api/copilot` still returns 401.
+
+  After a recorded health run every service was Healthy. Xero correctly needed attention, because the local database has no pinned tenant.
+- [ ] **Step 2: ✍️ Uptime monitor** on `https://<dashboard>/api/healthz`, every 5 minutes, alerting on any non-2xx:
+  - Honeybadger (Student Pack) or UptimeRobot (free).
+  - The deployment is protected, so the monitor sends Vercel's Protection Bypass for Automation header.
+  - Alert channel: the owner's email, plus SMS if wanted.
+- [ ] **Step 3: 🔒 Deploy and publish.**
+  - Deploy the dashboard (Preview).
+  - Publish 95.
+  - Set 95 as the error workflow of every RoofOps workflow (n8n `setWorkflowSettings errorWorkflow`).
+- [ ] **Step 4: 🔒 Prove it:**
+  - Pause 08-health for one period. `/api/healthz` must go 503 and the monitor must alert. Restore it.
+  - Three failures through the reversible fault toggle (`n8n/97-test-fault-toggle-drive-root.sdk.ts`) must also make it 503.
+  - Record both in `evidence/alerting-proof-<date>.md`.
+
+**Done when:** both alerts arrived and are recorded, and the monitor is watching `/api/healthz`.
+
+**Policy:** a single workflow failure shows on System Health at once but does not page. Three in a row, or any stale check, pages. The nightly reconciliation repairs or reports a single missed edit.
 
 ### Task 1.3: End-to-end tests in CI, and a smoke test against the Preview
 

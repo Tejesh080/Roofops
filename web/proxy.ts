@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { SESSION_COOKIE, verifySession } from './lib/session';
 
-/** Everything except the login page and static assets requires a valid signed session. */
+/** Everything except the login page, the public health answer (/api/healthz) and static assets requires a valid signed session. */
 export async function proxy(req: NextRequest) {
   const session = await verifySession(req.cookies.get(SESSION_COOKIE)?.value);
   if (session) return NextResponse.next();
@@ -15,5 +15,5 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!login|_next/static|_next/image|favicon.ico|icon.svg|robots.txt).*)'],
+  matcher: ['/((?!login|api/healthz|_next/static|_next/image|favicon.ico|icon.svg|robots.txt).*)'],
 };

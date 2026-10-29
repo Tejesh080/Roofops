@@ -134,7 +134,7 @@ The five failure modes most likely to hurt a person using the software, and the 
 **Files:**
 - Create: `.github/workflows/ci.yml`
 - Create: `.github/pull_request_template.md`
-- Modify: `README.md` (replace the tests badge with the Actions badge)
+- Modify: `README.md` (an Actions status badge next to the tests badge)
 
 **Interfaces:**
 - Produces: jobs `check` and `db` that later tasks extend (`e2e` in Task 1.3, `drift` in Task 3.2, `schema` in Task 3.1).
@@ -149,6 +149,8 @@ The five failure modes most likely to hurt a person using the software, and the 
 - [ ] **Step 5: Merge** (🔒). Commit message: `CI: lint, typecheck and the full suite on PGlite and Postgres 17 on every PR`.
 
 **Done when:** a PR cannot merge to `main` without both jobs green; the README badge shows the workflow status.
+
+As built (29 Oct): `.github/workflows/ci.yml` uses `postgres:17-alpine` (the local image); the round trip compares `pg_dump --schema-only` before and after the newest down file plus a re-migrate, with pg_dump's random `\restrict` lines filtered (rehearsed locally: identical). The newest migration must have an `ops/rollback/` file or the job fails.
 
 ### Task 0.3: Secret scanning before and after commit
 

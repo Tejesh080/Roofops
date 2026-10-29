@@ -29,14 +29,19 @@ export function loadLocalEnv(cwd = process.cwd()): void {
   }
 }
 
+/** `dir`, resolved, if it is outside the repository at `cwd`; otherwise `${code}`. */
+export function outsideRepo(dir: string, cwd: string, code: string, setting: string): string {
+  const abs = resolve(dir);
+  const rel = relative(resolve(cwd), abs);
+  if (rel === '' || (!isAbsolute(rel) && rel.split(sep)[0] !== '..')) {
+    throw new Error(`${code}: ${abs} is inside ${resolve(cwd)}; set ${setting} to a folder outside the repository`);
+  }
+  return abs;
+}
+
 /** Where the hosted env files live: ROOFOPS_ENV_DIR, else ~/.roofops. Never inside the repository. */
 export function hostedEnvDir(cwd = process.cwd(), env: NodeJS.ProcessEnv = process.env): string {
-  const dir = resolve(env.ROOFOPS_ENV_DIR || join(homedir(), '.roofops'));
-  const rel = relative(resolve(cwd), dir);
-  if (rel === '' || (!isAbsolute(rel) && rel.split(sep)[0] !== '..')) {
-    throw new Error(`HOSTED_ENV_INSIDE_REPO: the hosted env directory ${dir} is inside ${resolve(cwd)}; set ROOFOPS_ENV_DIR to a folder outside the repository`);
-  }
-  return dir;
+  return outsideRepo(env.ROOFOPS_ENV_DIR || join(homedir(), '.roofops'), cwd, 'HOSTED_ENV_INSIDE_REPO', 'ROOFOPS_ENV_DIR');
 }
 
 export type HostedTarget = 'hosted' | 'staging';

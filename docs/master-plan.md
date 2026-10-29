@@ -297,9 +297,11 @@ Airtable signs each notification with HMAC-SHA256 of the raw body using the `mac
 
 ### Task 1.6: Off-platform backups as a routine
 
-- [ ] **Step 1:** `scripts/backup-hosted.ts` (`npm run backup:hosted -- --confirm <ref>`): the runbook §3 `pg_dump` command, sha256 sidecar, owner-only ACL, then GET `HC_WEEKLY_BACKUP` ping. Test: dry-run mode writes nothing and prints the plan.
+- [x] **Step 1:** `scripts/backup-hosted.ts` (`npm run backup:hosted`, `-- --dry-run` to preview). Read-only on the database, so no `--confirm`. The runbook's `pg_dump` inside `roofops-postgres` (URL passed as an environment variable, TLS required), `pg_restore --list` must read it back, SHA-256 sidecar, owner-and-SYSTEM-only ACL, then `HEARTBEAT_WEEKLY_BACKUP_URL` from `hosted.env` (any 2xx counts). Folder: `ROOFOPS_BACKUP_DIR` (set it to `D:\Claude\roofops-backups` to keep the existing ones together), else `~/roofops-backups`; never inside the repository. `test/backup-hosted.test.ts` (10, with the command runner recorded; ablations red). Rehearsed 29 Oct against the local Docker database: 750,565 bytes, 62 TABLE DATA entries, sidecar hash recomputed equal, ACL owner + SYSTEM, nothing left in the container. Not yet run against hosted.
 - [ ] **Step 2: ✍️ Owner copies** each dump to a location not on this machine (their choice; not performed by the agent).
-- [ ] **Step 3:** Weekly on Monday; the healthchecks.io check nags if missed. Quarterly: one restore rehearsal into a scratch database (the 23 Oct one counts as the first).
+- [ ] **Step 3: ✍️ Owner schedules it** (Docker Desktop must be running at that time):
+  `schtasks /Create /TN "RoofOps weekly backup" /SC WEEKLY /D MON /ST 07:30 /TR "cmd /c cd /d D:\Claude\roofops && npm run backup:hosted >> %USERPROFILE%\roofops-backups\backup.log 2>&1"`.
+  The heartbeat check (Honeybadger check-in or healthchecks.io, period 7 days) alerts if a Monday is missed. Quarterly: one restore rehearsal into a scratch database (the 23 Oct one counts as the first).
 
 **Done when:** two consecutive weekly dumps exist with sidecars and the check shows "up".
 

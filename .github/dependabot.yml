@@ -1,0 +1,32 @@
+# Dependency updates (docs/master-plan.md §16): weekly, minor and patch grouped into one PR per ecosystem, majors one
+# by one. CI must pass before anything merges. TypeScript stays on 6.x (ADR-017).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: weekly, day: monday, time: "07:00", timezone: Australia/Brisbane }
+    open-pull-requests-limit: 5
+    groups:
+      root-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule: { interval: weekly, day: monday, time: "07:00", timezone: Australia/Brisbane }
+    open-pull-requests-limit: 5
+    groups:
+      web-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly, day: monday, time: "07:00", timezone: Australia/Brisbane }
+    groups:
+      actions:
+        patterns: ["*"]

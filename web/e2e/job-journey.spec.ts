@@ -22,7 +22,7 @@ test.use({ storageState: { cookies: [], origins: [] } });
 type R = Record<string, unknown>;
 const APPROVER = 'usr7uCnNO15fCefbH';   // the office's Airtable user, mapped to EMP-900
 const F = { status: 'fldi2Qwz1dAh2tcTE', start: 'fld8rf6RZLgfs6Ron', end: 'fldvZtiassZEgLMAN', photos: 'fldbbksVL3dT6cqyS', photosNote: 'fldA77ad94yUmvnu3',
-  cert: 'fldf7iJiyHFxOQgUy', certNote: 'fldLi9FkGDFAbf0QB' };
+  cert: 'fldf7iJiyHFxOQgUy', certNote: 'fldLi9FkGDFAbf0QB', swms: 'fldM6kgPz6QZagPAC', materials: 'fldozWSCU877wEZHq' };
 const REC = 'recJOURNEYQ004100';
 let db: pg.Client;
 let seq = 0;
@@ -103,7 +103,11 @@ test('accepted quote → one project → visit booked and worked → In Progress
   await expect(tf.getByRole('status')).toContainText('created');
 
   // 3. On the day: the office moves the project to Scheduled then In Progress in Airtable; the roofer works the visit.
+  //    The pre-start gate (AC-13B) holds the start until the SWMS is signed and the materials are reviewed.
   expect(await airtable({ [F.status]: 'Scheduled' })).toMatchObject({ outcome: 'APPLIED' });
+  expect(await airtable({ [F.status]: 'In Progress' })).toMatchObject({ outcome: 'REJECTED' });
+  expect(await airtable({ [F.swms]: 'Done' })).toMatchObject({ outcome: 'APPLIED' });
+  expect(await airtable({ [F.materials]: 'Done' })).toMatchObject({ outcome: 'APPLIED' });
   expect(await airtable({ [F.status]: 'In Progress' })).toMatchObject({ outcome: 'APPLIED' });
   const crew = await signIn(browser, 'CREW', baseURL!);
   await crew.page.goto('/work');
@@ -160,7 +164,10 @@ test('accepted quote → one project → visit booked and worked → In Progress
   // The whole job is on the project's audit trail, attributed.
   const actions = (await db.query(`select action, actor_id from audit_events where business_reference = $1 and action ~ '^(job|task|project\\.checklist)\\.' order by occurred_at, action`, [P])).rows
     .map((a) => `${String(a.action)}:${String(a.actor_id)}`);
-  expect(actions).toEqual(['task.create:quote_to_project@1', 'job.scheduled:EMP-802', 'task.created:EMP-802', 'job.start:EMP-804', 'job.complete:EMP-804', 'task.done:EMP-802', 'task.done:EMP-802',
+  // The two pre-start sign-offs (SWMS, materials) come before the start; the two completion items at the end.
+  expect(actions).toEqual(['task.create:quote_to_project@1', 'job.scheduled:EMP-802', 'task.created:EMP-802',
+    `project.checklist.changed:${APPROVER}`, `project.checklist.changed:${APPROVER}`,
+    'job.start:EMP-804', 'job.complete:EMP-804', 'task.done:EMP-802', 'task.done:EMP-802',
     `project.checklist.changed:${APPROVER}`, `project.checklist.changed:${APPROVER}`]);
   for (const c of [admin.ctx, crew.ctx, fin.ctx]) await c.close();
 });

@@ -1,0 +1,41 @@
+# The smoke specs against a real deployment (a Vercel Preview), run by hand after a deploy (master plan Task 1.3).
+# It signs in to that deployment with the demo login: run it only against a deployment the owner has approved.
+# Repository secrets: E2E_DEMO_USERNAME, E2E_DEMO_PASSWORD, VERCEL_BYPASS (Vercel's Protection Bypass for Automation).
+name: Smoke against a deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "The deployment to test, e.g. https://roofops-dashboard-xxxx.vercel.app"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --prefix web
+      - name: Playwright smoke
+        working-directory: web
+        env:
+          E2E_BASE_URL: ${{ inputs.base_url }}
+          DEMO_USERNAME: ${{ secrets.E2E_DEMO_USERNAME }}
+          DEMO_PASSWORD: ${{ secrets.E2E_DEMO_PASSWORD }}
+          VERCEL_BYPASS: ${{ secrets.VERCEL_BYPASS }}
+        run: npx playwright test --project=smoke --reporter=list,html
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-smoke-deployment
+          path: web/playwright-report/
+          retention-days: 7

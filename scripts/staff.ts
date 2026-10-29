@@ -1,6 +1,6 @@
 /**
  * Owner-only staff administration (hosted by default: SUPABASE_DB_URL, verified TLS when SUPABASE_CA_CERT is set;
- * --local uses DATABASE_URL). Never prints a password.
+ * --local uses DATABASE_URL). Never prints a password. Hosted runs need --confirm <project-ref>.
  *
  * npm run staff:add-employee -- EMP-101 --name "Full Name" --email person@company.example --role FINANCE [--local]
  *   Adds one active employee (a real person) with one audit row. Roles: ADMIN, OPERATIONS_MANAGER, PROJECT_MANAGER,
@@ -12,7 +12,7 @@
  *   only from STAFF_PASSWORD and is never printed.
  */
 import { openPostgres } from '../src/db/db.js';
-import { describeUrl, hostedDbConfig, loadLocalEnv } from '../src/config/env.js';
+import { confirmHostedWrite, describeUrl, hostedDbConfig, loadLocalEnv } from '../src/config/env.js';
 
 const ROLES = ['ADMIN', 'OPERATIONS_MANAGER', 'PROJECT_MANAGER', 'ESTIMATOR', 'PURCHASING', 'FINANCE', 'FIELD_CREW', 'VIEWER'];
 const args = process.argv.slice(2);
@@ -23,6 +23,7 @@ loadLocalEnv();
 const local = args.includes('--local');
 const target = () => {
   const cfg = local ? { url: process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/roofops', caPem: undefined } : hostedDbConfig();
+  if (!local) confirmHostedWrite(cfg.url, args);
   console.log(`target: ${local ? 'local' : 'HOSTED'} ${describeUrl(cfg.url)}`);
   return cfg;
 };

@@ -23,7 +23,8 @@
 ![DeepSeek](https://img.shields.io/badge/DeepSeek-Operations_Copilot-4D6BFE?style=flat-square)
 ![Twilio](https://img.shields.io/badge/Twilio-SMS_%28RoofOps_Lite%29-F22F46?style=flat-square&logo=twilio&logoColor=white)
 
-![Tests](https://img.shields.io/badge/tests-1%2C335_passing-2EA44F?style=flat-square&logo=vitest&logoColor=white)
+[![CI](https://github.com/Tejesh080/Roofops/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Tejesh080/Roofops/actions/workflows/ci.yml)
+![Tests](https://img.shields.io/badge/tests-1%2C389_passing-2EA44F?style=flat-square&logo=vitest&logoColor=white)
 ![Engines](https://img.shields.io/badge/tested_on-PGlite_%2B_Postgres_17-4169E1?style=flat-square)
 ![Playwright](https://img.shields.io/badge/e2e-Playwright-2EAD33?style=flat-square&logo=playwright&logoColor=white)
 ![Promptfoo](https://img.shields.io/badge/AI_eval-Promptfoo_13%2F13-8A2BE2?style=flat-square)
@@ -281,8 +282,8 @@ with recorded evidence. **Local** = proven by the test suite, not yet deployed.
 | Pre-start gate, cancellation and purchase-order guards, Copilot read tools ([release runbook](ops/advanced-release-runbook-20261023.md)) | 🟡 Local; backup and read-only preflight passed 2026-10-23, deployment awaits approval |
 | Per-line GST on multi-line invoices | 🟡 Local; needs one supervised Xero Demo check |
 
-**Not built yet, and needed before a real business could rely on it:**
-- continuous integration (the full suite runs locally today);
+**Not built yet, and needed before a real business could rely on it** (the order and the completion criteria are in [docs/master-plan.md](docs/master-plan.md)):
+- continuous integration (written, `.github/workflows/ci.yml`; not yet run on GitHub);
 - a staging environment separate from the hosted demo;
 - alerts that notify a person (today failures are recorded and shown on `/health`);
 - a real Xero organisation, real data and real staff (everything is synthetic; the business date is fixed at 2026-09-29);
@@ -320,7 +321,7 @@ tables, workflows, invoices or Xero. Full guide: [lite/README.md](lite/README.md
 | 70 acceptance tests and a local demo (the workflows' real node code, an in-memory Airtable, a fake Twilio API with signed webhooks and real error codes) | ✅ Local |
 | The workflows in n8n Cloud against a real Airtable base, messages to the test sink, synthetic data (20–21 Oct) | ✅ Live |
 | Twilio connected through n8n's credential; every check that sends no SMS passed against the real Twilio API | ✅ Live |
-| Real SMS | ⏸ Not yet. The supervised live test on 21 Oct stopped when the Twilio trial account refused the first message (error 572003); no SMS has been sent. The test's clean-up (unpublishing Inbound Replies) awaits the owner |
+| Real SMS | ⏸ Not yet. The supervised live test on 21 Oct stopped when the Twilio trial account refused the first message (the live API returned error 572003; Twilio's error dictionary lists the same message, a trial 'From' number not assigned to the recipient, as 572002); no SMS has been sent. The test's clean-up (unpublishing Inbound Replies) awaits the owner |
 
 Try it locally (nothing leaves your computer):
 
@@ -410,8 +411,8 @@ npm run reissue -- status --invoice INV-2026-0004
 npm run reissue -- dispatch --invoice INV-2026-0004 --hosted
 ```
 
-`--hosted` runs any step against the hosted database (`SUPABASE_DB_URL`, like `db:load --hosted`). `dispatch` POSTs
-08's webhook with `REISSUE_DISPATCH_TOKEN` from `.env.local` and the selection (`{ invoice_number, generation }`, read
+`--hosted` runs any step against the hosted database (`SUPABASE_DB_URL` in `~/.roofops/hosted.env`, like `db:load --hosted`); every hosted write also needs `--confirm <project-ref>`. `dispatch` POSTs
+08's webhook with `REISSUE_DISPATCH_TOKEN` from `~/.roofops/hosted.env` and the selection (`{ invoice_number, generation }`, read
 from the invoice's current generation); Postgres keeps only the token's SHA-256 in
 `app_settings.reissue.dispatch_token_sha256` (empty = every dispatch refused). It reports `REISSUE_CREATED` (exit 0),
 `NO_REISSUE_QUEUED`, `REISSUE_NOT_CREATED` (05 failed it: see `last_error` / `open_exceptions`) or `STILL_PENDING`
@@ -419,7 +420,7 @@ from the invoice's current generation); Postgres keeps only the token's SHA-256 
 
 ## 🧪 Testing
 
-1,335 tests pass (37 skipped on PGlite only) across 67 Vitest files, on PGlite and real Postgres 17. External services
+1,389 tests pass (37 skipped on PGlite only) across 69 Vitest files, on PGlite and real Postgres 17. External services
 are simulated in these tests by calling the database functions with the payloads the workflows send, so live checks are
 recorded separately in [evidence/](evidence/).
 

@@ -16,12 +16,12 @@ const validatePing = node({ type: 'n8n-nodes-base.code', version: 2, config: { n
   parameters: { mode: 'runOnceForAllItems', jsCode: `
 // Airtable pings carry no record data: they only say "new payloads exist". Everything we act on is
 // fetched from Airtable with our own credential, so a forged ping can at worst cause one extra read.
+// Nothing in the body chooses what is read: the fetch starts at the durable Postgres cursor (INT-03).
 const b = $input.first().json.body || {};
 const hook = b.webhook && b.webhook.id;
 if (!b.base || b.base.id !== 'appMc8V0Wm29tEeHQ' || !/^ach[A-Za-z0-9]{14}$/.test(hook || '')) return [];
-const replay = Number.isInteger(b.replay_from_cursor) && b.replay_from_cursor >= 1 ? b.replay_from_cursor : null;
-return [{ json: { webhook_id: hook, replay_from_cursor: replay, ping_timestamp: b.timestamp || null } }];` } },
-  output: [{ webhook_id: 'achXXXXXXXXXXXXXX', replay_from_cursor: null }] });
+return [{ json: { webhook_id: hook, ping_timestamp: b.timestamp || null } }];` } },
+  output: [{ webhook_id: 'achXXXXXXXXXXXXXX' }] });
 
 const loadCursor = node({ type: 'n8n-nodes-base.postgres', version: 2.7, config: { name: 'Load Payload Cursor',
   parameters: { operation: 'executeQuery', query: 'select wf_airtable_cursor($1)::text as cursor',
@@ -33,7 +33,7 @@ const listPayloads = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, co
   parameters: { method: 'GET', url: expr("https://api.airtable.com/v0/bases/" + BASE_ID + "/webhooks/{{ $('Validate Ping').first().json.webhook_id }}/payloads"),
     authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi',
     sendQuery: true, queryParameters: { parameters: [
-      { name: 'cursor', value: expr("{{ $('Validate Ping').first().json.replay_from_cursor ?? $json.cursor }}") },
+      { name: 'cursor', value: expr('{{ $json.cursor }}') },
       { name: 'limit', value: '50' }] },
     options: { timeout: 20000, pagination: { pagination: { paginationMode: 'updateAParameterInEachRequest',
       parameters: { parameters: [{ type: 'qs', name: 'cursor', value: expr('{{ $response.body.cursor }}') }] },

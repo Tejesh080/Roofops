@@ -17,7 +17,7 @@ This list covers what must be true before, at and after handover to a trade busi
 
 ## 2. Release gate (installer, before client work)
 
-- [ ] `npm run check` passes: lint, typecheck and every test (Lite: 49).
+- [ ] `npm run check` passes: lint, typecheck and every test (Lite: 70 in `test/lite.test.ts`).
 - [ ] The client config builds with no errors.
 - [ ] The local demo report reads correctly: `npx tsx lite/demo/run-demo.ts lite/config/<client>.local.json lite/demo/output-<client>`.
 - [ ] `git status` shows no `*.local.json`, no `lite/dist/*.local/` and no `.env.local`. The diff contains no Account SID,

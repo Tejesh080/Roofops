@@ -1,12 +1,13 @@
 /**
  * npm run db:load                 migrate + import data/normalised into local DATABASE_URL (idempotent)
  * npm run db:reset                drop and rebuild the local schema first (local only)
- * npm run db:load -- --hosted     same, against the hosted Supabase database (SUPABASE_DB_URL in .env.local)
+ * npm run db:load -- --hosted --confirm <project-ref>
+ *                                 same, against the hosted Supabase database (SUPABASE_DB_URL in ~/.roofops/hosted.env)
  */
 import { openPostgres } from '../src/db/db.js';
 import { migrate } from '../src/db/migrate.js';
 import { importBundle } from '../src/import/importer.js';
-import { describeUrl, hostedDbConfig } from '../src/config/env.js';
+import { confirmHostedWrite, describeUrl, hostedDbConfig } from '../src/config/env.js';
 
 const hosted = process.argv.includes('--hosted');
 const reset = process.argv.includes('--reset');
@@ -14,6 +15,7 @@ const reset = process.argv.includes('--reset');
 let url: string, caPem: string | undefined;
 if (hosted) {
   const cfg = hostedDbConfig();
+  confirmHostedWrite(cfg.url, process.argv);
   url = cfg.url; caPem = cfg.caPem;
   console.log(`target: HOSTED ${describeUrl(url)} (TLS ${cfg.verified ? 'verified against SUPABASE_CA_CERT' : 'encrypted, certificate NOT verified: set SUPABASE_CA_CERT'})`);
 } else {

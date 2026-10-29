@@ -1,0 +1,11 @@
+# gitleaks (docs/master-plan.md Task 0.3): the default rules, with one allowlist.
+# Airtable ids (app/tbl/fld/rec/viw/sel/usr/wsp/ach + 14 characters) are identifiers, not credentials; the default
+# airtable-api-key and generic-api-key rules match them (771 times in the history on 29 Oct 2026, nothing else).
+# Airtable personal access tokens (pat…) do not have this shape and are still caught.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Airtable record, field, table, base and webhook ids"
+regexTarget = "secret"
+regexes = ['''^(app|tbl|fld|rec|viw|sel|usr|wsp|ach)[A-Za-z0-9]{14}$''']

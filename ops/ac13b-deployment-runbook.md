@@ -36,7 +36,7 @@ Deploy order: **migration alone, then 06, then 03.** Reverse order to roll back:
 **B1. Hosted database** (read-only dump, stays outside the repo; same procedure as earlier releases):
 
 ```powershell
-$env:PGURL = ((Select-String -Path .env.local -Pattern '^\s*SUPABASE_DB_URL\s*=').Line -split '=', 2)[1].Trim().Trim('"') + '?sslmode=require'
+$env:PGURL = ((Select-String -Path "$env:USERPROFILE\.roofops\hosted.env" -Pattern '^\s*SUPABASE_DB_URL\s*=').Line -split '=', 2)[1].Trim().Trim('"') + '?sslmode=require'
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 docker exec -e PGURL roofops-postgres sh -c "pg_dump `"`$PGURL`" --schema=public --format=custom --no-owner --file=/tmp/pre-ac13b-$stamp.dump"
 docker exec roofops-postgres pg_restore --list "/tmp/pre-ac13b-$stamp.dump" | Select-Object -First 5   # readable?

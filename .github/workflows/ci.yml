@@ -1,0 +1,96 @@
+# Every PR and every push to main: lint, typecheck and the full suite on PGlite and Postgres 17, a rollback round trip
+# of the newest migration, and a secret scan of the whole history. Nothing here reaches a hosted system
+# (docs/master-plan.md Tasks 0.2 and 0.3).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: check (lint, typecheck, tests on PGlite)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+      - run: npm ci
+      - run: npm ci --prefix web
+      - run: npm run check
+
+  db:
+    name: db (tests on PGlite and Postgres 17, rollback round trip)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+      - run: npm ci
+      - run: npm ci --prefix web
+      - name: Tests on PGlite and Postgres 17 (including the two-connection race tests)
+        run: npm test
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+      - name: Rollback round trip (newest migration, its down file, then up again)
+        env:
+          PG: ${{ job.services.postgres.id }}
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/roundtrip
+        run: |
+          newest=$(ls supabase/migrations/*.sql | sort | tail -1)
+          down="ops/rollback/$(basename "$newest" .sql).down.sql"
+          test -f "$down" || { echo "::error::$(basename "$newest") has no rollback file in ops/rollback/"; exit 1; }
+          # pg_dump 17.6+ writes a random \restrict key into every dump: drop those two lines before comparing.
+          dump() { docker exec "$PG" pg_dump -U postgres --schema-only --no-owner roundtrip | grep -vE '^.(un)?restrict '; }
+          docker exec "$PG" psql -U postgres -v ON_ERROR_STOP=1 -c 'create database roundtrip'
+          npm run db:load
+          dump > before.sql
+          docker exec -i "$PG" psql -U postgres -d roundtrip -v ON_ERROR_STOP=1 < "$down"
+          npm run db:load
+          dump > after.sql
+          diff -u before.sql after.sql && echo "round trip identical: $(basename "$newest")"
+
+  secrets:
+    name: secrets (gitleaks, whole history)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks (default rules; .gitleaks.toml allows only Airtable ids)
+        run: >-
+          docker run --rm -v "$PWD:/repo"
+          -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*'
+          zricethezav/gitleaks:v8.30.1 git /repo --no-banner --redact --config /repo/.gitleaks.toml

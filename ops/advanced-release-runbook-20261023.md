@@ -70,7 +70,7 @@ two-connection race tests.
 |---|---|---|
 | 1 | 🔒 Pause n8n 07 | inactive |
 | 2 | 🔒 Airtable: SWMS Signed / Materials Reviewed = To do on PRJ-2026-0031..0033 | read back |
-| 3 | 🔒 `npm run db:load -- --hosted` | exactly the 8 files, in order; "already imported" |
+| 3 | 🔒 `npm run db:load -- --hosted --confirm <project-ref>` | exactly the 8 files, in order; "already imported" |
 | 4 | Post-migration (read-only) | integrity 0 FAIL (expect 31 PASS on today's data, give or take the warnings); security all pass; 64 migrations |
 | 5 | 🔒 Resume 07; `npm run reconcile -- --dry-run` | 0 drift |
 | 6 | 🔒 Publish n8n 06, then 03 (node for node equal to the files) | 06 change webhook OK |

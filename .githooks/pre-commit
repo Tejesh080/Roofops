@@ -1,0 +1,13 @@
+#!/bin/sh
+# Secret scan of what is about to be committed (docs/master-plan.md Task 0.3). Enabled by `npm install`
+# (git config core.hooksPath .githooks). Uses a local gitleaks, else the pinned Docker image.
+IMAGE=zricethezav/gitleaks:v8.30.1
+if command -v gitleaks >/dev/null 2>&1; then
+  exec gitleaks git --pre-commit --staged --no-banner --redact --config .gitleaks.toml .
+elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  MSYS_NO_PATHCONV=1 exec docker run --rm -v "$(pwd):/repo" \
+    -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
+    "$IMAGE" git /repo --pre-commit --staged --no-banner --redact --config /repo/.gitleaks.toml
+else
+  echo "pre-commit: no gitleaks and no Docker, so the secret scan was SKIPPED (winget install gitleaks)" >&2
+fi

@@ -14,14 +14,22 @@ const validatePing = node({ type: 'n8n-nodes-base.code', version: 2, config: { n
   parameters: { mode: 'runOnceForAllItems', jsCode: `
 // Pings carry no data; everything acted on is fetched from Airtable with our own credential.
 // Nothing in the body chooses what is read: the fetch starts at the durable Postgres cursor (INT-03).
-const b = $input.first().json.body || {};
+// Postgres checks the ping's signature (ADR-041) from the body as Airtable signs it and X-Airtable-Content-MAC.
+const j = $input.first().json;
+const b = j.body || {};
 const hook = b.webhook && b.webhook.id;
 if (!b.base || b.base.id !== 'appMc8V0Wm29tEeHQ' || !/^ach[A-Za-z0-9]{14}$/.test(hook || '')) return [];
-return [{ json: { webhook_id: hook } }];` } }, output: [{ webhook_id: 'ach' }] });
+const mac = (j.headers || {})['x-airtable-content-mac'];
+return [{ json: { webhook_id: hook, body_text: JSON.stringify(b), mac: typeof mac === 'string' ? mac : null } }];` } }, output: [{ webhook_id: 'ach' }] });
 
+// The cursor, or null when enforce mode refuses a ping Postgres cannot verify (the verdict is recorded either way).
 const loadCursor = node({ type: 'n8n-nodes-base.postgres', version: 2.7, config: { name: 'Load Payload Cursor',
-  parameters: { operation: 'executeQuery', query: 'select wf_airtable_cursor($1)::text as cursor', options: { queryReplacement: expr('{{ [ $json.webhook_id ] }}') } },
+  parameters: { operation: 'executeQuery', query: 'select wf_airtable_ping_cursor($1, $2, $3)::text as cursor',
+    options: { queryReplacement: expr('{{ [ $json.webhook_id, $json.body_text, $json.mac ] }}') } },
   credentials: PG }, output: [{ cursor: '1' }] });
+
+const verified = ifElse({ version: 2.3, config: { name: 'Ping Verified?', parameters: { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'loose' },
+  conditions: [{ leftValue: expr('{{ $json.cursor != null }}'), rightValue: true, operator: { type: 'boolean', operation: 'true', singleValue: true } }], combinator: 'and' } } } });
 
 const listPayloads = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'List Airtable Payloads',
   retryOnFail: true, maxTries: 3, waitBetweenTries: 5000,
@@ -213,7 +221,8 @@ const shown = node({ type: 'n8n-nodes-base.postgres', version: 2.7, config: { na
   credentials: PG }, output: [{ shown: { recorded: true } }] });
 
 export default workflow('roofops-approved-project-to-xero-draft', '[RoofOps] 04 Approved Project → Xero Draft Invoice')
-  .add(ping).to(validatePing).to(loadCursor).to(listPayloads).to(extract).to(anyEvents
+  .add(ping).to(validatePing).to(loadCursor).to(verified.onTrue(listPayloads))
+  .add(listPayloads).to(extract).to(anyEvents
     .onTrue(byKind.onCase(0, prepare).onCase(1, readRow.to(decide)))
     .onFalse(advance))
   .add(prepare).to(advance)

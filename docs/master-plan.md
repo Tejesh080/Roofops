@@ -299,32 +299,42 @@ never leaves the database. 07's own wake pings are signed by the database. Rollo
   - 07 drops the secret today, so every webhook must be re-created.
   - pgcrypto's `hmac()` equals Node's `createHmac` on Postgres 17.
   - n8n's Webhook node exposes lowercase `headers` and the parsed `body`. "Only Run If" fails open, so it is not used.
-- [ ] **Step 2: Migration** `<ts>_airtable_ping_mac.sql`, with an exact rollback:
-  - the table `integration_webhook_secrets`;
-  - the functions `wf_airtable_webhook_created`, `wf_airtable_ping_cursor` and `wf_airtable_sign_ping`;
-  - a bounded rejection log;
-  - the setting `airtable.ping_mac = 'log'`.
+- [x] **Step 2: Migration** `20261029120000_airtable_ping_mac.sql`, with an exact rollback (built 30 Oct):
+  - the tables `integration_webhook_secrets` and `airtable_ping_checks` (every verdict, kept 7 days; no body, no MAC), RLS on, no grants;
+  - the functions `wf_airtable_webhook_created`, `wf_airtable_ping_cursor` and `wf_airtable_sign_ping`, for the workflow role only;
+  - the setting `airtable.ping_mac = 'log'`; any other value fails closed (`enforce`);
+  - `v_integration_activity` gains the channel `airtable-pings`.
 
-  Tests on both engines:
+  `test/airtable-ping-mac.test.ts`: 15 cases on both engines, red before the migration. Expected MACs are computed by Node exactly as Airtable documents. Cases:
   - a valid MAC returns the cursor;
-  - a wrong or missing MAC, or an unknown webhook, records a rejection and returns the cursor in `log` and null in `enforce`;
-  - no role can select a secret;
-  - the compare is constant-time;
-  - `security:check` is extended to the new table.
-- [ ] **Step 3: Workflows.**
-  - 01, 04 and 06 `Validate Ping` → `wf_airtable_ping_cursor`.
-  - 07 signs its wake ping.
-  - 00 and 07 hand create responses to `wf_airtable_webhook_created`, and stop saving successful executions.
+  - in `log`, a wrong, missing or unknown-webhook MAC is recorded and the ping proceeds; in `enforce` it gets null;
+  - the MAC covers the exact body;
+  - no app role reads a secret or a verdict;
+  - verdicts are kept 7 days;
+  - System Health counts them.
 
-  Runner tests: valid passes, forged stops before the HTTP fetch in `enforce`, and the wake ping verifies.
-- [ ] **Step 4: 🔒 Deploy in `log` mode.** The migration, then publish 00, 01, 04, 06 and 07.
-- [ ] **Step 5: 🔒 Re-create the three webhooks, one at a time.** For each:
-  1. drain to 0 unread;
-  2. delete it;
-  3. re-create it (07 for the change webhook; 00 for the other two);
-  4. confirm the secret is stored;
-  5. confirm the first real ping logs valid.
-- [ ] **Step 6: 🔒 `enforce`**, then one forged ping from outside is stopped and one real Airtable edit applies. INT-03 closes in the ledger.
+  `test/schema.test.ts` pins the workflow role's functions, now three more. `scripts/security-check.ts` gains two checks.
+
+  Rollback, checked two ways:
+  - CI's round trip: identical;
+  - a database never migrated against one migrated then rolled back: identical schema (15,215 lines).
+- [x] **Step 3: Workflows** (built 30 Oct):
+  - **01, 04 and 06:** `Validate Ping` passes `JSON.stringify(body)` and `x-airtable-content-mac`. `Load Payload Cursor` calls `wf_airtable_ping_cursor`. A new `Ping Verified?` step stops before any Airtable call when the cursor is null.
+  - **07:** builds its wake ping, has Postgres sign it (`Sign Wake Ping`) and sends it exactly as signed. Its create response goes to `Store Webhook Secret`, which passes on only the status code and whether it stored.
+  - **00:** two store steps, and its verify steps refuse a webhook created without a stored secret.
+
+  `test/n8n-ping-mac.test.ts`: 12 cases on both engines, with the real node code:
+  - signed pings are fetched from the stored cursor;
+  - forged or unsigned pings are stopped at `Ping Verified?` in `enforce`, and recorded and passed in `log`;
+  - 07's signed wake ping passes 06's check;
+  - the create stores the secret and passes it on nowhere;
+  - a failed create stores nothing.
+
+  Deliberately breaking 06's cursor call, or sending 07's wake ping unsigned, turns 4 of them red.
+
+  Not settable from the SDK files: "Do not save successful executions" on 00 and 07. That is a rollout step.
+- [x] **System Health:** the Airtable alerts row shows the pings checked in 24 hours and how many were not verified.
+- [ ] **Steps 4–6: 🔒 deploy in `log`, re-create the three webhooks one at a time, then `enforce`.** Exact order, read-only checks and rollback levers: `ops/airtable-ping-mac-rollout.md`.
 
 **Done when:** `enforce` is on, a forged ping is stopped before any Airtable call, and real edits apply.
 

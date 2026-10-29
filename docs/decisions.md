@@ -210,7 +210,7 @@ Observe mode records findings without changing anything. The same run refreshes 
 **Decision:** Promptfoo (dev-only, pinned, telemetry and sharing off) runs the real `/api/copilot`. JavaScript assertions check the structured output (tools, tiers, cards) against ground truth read from Postgres at run time: exact status, exact ready-to-invoice list, no unknown identifiers or amounts, no SQL, no secret values, and refusals for approve/send/pay. No model grades the model.
 
 ### ADR-041: Airtable pings are verified inside Postgres; the MAC secret never leaves it
-**Status:** Proposed (master plan Task 1.5 spike, 2026-10-29). Nothing built or deployed yet.
+**Status:** Accepted. Built offline 2026-10-30 (migration `20261029120000_airtable_ping_mac.sql` with its rollback; n8n 00, 01, 04, 06, 07; `test/airtable-ping-mac.test.ts`, `test/n8n-ping-mac.test.ts`). Not deployed: `ops/airtable-ping-mac-rollout.md`.
 **Context:**
 - Airtable signs every notification ping: `X-Airtable-Content-MAC: hmac-sha256=<hex>`.
   - The HMAC-SHA256 is keyed with the webhook's base64 MAC secret.

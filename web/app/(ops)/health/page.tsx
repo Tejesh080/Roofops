@@ -41,6 +41,7 @@ export default async function HealthPage() {
   const integrityState: HealthState = fails.length ? 'Needs attention' : warns.length ? 'Degraded' : 'Healthy';
   const overall = overallState([...services.map((s) => s.state), ...consistency.map((c) => c.state), integrityState, ...(ops?.rows ?? []).map((r) => OPS[r.state].overall)]);
   const lastAirtable = activity.find((a) => a.channel === 'airtable');
+  const pings = activity.find((a) => a.channel === 'airtable-pings');   // ADR-041: signature verdicts, last 24 hours
 
   return (
     <>
@@ -85,6 +86,9 @@ export default async function HealthPage() {
                     {c && c.consecutive_failures > 0 ? ` · ${c.consecutive_failures} failed check(s) in a row` : ''}
                   </div>
                   {d.service === 'airtable_webhooks' && lastAirtable?.last_event_at && <div className="svc-note">Last change received {lastAirtable.last_event_at} · {lastAirtable.events_24h} in 24h</div>}
+                  {d.service === 'airtable_webhooks' && pings && pings.events_24h > 0 && (
+                    <div className="svc-note">Pings checked in 24h: {pings.events_24h} · {pings.problems_24h ? `${pings.problems_24h} not verified` : 'all verified'}</div>
+                  )}
                   <div className="svc-note" style={{ opacity: 0.8 }}>Checked by: {d.how}</div>
                 </div>
               ))}

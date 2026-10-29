@@ -287,16 +287,32 @@ No ping URL, address or secret goes into git, and n8n 07/08 need no change. Lite
 
 ### Task 1.3: End-to-end tests in CI, and a smoke test against the Preview
 
-**Files:**
-- Modify: `.github/workflows/ci.yml` (job `e2e`)
-- Create: `.github/workflows/smoke-preview.yml` (`workflow_dispatch` with a `base_url` input)
+**Files (as built 29 Oct):**
+- `.github/workflows/ci.yml`: job `e2e`. A matrix of 7 suites, each with its own fresh rehearsal database:
+  - a `roofops-postgres` container on port 54322, then `scripts/pilot-rehearsal.ts --reset`;
+  - a production `next build` and `next start` with `web/e2e/.auth/pilot.env`;
+  - Playwright, with the HTML report, test results and the server log uploaded.
+- `.github/workflows/smoke-deployment.yml`: the smoke specs against a deployment, run by hand (`workflow_dispatch`, `base_url`).
+- `web/e2e/job-journey.spec.ts`: brought up to date with the AC-13B pre-start gate. It now asserts that starting is refused before SWMS and materials are signed off, then signs them off. The audit trail expects the two sign-offs.
 
-- [ ] **Step 1:** Reproduce locally the recipe the specs use (`ops/pilot-staging-deployment.md` "Local rehearsal", `scripts/pilot-rehearsal.ts`): Postgres 17, `npm run db:load` against it, `next build` + `next start -p 3000`, `DEMO_USERNAME`/`DEMO_PASSWORD` from the seed, `npx playwright test`. Record the run time.
-- [ ] **Step 2:** Job `e2e`: Postgres service as in `db`; `npm run db:load` with the local URL; build and start the web app in the background; `npx playwright install --with-deps chromium`; `npx playwright test` with `reporter: [['list'], ['html', { open: 'never' }]]` added to `web/playwright.config.ts` (today it is `list` only); `actions/upload-artifact` of `web/playwright-report` `if: ${{ !cancelled() }}`. Expected: green in under 20 minutes (workers: 1); shard only if it exceeds that.
-- [ ] **Step 3:** `smoke-preview.yml`: `E2E_BASE_URL=<input>` and `npx playwright test smoke.spec.ts`, credentials from repository secrets (✍️ owner adds `DEMO_USERNAME`/`DEMO_PASSWORD` for the Preview). Run it once by hand against the Preview after Task 1.1 (🔒 because it signs in to the hosted dashboard).
-- [ ] **Step 4:** Add `e2e` to the required checks (✍️). PR, merge (🔒).
+**What the rehearsal found** (a clean worktree with no `.env.local`, exactly as CI; 29 Oct):
+- **All suites on one database:** 28 passed, 7 failed, 8 did not run. The specs change data and need a fresh database each, as their headers say.
+- **Each suite fresh:** every suite passed:
+  - smoke + screens + interactions: 27;
+  - invoice-approval: 3; site-work: 2; sales-journey: 3; job-journey: 1 (after the fix);
+  - staff-journey and operations: passed within the combined run.
+- **job-journey had drifted:** it moved a job to In Progress without the pre-start sign-offs, which the AC-13B gate now refuses. Nothing had run the e2e suite since 22 Oct.
+- **Three tests need what CI does not have:** two smoke tests need the hosted demo history, and the screens Copilot card needs the DeepSeek key. CI excludes them by name; they run against a deployment.
+- **Not in CI:** `state-sync` (hosted database only) and `dispatch-gate` (needs its own `E2E_PILOT_GATE` setup; a follow-up).
 
-**Done when:** all 11 specs run on every PR; the smoke run against the Preview is green and linked from the release evidence.
+- [x] **Step 1:** Reproduce locally. Done, as above.
+- [x] **Step 2:** Job `e2e`. Written; actionlint clean. Not yet run on GitHub.
+- [x] **Step 3:** `smoke-deployment.yml` written.
+  - ✍️ The owner adds the repository secrets `E2E_DEMO_USERNAME`, `E2E_DEMO_PASSWORD` and `VERCEL_BYPASS`.
+  - Running it against the Preview is 🔒 (it signs in there).
+- [ ] **Step 4:** PR, CI green, merge (🔒). ✍️ Add the seven `e2e (…)` checks to the required checks.
+
+**Done when:** the e2e suites run on every PR and pass, and a smoke run against the Preview is green and linked from the release evidence.
 
 ### Task 1.4: Staging for the database and the dashboard
 

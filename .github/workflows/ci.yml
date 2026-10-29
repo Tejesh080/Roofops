@@ -94,3 +94,70 @@ jobs:
           docker run --rm -v "$PWD:/repo"
           -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*'
           zricethezav/gitleaks:v8.30.1 git /repo --no-banner --redact --config /repo/.gitleaks.toml
+
+  e2e:
+    # Each suite on its own fresh rehearsal database (scripts/pilot-rehearsal.ts, local Postgres only): the specs
+    # change data, and together on one database they trip over each other. A production build, as deployed.
+    name: e2e (${{ matrix.suite }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: screens
+            projects: --project=smoke --project=screens --project=interactions
+            # These three need the hosted demo history or the DeepSeek key; they run against a deployment instead
+            # (.github/workflows/smoke-deployment.yml).
+            grep_invert: "retries are grouped into one readable story|Xero draft shown; the InvoiceID stays under technical details|copilot: invoice preview action card"
+          - { suite: staff-journey, projects: --project=staff-journey }
+          - { suite: operations, projects: --project=operations }
+          - { suite: invoice-approval, projects: --project=invoice-approval }
+          - { suite: site-work, projects: --project=site-work }
+          - { suite: job-journey, projects: --project=job-journey }
+          - { suite: sales-journey, projects: --project=sales-journey }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+      - name: Postgres 17 where the rehearsal expects it (container roofops-postgres, port 54322)
+        run: |
+          docker run -d --name roofops-postgres -e POSTGRES_PASSWORD=postgres -p 54322:5432 postgres:17-alpine
+          for _ in $(seq 1 30); do docker exec roofops-postgres pg_isready -U postgres -q && break; sleep 2; done
+      - run: npm ci
+      - run: npm ci --prefix web
+      - name: Rehearsal database, synthetic staff and their test logins
+        run: npx tsx scripts/pilot-rehearsal.ts --reset
+      - name: Production build
+        run: npm --prefix web run build
+      - name: Start the dashboard on the rehearsal database
+        run: |
+          node --env-file=web/e2e/.auth/pilot.env web/node_modules/next/dist/bin/next start web -H 127.0.0.1 -p 3100 > next.log 2>&1 &
+          for _ in $(seq 1 60); do curl -fsS -o /dev/null http://127.0.0.1:3100/login && break; sleep 2; done
+          curl -fsS -o /dev/null http://127.0.0.1:3100/login
+      - name: Playwright
+        working-directory: web
+        env:
+          E2E_PILOT: "1"
+          E2E_BASE_URL: http://127.0.0.1:3100
+          PROJECTS: ${{ matrix.projects }}
+          GREP_INVERT: ${{ matrix.grep_invert }}
+        run: |
+          set -a; . e2e/.auth/pilot.env; set +a
+          if [ -n "$GREP_INVERT" ]; then set -- --grep-invert "$GREP_INVERT"; else set --; fi
+          # shellcheck disable=SC2086 # PROJECTS is a list of --project flags
+          npx playwright test $PROJECTS "$@" --reporter=list,html
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-${{ matrix.suite }}
+          path: |
+            web/playwright-report/
+            web/test-results/
+            next.log
+          retention-days: 7

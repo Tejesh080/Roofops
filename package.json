@@ -17,6 +17,7 @@
     "db:up": "docker compose up -d --wait postgres",
     "db:down": "docker compose down",
     "db:load": "tsx scripts/db-load.ts",
+    "backup:hosted": "tsx scripts/backup-hosted.ts",
     "db:reset": "tsx scripts/db-load.ts --reset",
     "check": "npm run lint && npm run typecheck && npm run typecheck:web && npm test",
     "data:check": "tsx scripts/normalise-dates.ts --check",

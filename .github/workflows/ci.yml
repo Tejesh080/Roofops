@@ -21,8 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -49,8 +49,8 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -68,7 +68,7 @@ jobs:
           PG: ${{ job.services.postgres.id }}
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/roundtrip
         run: |
-          newest=$(ls supabase/migrations/*.sql | sort | tail -1)
+          newest=$(printf '%s\n' supabase/migrations/*.sql | sort | tail -1)
           down="ops/rollback/$(basename "$newest" .sql).down.sql"
           test -f "$down" || { echo "::error::$(basename "$newest") has no rollback file in ops/rollback/"; exit 1; }
           # pg_dump 17.6+ writes a random \restrict key into every dump: drop those two lines before comparing.
@@ -86,7 +86,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: gitleaks (default rules; .gitleaks.toml allows only Airtable ids)

@@ -155,14 +155,14 @@ As built (29 Oct): `.github/workflows/ci.yml` uses `postgres:17-alpine` (the loc
 ### Task 0.3: Secret scanning before and after commit
 
 **Files:**
-- Create: `.gitleaks.toml` (allowlist the identifier shapes that are not secrets: `app[A-Za-z0-9]{14}`, `tbl…`, `fld…`, `rec…`, n8n workflow/credential ids; everything else default)
-- Create: `.githooks/pre-commit` (runs `gitleaks protect --staged` when `gitleaks` is on PATH; prints an install hint otherwise)
-- Modify: `.github/workflows/ci.yml` (job `secrets`: `gitleaks/gitleaks-action@v2`)
+- Create: `.gitleaks.toml` (default rules; one allowlist for Airtable ids: `^(app|tbl|fld|rec|viw|sel|usr|wsp|ach)[A-Za-z0-9]{14}$`)
+- Create: `.githooks/pre-commit` (`gitleaks git --pre-commit --staged` with a local gitleaks, else the pinned image `zricethezav/gitleaks:v8.30.1` through Docker; warns if neither exists)
+- Modify: `.github/workflows/ci.yml` (job `secrets`: the same image over the whole history, `fetch-depth: 0`)
 - Modify: `package.json` (`"prepare": "git config core.hooksPath .githooks"`)
 
-- [ ] **Step 1:** `winget install gitleaks` locally (✍️ if a prompt appears). `gitleaks detect --source . --no-banner` on the current tree. Expected: 0 leaks (the known values are `postgres:postgres` and `AC000…`/`AC111…` placeholders; allowlist them by path if flagged).
-- [ ] **Step 2:** Add the config, hook and CI job; verify the hook blocks a staged fake key (`sk_live_…` in a scratch file), then remove the scratch file.
-- [ ] **Step 3:** PR, CI green, merge (🔒). Commit: `Secret scanning: gitleaks pre-commit hook and CI job`.
+- [x] **Step 1:** Full-history scan with the default rules (29 Oct, 205 commits): 771 findings, **every one an Airtable id** (`airtable-api-key` and `generic-api-key` match `rec…`/`fld…`/`tbl…` + 14). No credential. With the allowlist: no leaks.
+- [x] **Step 2:** Config, hook and CI job written; in a throwaway repository the hook let an Airtable id commit and blocked a random `ghp_…` token ("leaks found: 1", commit refused).
+- [ ] **Step 3:** PR, CI green, merge (🔒).
 
 **Done when:** a staged secret cannot be committed on this machine and cannot pass CI.
 

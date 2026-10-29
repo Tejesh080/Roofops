@@ -35,7 +35,7 @@ their last 3 digits.
   minutes" (`evidence/lite-live-acceptance-plan-20261021.md:120`).
 - Step S3 published it with the live build. The active version is `3009c821`, created 2026-10-21T13:44:14.025Z
   (`get_workflow_history`).
-- S7 was refused (572003). The owner then stopped the test at 15:36Z ("STOP THE LIVE ACCEPTANCE TEST", same
+- S7 was refused (572003). *Note added 2026-10-29: Twilio's error dictionary has no 572003 and lists this message ("The 'From' number isn't assigned to this verified Messaging recipient") as 572002. 572003 is what the live API returned and the Message Log stored; the cause is the same trial 'From' rule.* The owner then stopped the test at 15:36Z ("STOP THE LIVE ACCEPTANCE TEST", same
   transcript; `evidence/recovery-report-20261022.md:46`).
 - The clean-up step S12 was never run. Its first action is "Unpublish Inbound Replies" (plan `:139`, `:183`).
 - The previous session said that Inbound Replies "stays published as it is now (Basic Auth protected); I'm not touching

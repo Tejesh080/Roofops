@@ -282,8 +282,8 @@ with recorded evidence. **Local** = proven by the test suite, not yet deployed.
 | Pre-start gate, cancellation and purchase-order guards, Copilot read tools ([release runbook](ops/advanced-release-runbook-20261023.md)) | 🟡 Local; backup and read-only preflight passed 2026-10-23, deployment awaits approval |
 | Per-line GST on multi-line invoices | 🟡 Local; needs one supervised Xero Demo check |
 
-**Not built yet, and needed before a real business could rely on it:**
-- continuous integration (the full suite runs locally today);
+**Not built yet, and needed before a real business could rely on it** (the order and the completion criteria are in [docs/master-plan.md](docs/master-plan.md)):
+- continuous integration (written, `.github/workflows/ci.yml`; not yet run on GitHub);
 - a staging environment separate from the hosted demo;
 - alerts that notify a person (today failures are recorded and shown on `/health`);
 - a real Xero organisation, real data and real staff (everything is synthetic; the business date is fixed at 2026-09-29);
@@ -321,7 +321,7 @@ tables, workflows, invoices or Xero. Full guide: [lite/README.md](lite/README.md
 | 70 acceptance tests and a local demo (the workflows' real node code, an in-memory Airtable, a fake Twilio API with signed webhooks and real error codes) | ✅ Local |
 | The workflows in n8n Cloud against a real Airtable base, messages to the test sink, synthetic data (20–21 Oct) | ✅ Live |
 | Twilio connected through n8n's credential; every check that sends no SMS passed against the real Twilio API | ✅ Live |
-| Real SMS | ⏸ Not yet. The supervised live test on 21 Oct stopped when the Twilio trial account refused the first message (error 572003); no SMS has been sent. The test's clean-up (unpublishing Inbound Replies) awaits the owner |
+| Real SMS | ⏸ Not yet. The supervised live test on 21 Oct stopped when the Twilio trial account refused the first message (the live API returned error 572003; Twilio's error dictionary lists the same message, a trial 'From' number not assigned to the recipient, as 572002); no SMS has been sent. The test's clean-up (unpublishing Inbound Replies) awaits the owner |
 
 Try it locally (nothing leaves your computer):
 

@@ -286,14 +286,47 @@ n8n stays a single Cloud instance and Airtable a single base in this phase: work
 
 ### Task 1.5: Airtable ping authenticity (`X-Airtable-Content-MAC`)
 
-Airtable signs each notification with HMAC-SHA256 of the raw body using the `macSecretBase64` returned once when the webhook is created (07 creates and refreshes webhooks, ADR-022). Today 01, 04 and 06 accept any body that looks like a ping.
+Design: **ADR-041** (`docs/decisions.md`). The signature is checked inside Postgres with pgcrypto, so the MAC secret
+never leaves the database. 07's own wake pings are signed by the database. Rollout runs `log`, then `enforce`.
 
-- [ ] **Step 1: Spike (half a day, no hosted change):** (a) where 07 could store the secret at creation (a column on the webhook registry table, written through a `wf_*` function for the n8n role; readable by a `wf_webhook_mac(webhook_id)` function); (b) whether a Cloud Code node can `require('crypto')` for HMAC (else the built-in Crypto node); (c) that the Webhook node can expose the raw body. Write the findings as a short ADR-041 draft in `docs/decisions.md`.
-- [ ] **Step 2: Migration** `supabase/migrations/<ts>_airtable_webhook_mac.sql` with rollback; tests on both engines (secret stored on create, readable only by the n8n role, `security:check` unchanged).
-- [ ] **Step 3: Workflows:** `Validate Ping` in 01, 04 and 06 computes the MAC and rejects a mismatch with a logged, counted refusal (no exception row per forged ping: one health counter). Runner tests: valid MAC passes, missing or wrong MAC is rejected, body unchanged.
-- [ ] **Step 4: 🔒 Deploy:** migration; 🔒 07 re-creates the three webhooks so the secret is stored (old ones expire naturally within 7 days or are deleted 🔒); 🔒 publish 01, 04, 06; one approved forged ping from outside → rejected; one real Airtable edit → applied.
+**What it buys, honestly:**
+- After Task 0.4 a forged ping can only cause one read from the stored cursor.
+- This task stops forged pings before any Airtable call, which protects the 5-requests-per-second limit, and it makes the logs trustworthy.
+- A forged ping still costs one n8n execution, because the check runs inside it. That needs something in front of n8n, which is recorded and not built.
 
-**Done when:** a ping without a valid MAC is rejected live and in tests; INT-03 closes in the ledger.
+- [x] **Step 1: Spike** (29 Oct, no hosted change):
+  - Airtable's docs: the secret comes only from the create call, and the MAC covers the JSON body.
+  - 07 drops the secret today, so every webhook must be re-created.
+  - pgcrypto's `hmac()` equals Node's `createHmac` on Postgres 17.
+  - n8n's Webhook node exposes lowercase `headers` and the parsed `body`. "Only Run If" fails open, so it is not used.
+- [ ] **Step 2: Migration** `<ts>_airtable_ping_mac.sql`, with an exact rollback:
+  - the table `integration_webhook_secrets`;
+  - the functions `wf_airtable_webhook_created`, `wf_airtable_ping_cursor` and `wf_airtable_sign_ping`;
+  - a bounded rejection log;
+  - the setting `airtable.ping_mac = 'log'`.
+
+  Tests on both engines:
+  - a valid MAC returns the cursor;
+  - a wrong or missing MAC, or an unknown webhook, records a rejection and returns the cursor in `log` and null in `enforce`;
+  - no role can select a secret;
+  - the compare is constant-time;
+  - `security:check` is extended to the new table.
+- [ ] **Step 3: Workflows.**
+  - 01, 04 and 06 `Validate Ping` → `wf_airtable_ping_cursor`.
+  - 07 signs its wake ping.
+  - 00 and 07 hand create responses to `wf_airtable_webhook_created`, and stop saving successful executions.
+
+  Runner tests: valid passes, forged stops before the HTTP fetch in `enforce`, and the wake ping verifies.
+- [ ] **Step 4: 🔒 Deploy in `log` mode.** The migration, then publish 00, 01, 04, 06 and 07.
+- [ ] **Step 5: 🔒 Re-create the three webhooks, one at a time.** For each:
+  1. drain to 0 unread;
+  2. delete it;
+  3. re-create it (07 for the change webhook; 00 for the other two);
+  4. confirm the secret is stored;
+  5. confirm the first real ping logs valid.
+- [ ] **Step 6: 🔒 `enforce`**, then one forged ping from outside is stopped and one real Airtable edit applies. INT-03 closes in the ledger.
+
+**Done when:** `enforce` is on, a forged ping is stopped before any Airtable call, and real edits apply.
 
 ### Task 1.6: Off-platform backups as a routine
 

@@ -391,6 +391,34 @@ Not in scope for Lite: alphanumeric sender IDs (one-way; Sender ID Register from
 | Which business pilots, and when | Phase 4 | The owner's own, starting after the January shutdown |
 | Whether the dashboard becomes the only status/date/approval surface before the pilot, or on the retreat trigger | Task 3.4 | Before the pilot for status and approvals; keep Airtable for attachments and views |
 
+## 16. Tools from the GitHub Student Developer Pack (checked 29 Oct 2026)
+
+Read from the official list at education.github.com/pack. The owner redeems each offer (the agent creates no accounts);
+the task then wires it in. Rule: an offer is used only where it replaces something the plan already needs, so the
+number of vendors does not grow.
+
+**Already in effect (public repository):** GitHub Actions with unlimited standard-runner minutes (CI is running on PR #2),
+secret scanning and push protection (both enabled on the repository).
+
+| Offer | Replaces / strengthens | Task | Why |
+|---|---|---|---|
+| **1Password**, free for 2 years incl. Developer Tools | The plain-text `~/.roofops/hosted.env` | 0.1 follow-up | `hosted.env` holds only `op://` references and hosted commands run as `op run --env-file … -- npm run …`. Every hosted command then needs the owner's unlock in 1Password: a human gate the agent cannot pass, and no secret on disk |
+| **GitHub** Dependabot (alerts, security and version updates) and **CodeQL** code scanning | Nothing today | 0.3 follow-up | Free on a public repository; `.github/dependabot.yml` (npm root and `web/`, GitHub Actions; weekly, grouped) and a CodeQL workflow for JavaScript/TypeScript |
+| **Sentry**, student plan (50K errors, 100K transactions, 500 replays, Team, 1 year, renewable) | "Sentry only if needed" in §14 | 1.2 | Dashboard errors with the request and the signed-in employee; replays with every input masked. Enough volume for the pilot |
+| **Honeybadger**, Small account free for 1 year (exceptions, uptime, cron check-ins) | healthchecks.io and the separate uptime monitor | 1.2 | One place for the `/api/healthz` uptime check and every heartbeat (07, 08, Lite Monitor, weekly backup). Moving back to healthchecks.io (free, no expiry) after the year is a URL change |
+| **Name.com** free domain (.app, .dev, .software…) or **.TECH** (1 year) | The Vercel preview URL | 2.2 | A real address for the demo and the video; Vercel serves a custom domain on Hobby |
+| **Testmail**, free Essential plan while a student | Checking alert emails by hand | 1.2 | The alert proof asserts that the failure email arrived, through Testmail's API, instead of a person looking |
+| **GitHub Copilot** (Student, where available) code review | A second reviewer | every PR | A Copilot review on each PR; its comments reach this session through Auto-fix and carry no authority by themselves |
+| **BrowserStack** Automate Mobile (1 parallel, 1 year) | Desktop-only e2e | 4.2 | Run the crew job-card specs on real phones before the crew pilot |
+| **SimpleAnalytics**, Starter free for 1 year | Guessing adoption | 4.3–4.5 | Which dashboard pages staff actually open each week; privacy-friendly, no personal data |
+| **GitHub Codespaces** (Pro level) | "Clone it and set up Postgres" | 3.3 | A `.devcontainer` with Node 24 and Postgres 17, so a reviewer runs the whole suite in the browser |
+
+**Not used, on purpose:** Datadog and New Relic (a second observability stack for a one-person system); Doppler (1Password
+covers secrets); Clerk (the dashboard already has staff sign-in with two-person approval; switching is a rebuild);
+Heroku, Azure, Appwrite, MongoDB (the stack is Supabase, Vercel and n8n Cloud); DevCycle and ConfigCat (flags already
+live in `app_settings`); Codecov and CodeScene (coverage and code-health numbers are not the trust measure, §2 item 9);
+Travis CI (GitHub Actions). Learning offers (Frontend Masters, Educative, Boot.dev) are the owner's choice.
+
 ---
 
 ### Self-review (29 Oct)

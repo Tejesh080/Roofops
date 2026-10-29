@@ -1,5 +1,19 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { mergeEnvFile } from '../src/config/env.ts';
+import { mergeEnvFile, readFileIfExists } from '../src/config/env.ts';
+
+describe('readFileIfExists (one read, no exists-then-read race: CodeQL js/file-system-race)', () => {
+  it('returns the text of a file, undefined for a missing one, and rethrows any other error', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'roofops-read-'));
+    writeFileSync(join(dir, 'a.env'), 'A=1\n');
+    expect(readFileIfExists(join(dir, 'a.env'))).toBe('A=1\n');
+    expect(readFileIfExists(join(dir, 'missing.env'))).toBeUndefined();
+    expect(() => readFileIfExists(dir)).toThrow();                                   // a directory is an error, not "missing"
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
 
 describe('mergeEnvFile (provision-dashboard-role writes only the keys it owns)', () => {
   const existing = '# header\nDASHBOARD_DATABASE_URL=old\nDEMO_USERNAME=sam\nDEMO_PASSWORD=keep-me-123\nAUTH_SECRET=s3cret\nDASHBOARD_DB_CA_CERT=/ca.crt\n';

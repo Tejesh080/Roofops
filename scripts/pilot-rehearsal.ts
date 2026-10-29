@@ -18,8 +18,9 @@
  */
 import { execFileSync, execSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { parseEnv } from 'node:util';
+import { readFileIfExists } from '../src/config/env.js';
 import { openPostgres } from '../src/db/db.js';
 import { deletedReissueScenario, voidedReissueScenario } from '../test/helpers/reissue-scenario.js';
 
@@ -29,7 +30,8 @@ const ADMIN_URL = `postgresql://postgres:postgres@${HOST}/${DB}`;
 const ENV_FILE = 'web/e2e/.auth/pilot.env';
 const WEB_ROLE = 'roofops_web_pilot';
 // A rebuild keeps the previous local test secrets (so a running rehearsal server stays signed in); a first run makes new ones.
-const previous = existsSync('web/e2e/.auth/pilot.env') ? parseEnv(readFileSync('web/e2e/.auth/pilot.env', 'utf8')) : {};
+const previousText = readFileIfExists(ENV_FILE);
+const previous = previousText === undefined ? {} : parseEnv(previousText);
 const secret = (bytes: number, keep?: string) => keep ?? randomBytes(bytes).toString('base64url');
 
 if (!process.argv.includes('--reset')) throw new Error('usage: npx tsx scripts/pilot-rehearsal.ts --reset (drops and rebuilds the LOCAL roofops_pilot database)');

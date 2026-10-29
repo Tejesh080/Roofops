@@ -21,6 +21,7 @@
 ![Xero](https://img.shields.io/badge/Xero-Demo_Company-13B5EA?style=flat-square&logo=xero&logoColor=white)
 ![Google Drive](https://img.shields.io/badge/Google_Drive-project_folders-4285F4?style=flat-square&logo=googledrive&logoColor=white)
 ![DeepSeek](https://img.shields.io/badge/DeepSeek-Operations_Copilot-4D6BFE?style=flat-square)
+![Twilio](https://img.shields.io/badge/Twilio-SMS_%28RoofOps_Lite%29-F22F46?style=flat-square&logo=twilio&logoColor=white)
 
 ![Tests](https://img.shields.io/badge/tests-1%2C335_passing-2EA44F?style=flat-square&logo=vitest&logoColor=white)
 ![Engines](https://img.shields.io/badge/tested_on-PGlite_%2B_Postgres_17-4169E1?style=flat-square)
@@ -32,7 +33,7 @@
 
 <br />
 
-[**Status**](#-project-status) · [**Screenshots**](#-screenshots) · [**Architecture**](#-architecture) · [**Engineering highlights**](#-engineering-highlights) · [**Quick start**](#-quick-start) · [**Docs**](#-documentation)
+[**Status**](#-project-status) · [**RoofOps Lite**](#-roofops-lite) · [**Screenshots**](#-screenshots) · [**Architecture**](#-architecture) · [**Engineering highlights**](#-engineering-highlights) · [**Quick start**](#-quick-start) · [**Docs**](#-documentation)
 
 </div>
 
@@ -40,8 +41,8 @@
 
 > [!NOTE]
 > **Synthetic data, real integrations.** Every customer, supplier, address and amount is fictional. Every integration
-> is a real service: Supabase, Airtable, n8n Cloud, Google Drive, the Xero **Demo Company** and DeepSeek. Anything not
-> connected is reported **BLOCKED**, never simulated.
+> is a real service: Supabase, Airtable, n8n Cloud, Google Drive, the Xero **Demo Company**, DeepSeek and, for
+> RoofOps Lite, Twilio. Anything not connected is reported **BLOCKED**, never simulated.
 
 <p align="center">
   <img src="docs/screenshots/phase5/01-dashboard.png" alt="RoofOps operations overview: active projects, projects at risk, awaiting materials, ready to invoice, open issues and the needs-attention list" width="880" />
@@ -51,9 +52,14 @@
 
 ## ✨ What it is
 
-RoofOps runs the full job lifecycle for a fictional Australian roofing contractor: **enquiry → quote → accepted job →
-pre-start checks → materials → site visits → completion → invoice → Xero → payment**. The focus is on what breaks in
-real operations:
+This repository holds two products:
+- **Advanced RoofOps** (most of this page): the full operations system, with Postgres as the source of truth.
+- **[RoofOps Lite](#-roofops-lite)**: a small Airtable + n8n + **Twilio SMS** package that any trade business can
+  install, with no database or server to run.
+
+Advanced RoofOps runs the full job lifecycle for a fictional Australian roofing contractor: **enquiry → quote →
+accepted job → pre-start checks → materials → site visits → completion → invoice → Xero → payment**. The focus is on
+what breaks in real operations:
 
 - **Webhooks** that arrive twice, late or out of order.
 - **Rate limits and ambiguous writes** to external APIs.
@@ -286,6 +292,42 @@ with recorded evidence. **Local** = proven by the test suite, not yet deployed.
 The phase reports ([2](docs/phase2-status.md), [3](docs/phase3-status.md), [4](docs/phase4-status.md),
 [5](docs/phase5-status.md), [6](docs/phase6-status.md)) record how each part was built and proven.
 
+## 📱 RoofOps Lite
+
+A reusable automation package for a small trade business (roofing, plumbing, electrical). An **Airtable** CRM, five
+**n8n** workflows and **Twilio** SMS; everything business-specific is one config file, and a build step generates the
+workflows and the website enquiry form for each client. It is separate from Advanced RoofOps: it touches none of its
+tables, workflows, invoices or Xero. Full guide: [lite/README.md](lite/README.md).
+
+| Module | What it does |
+|---|---|
+| **Quote-to-Paid CRM** | One job per enquiry, New Lead to Paid, with the contact, their recorded consent, site, quote, messages and alerts (6 Airtable tables + an Interface) |
+| **Instant Lead Follow-Up** | A website form posts a lead; it is checked, de-duplicated, saved with the consent given, and acknowledged by SMS once |
+| **Google Review Requests** | Daily: each finished job gets one review request, only with review permission |
+| **Lead Reactivation** | Weekly: quiet enquiries get one follow-up, only with recorded marketing consent, with a cooldown and a cap |
+| **Replies and delivery receipts** | STOP opts out of everything; other replies reopen the enquiry; Twilio delivery receipts update the log |
+| **Monitor** | Failed runs, failed or unconfirmed messages and leads nobody contacted are raised once as alerts; safe retry |
+
+**Built to never double-send or spam:**
+- Each message is reserved in the Message Log before it is sent, so a second run skips it.
+- A message Twilio may have sent (timeout, server error) is marked **Unknown** and never resent by itself.
+- Review and marketing messages need recorded consent, and every message names the business and says how to stop
+  (Australian Spam Act 2003).
+- Messaging is **off by default** (a test sink). In Twilio mode, real SMS go only to an allowlist until go-live.
+
+| Lite status | State |
+|---|---|
+| 70 acceptance tests and a local demo (the workflows' real node code, an in-memory Airtable, a fake Twilio API with signed webhooks and real error codes) | ✅ Local |
+| The workflows in n8n Cloud against a real Airtable base, messages to the test sink, synthetic data (20–21 Oct) | ✅ Live |
+| Twilio connected through n8n's credential; every check that sends no SMS passed against the real Twilio API | ✅ Live |
+| Real SMS | ⏸ Not yet. The supervised live test on 21 Oct stopped when the Twilio trial account refused the first message (error 572003); no SMS has been sent. The test's clean-up (unpublishing Inbound Replies) awaits the owner |
+
+Try it locally (nothing leaves your computer):
+
+```bash
+npx tsx lite/demo/run-demo.ts lite/config/example-plumbing-twilio.json lite/demo/output-twilio
+```
+
 ## 🚀 Quick start
 
 > **Requires** Node 24 and Docker.
@@ -386,6 +428,7 @@ recorded separately in [evidence/](evidence/).
 | Unit, database and workflow | `test/*.test.ts` (Vitest) | Every database suite runs on PGlite **and** real Postgres 17 |
 | n8n workflow code | `test/n8n-*.test.ts` | The real Code-node JavaScript and HTTP requests of the workflows, run in a harness |
 | Business lifecycle | `test/business-lifecycle.test.ts` | Enquiry to Xero draft at the database boundary, with failure injections |
+| RoofOps Lite | `test/lite.test.ts` | 70 acceptance tests: consent, opt-out, de-duplication, Twilio errors, retries, monitoring |
 | State integrity | `test/state-integrity.test.ts` | All state-machine pairs are generated from `state_transitions`; includes real two-connection race tests |
 | End to end | `web/e2e/*.spec.ts` (Playwright, 11 specs) | Staff, sales, site-work and invoice-approval journeys; Airtable ↔ dashboard state sync |
 | AI regression | `promptfoo/` | Grounded against the database; refusals for approve, pay, credential and SQL requests |

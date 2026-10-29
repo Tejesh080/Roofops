@@ -99,10 +99,17 @@ button { font: inherit; color: inherit; }
   .main { padding: 24px 20px 96px; }
 }
 @media (max-width: 720px) {
-  .app { grid-template-columns: minmax(0, 1fr); }
-  .sidebar { display: none; }
-  .app { background: none; }
-  .main { grid-column: 1; padding: 20px 14px 96px; }
+  /* Phones: the main navigation becomes a scrollable strip under the notice (it is never hidden). */
+  .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--topbar-h) auto auto 1fr; background: none; }
+  .notice { position: static; padding: 4px 12px; text-align: center; }
+  .sidebar { grid-row: 3; position: static; height: auto; flex-direction: row; gap: 4px; overflow-x: auto; padding: 6px 8px;
+             border-right: 0; border-bottom: 1px solid var(--border); scrollbar-width: none; }
+  .nav-item { flex: none; justify-content: flex-start; padding: 0 10px; height: 34px; }
+  .nav-item .nav-text { display: inline; }
+  .nav-count { display: inline-block; margin-left: 6px; }
+  .nav-item.on::before { left: 10px; right: 10px; top: auto; bottom: 0; width: auto; height: 2px; border-radius: 2px; }
+  .nav-sep, .nav-caption { display: none; }
+  .main { grid-row: 4; grid-column: 1; padding: 20px 14px 96px; }
   .env-badge .long { display: none; }
 }
 
@@ -116,7 +123,10 @@ button { font: inherit; color: inherit; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-1); }
 .card-head { display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-bottom: 1px solid var(--border); min-height: 52px; }
 .card-head .icon { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: var(--bg); color: var(--navy); flex: none; }
-.card-head .t-section { flex: 1; min-width: 0; }
+.card-head .t-section { flex: 1 1 auto; min-width: 8rem; }
+/* Narrow screens: a header chip moves to its own line instead of covering the title. */
+.card-head { flex-wrap: wrap; row-gap: 6px; }
+.card-head .chip { max-width: 100%; white-space: normal; height: auto; min-height: 22px; }
 .card-body { padding: 16px 18px 18px; }
 .grid { display: grid; gap: 16px; }
 .g-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -263,12 +273,16 @@ table.data td.right, table.data th.right { text-align: right; }
 .rows > li:first-child { border-top: 0; }
 .row-main { font-weight: 550; font-size: 14px; }
 .row-sub { font-size: 12.5px; color: var(--muted); }
-.row-right { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex: none; }
+.row-right { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex: 0 1 auto; min-width: 0; max-width: 62%; }
+.row-right .num { white-space: nowrap; }
 .problem-note { font-size: 12.5px; color: var(--bad); font-weight: 550; }
 
 /* Finance */
 .fin-amount { font-size: 30px; font-weight: 650; letter-spacing: -0.025em; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .fin-ref { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+.xero-doc { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; align-items: start; padding: 9px 0; border-top: 1px solid var(--border); font-size: 13.5px; }
+.xero-doc:first-of-type { margin-top: 6px; }
+.xero-doc .mono { overflow-wrap: anywhere; }
 .fin-table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 6px; }
 .fin-table td { padding: 9px 0; border-top: 1px solid var(--border); }
 .fin-table td.amt { text-align: right; font-variant-numeric: tabular-nums; font-weight: 550; padding-right: 12px; }
@@ -439,3 +453,60 @@ details.tech summary svg { transition: transform .15s; }
 .cons-value { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .inv-row { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 10px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
 .inv-row:last-child { border-bottom: 0; }
+
+/* ---------- Resolve an issue (staff sign-in) ---------- */
+.resolve-form { margin-top: 10px; display: grid; gap: 8px; justify-items: start; }
+.resolve-form .field { width: 100%; }
+.resolve-form textarea { width: 100%; font: inherit; font-size: 13.5px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface); resize: vertical; }
+.resolve-done { margin: 10px 0 0; display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--good); }
+.resolve-hint { margin: 0 0 10px; }
+.reissue-step { margin-top: 10px; display: grid; gap: 8px; }
+/* A reissue's step (status text, request or approve form) spans the whole .issue row; in the badge column it squeezed the title to one word per line. */
+.issue > .reissue-step, .issue > .reissue-wait, .issue > .resolve-form, .issue > .resolve-done { grid-column: 1 / -1; }
+.reissue-wait { margin: 8px 0 0; }
+.check-line { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.inline-form { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.form-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* OPS-01: site visits, tasks, next steps */
+.ops-details { margin-top: 12px; }
+.ops-details > summary { list-style: none; cursor: pointer; width: fit-content; }
+.ops-details > summary::-webkit-details-marker { display: none; }
+.ops-details[open] > summary { background: var(--surface-2); }
+.ops-form { margin-top: 10px; display: grid; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface); }
+.ops-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; width: 100%; }
+.field select, .field textarea, .ops-form .field input { width: 100%; min-height: 40px; border: 1px solid var(--border-strong); border-radius: 9px; padding: 0 12px; font: inherit; font-size: 14px; background: var(--surface); }
+.field textarea { padding: 8px 12px; resize: vertical; }
+.field select:focus, .field textarea:focus { outline: none; box-shadow: var(--focus); border-color: var(--info); }
+.crew-pick { border: 1px solid var(--border); border-radius: 9px; padding: 8px 12px; margin: 0; display: grid; gap: 6px; max-height: 220px; overflow: auto; }
+.crew-pick legend { font-size: 13px; font-weight: 550; padding: 0 4px; }
+.crew-pick .check-line { min-height: 32px; }
+.next-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.next-steps li { display: grid; gap: 2px; padding-left: 2px; }
+.next-steps li.first strong { font-size: 15px; }
+.next-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+@media (max-width: 720px) {
+  .ops-row { grid-template-columns: minmax(0, 1fr); }
+  .issue .form-buttons .btn { min-height: 40px; }
+}
+
+/* SALES-01: quote lines */
+.quote-lines { display: grid; gap: 8px; }
+.quote-line { display: grid; grid-template-columns: 120px minmax(140px, 1fr) minmax(0, 2fr) 80px 70px 100px 90px auto; gap: 8px; align-items: end; }
+.quote-line .grow { min-width: 0; }
+.quote-line .line-amount { padding-bottom: 10px; text-align: right; }
+.quote-totals { margin: 4px 0; }
+@media (max-width: 1100px) {
+  .quote-line { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 8px; border: 1px solid var(--border); border-radius: 9px; }
+  .quote-line .grow { grid-column: 1 / -1; }
+  .quote-line .line-amount { padding-bottom: 0; text-align: left; }
+}
+.quote-lines-table td.amt { white-space: nowrap; padding-left: 12px; }
+@media (max-width: 1100px) { .sales-new { order: -1; } }
+@media (max-width: 720px) {
+  .quote-lines-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; border-top: 1px solid var(--border); }
+  .quote-lines-table td { border-top: 0; }
+  .quote-lines-table td:first-child { grid-column: 1 / -1; padding-bottom: 2px; }
+  .quote-lines-table td.amt { padding-top: 0; padding-left: 0; text-align: left; }
+  .quote-lines-table td.amt:last-child { text-align: right; }
+}

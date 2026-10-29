@@ -83,6 +83,8 @@ describe.each(TARGETS)('AC-09: one canonical billing entitlement; the final invo
   beforeAll(async () => {
     db = await migratedDb(target);
     await importBundle(db);
+    // Finals with variation lines carry per-line GST for Xero (20261017030000); this suite tests billing/approval, not that gate.
+    await db.query("update app_settings set value = 'on' where key = 'xero.line_tax_amounts'");
     await db.exec(`update app_settings set value = '11111111-2222-3333-4444-555555555555' where key = 'xero.demo_tenant_id';
                    insert into external_links (provider, entity_type, entity_id, external_type, external_id, last_synced_at, verified_at)
                    select 'AIRTABLE', 'project', id, 'Record', 'rec' || substr(md5(project_number), 1, 14), now(), now() from projects`);

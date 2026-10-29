@@ -61,6 +61,8 @@ describe.each(TARGETS)('AC-03: an Airtable Approve approves only the preview sho
   beforeAll(async () => {
     db = await migratedDb(target);
     await importBundle(db);
+    // Finals with variation lines carry per-line GST for Xero (20261017030000); this suite tests billing/approval, not that gate.
+    await db.query("update app_settings set value = 'on' where key = 'xero.line_tax_amounts'");
     await db.exec(`update app_settings set value = '${TENANT}' where key = 'xero.demo_tenant_id'`);
     // The Airtable record ids the live base load recorded (verify-airtable-load.ts); synthetic but well-formed here.
     await db.exec(`insert into external_links (provider, entity_type, entity_id, external_type, external_id, last_synced_at, verified_at)

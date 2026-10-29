@@ -186,8 +186,8 @@ describe.each(ALL)('schema constraints [%s]', (target) => {
     const wf = await db.query<{ f: string }>(`select p.proname f from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public' and has_function_privilege('roofops_workflow', p.oid, 'execute') order by 1`);
     expect(wf.map((r) => r.f)).toEqual(['wf_airtable_change', 'wf_airtable_cursor', 'wf_airtable_cursor_advance', 'wf_airtable_writeback_verified', 'wf_claim_side_effect',
-      'wf_complete_side_effect', 'wf_drive_call_decision', 'wf_fail_side_effect', 'wf_invoice_decide', 'wf_invoice_prepare', 'wf_invoice_preview_verified', 'wf_quote_accepted', 'wf_reconcile_airtable', 'wf_reconcile_drive_unavailable',
-      'wf_reconcile_external', 'wf_reconcile_finish', 'wf_reconcile_start', 'wf_reconcile_targets', 'wf_reconcile_xero_uncertain', 'wf_record_health', 'wf_webhook_check']);
+      'wf_complete_side_effect', 'wf_drive_call_decision', 'wf_fail_side_effect', 'wf_invoice_decide', 'wf_invoice_prepare', 'wf_invoice_preview_verified', 'wf_quote_accepted', 'wf_quote_publish_fail', 'wf_quote_publish_next', 'wf_reconcile_airtable', 'wf_reconcile_drive_unavailable',
+      'wf_reconcile_external', 'wf_reconcile_finish', 'wf_reconcile_start', 'wf_reconcile_targets', 'wf_reconcile_xero_uncertain', 'wf_record_health', 'wf_reissue_dispatch', 'wf_webhook_check', 'wf_xero_dispatch_next']);   // + wf_xero_dispatch_next (STAFF-OPS-01: n8n 09 takes staff requests)
   });
 
   it('Supabase public roles (anon, authenticated) cannot read or write any RoofOps table', async () => {

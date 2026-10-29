@@ -367,7 +367,10 @@ describe.each(TARGETS)('state integrity [%s]', (target) => {
       expect(draftAcc).toMatchObject({ outcome: 'REJECTED', corrections: { [F.qStatus]: 'Draft' } });
     });
     it('purchase order: supplier confirmed, delivery date, reference; no going backwards; approval needs an approver', async () => {
-      const po = await one(db, `select po_number v from purchase_orders where status = 'SENT' order by 1 limit 1`);
+      // An order on a live job: earlier cases in this file cancel PRJ-2026-0011, and an order on a cancelled job can only
+      // be cancelled (AC-21).
+      const po = await one(db, `select po.po_number v from purchase_orders po join projects p on p.id = po.project_id
+                                 where po.status = 'SENT' and p.status not in ('CANCELLED', 'CLOSED') order by 1 limit 1`);
       expect(await change(db, T.pos, 'purchase_order', po!, { [F.poStatus]: 'Acknowledged' })).toMatchObject({ outcome: 'APPLIED' });
       expect(await one(db, `select (acknowledged_at is not null)::text v from purchase_orders where po_number = $1`, [po])).toBe('true');
       expect(await change(db, T.pos, 'purchase_order', po!, { [F.poEta]: '2026-10-20', [F.poRef]: 'SUP-REF-77' })).toMatchObject({ outcome: 'APPLIED' });

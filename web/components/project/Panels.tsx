@@ -56,7 +56,7 @@ export function InfoCards({ p }: { p: ProjectRow }) {
           <dt>Planned start</dt><dd>{date(p.planned_start_date)}</dd>
           <dt>Planned finish</dt><dd>{date(p.planned_completion_date)}</dd>
           <dt>Started</dt><dd>{p.actual_start_date ? date(p.actual_start_date) : <span className="t-meta">Not started</span>}</dd>
-          <dt>Finished</dt><dd>{p.actual_completion_date ? date(p.actual_completion_date) : <span className="t-meta">In progress</span>}</dd>
+          <dt>Finished</dt><dd>{p.actual_completion_date ? date(p.actual_completion_date) : <span className="t-meta">{p.actual_start_date ? 'In progress' : 'Not started'}</span>}</dd>
         </dl></div>
       </section>
     </div>
@@ -67,7 +67,7 @@ export function ChecklistCard({ items }: { items: ChecklistItem[] }) {
   const done = items.filter((c) => c.status === 'DONE' || c.status === 'WAIVED' || c.status === 'NOT_APPLICABLE').length;
   return (
     <section className="card">
-      <CardHead icon={ClipboardCheck} title="Checklist & tasks">{items.length > 0 && <span className="chip num">{done} of {items.length} done</span>}</CardHead>
+      <CardHead icon={ClipboardCheck} title={items.some((i) => i.kind === 'TASK') ? 'Checklist & tasks' : 'Checklist'}>{items.length > 0 && <span className="chip num">{done} of {items.length} done</span>}</CardHead>
       <div className="card-body">
         {items.length === 0 ? <Empty icon={ClipboardCheck} title="No checklist recorded" text="Imported projects don't carry a checklist; new projects get one automatically." /> : (
           <ul className="rows">

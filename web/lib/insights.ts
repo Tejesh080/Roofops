@@ -60,10 +60,14 @@ export function attentionToday(rows: ProjectRow[], issues: ExceptionRow[], max =
   const approvals = rows.filter((p) => p.invoice_status === 'AWAITING_APPROVAL').map((p): AttentionItem => ({
     project: p.project_number, customer: p.customer_name, severity: 'medium', kind: 'approval',
     summary: `Invoice ${p.invoice_amount_inc_gst?.toLocaleString('en-AU', { style: 'currency', currency: 'AUD' }) ?? ''} awaiting finance approval` }));
+  // A customer invoice past its due date: the database flags the project needs_attention, so it belongs on this list.
+  const payments = rows.filter((p) => p.has_overdue_invoice).map((p): AttentionItem => ({
+    project: p.project_number, customer: p.customer_name, severity: 'medium', kind: 'payment',
+    summary: `Customer payment overdue: ${p.outstanding_inc_gst.toLocaleString('en-AU', { style: 'currency', currency: 'AUD' })} outstanding` }));
   const issueItems = issues.filter((e) => e.project_number && (e.resolution_status === 'OPEN' || e.resolution_status === 'RETRY_QUEUED'))
     .map((e): AttentionItem => ({ project: e.project_number!, customer: rows.find((r) => r.project_number === e.project_number)?.customer_name ?? '',
       severity: 'medium', kind: 'issue', summary: describeIssue(e).title }));
-  return [...risk, ...billing, ...approvals, ...issueItems].slice(0, max);
+  return [...risk, ...billing, ...approvals, ...payments, ...issueItems].slice(0, max);
 }
 
 /** Business language first; the technical class and reference are for "Technical details". */
@@ -79,12 +83,18 @@ export function describeIssue(e: Pick<ExceptionRow, 'error_class' | 'error_messa
       if (/quote .* is LOST/i.test(m)) return { title: 'A lost quote was marked accepted', explanation: 'RoofOps refused to create a project because the quote had already been marked lost.' };
       if (/only a COMPLETED project/i.test(m)) return { title: 'Invoice requested before the job was finished', explanation: 'Only completed jobs get a final invoice, so nothing was prepared.' };
       if (/invoice before project approval/i.test(m)) return { title: 'Invoice attempted too early', explanation: 'The project had not been approved yet, so no invoice was created.' };
+      if (/Final invoice INV-\d{4}-\d{4} was voided/.test(m)) {
+        const inv = /INV-\d{4}-\d{4}/.exec(m)![0];
+        return { title: 'Final invoice voided in Xero', explanation: `${inv} was voided or deleted in Xero. Reissue it on Finance → Invoice reissues (one person requests, a second approves); once the replacement draft exists, mark this resolved.` };
+      }
       return { title: 'Action not allowed yet', explanation: 'RoofOps stopped safely because the record was not in the right state.' };
     case 'TIMEOUT': return { title: "Supplier system didn't respond", explanation: 'RoofOps stopped safely; a person needs to retry once the supplier system is back.' };
     case 'SCHEMA_MISMATCH': return { title: 'Supplier information was incomplete', explanation: 'RoofOps stopped safely because a required supplier field was missing.' };
     case 'DUPLICATE_EVENT': return { title: 'Duplicate message ignored', explanation: 'The same message arrived twice; RoofOps acted on it once.' };
     case 'RATE_LIMITED': return { title: 'Airtable asked RoofOps to slow down', explanation: 'RoofOps waited and tried again automatically.' };
-    case 'VALIDATION_ERROR': return { title: 'Required information was missing', explanation: /measurement/i.test(m) ? 'A roof measurement was missing, so materials could not be ordered.' : 'Something required was missing, so nothing was changed.' };
+    case 'VALIDATION_ERROR':
+      if (/^Invalid quote\.accepted event/.test(m)) return { title: 'A quote acceptance arrived incomplete', explanation: 'The acceptance from Airtable had no valid quote number, so no project was created. Check the quote in Airtable and mark it accepted again.' };
+      return { title: 'Required information was missing', explanation: /measurement/i.test(m) ? 'A roof measurement was missing, so materials could not be ordered.' : 'Something required was missing, so nothing was changed.' };
     case 'AUTH_FAILURE': return { title: 'A connection needed re-authorising', explanation: 'An integration login expired; it was reconnected.' };
     case 'AMBIGUOUS_WRITE': return { title: 'Unclear whether a save went through', explanation: 'RoofOps checked the other system before retrying, so nothing was duplicated.' };
     case 'PERMISSION_DENIED': return { title: 'Blocked an action that needs approval', explanation: 'The assistant asked for an action only a person may take; it was blocked.' };

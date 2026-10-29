@@ -3,9 +3,15 @@ import { BadgeDollarSign, CheckCircle2, ChevronRight, Clock3, FileWarning, Recei
 import { query } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
 import { listOverdueInvoices, listProjects, type ProjectRow } from '@/lib/queries';
-import { date, money } from '@/lib/labels';
+import { INVOICE_NEXT_STEP, date, money } from '@/lib/labels';
 import { CardHead, Empty } from '@/components/ui/Empty';
 import { AskButton } from '@/components/copilot/AskButton';
+import { ReissueSection } from '@/components/finance/ReissueSection';
+import { getReissueOverview } from '@/lib/reissue';
+import { getInvoiceOverview } from '@/lib/invoices';
+import { InvoiceSection } from '@/components/finance/InvoiceSection';
+import { DISPATCH_OFF, staffDispatchEnabled } from '@/lib/dispatch';
+import { PrepareInvoiceForm } from '@/components/finance/InvoiceForms';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Finance · RoofOps' };
@@ -27,8 +33,13 @@ function Rows({ rows, right }: { rows: ProjectRow[]; right: (p: ProjectRow) => R
 }
 
 export default async function FinancePage() {
-  await requireSession();
-  const [rows, overdue] = await Promise.all([listProjects(query, 'all'), listOverdueInvoices(query)]);
+  const session = await requireSession();
+  const [rows, overdue, reissues, invoices] = await Promise.all([listProjects(query, 'all'), listOverdueInvoices(query), getReissueOverview(query, session.t),
+    getInvoiceOverview(query, session.t)]);
+  const dispatchOn = staffDispatchEnabled();
+  // Preparing here only while dashboard approvals can be sent: a dashboard preview can only be approved in the dashboard.
+  const mayPrepare = Boolean(invoices?.ok && invoices.me?.may_prepare) && dispatchOn;
+  const prepareOff = Boolean(invoices?.ok && invoices.me?.may_prepare) && !dispatchOn;
   const ready = rows.filter((p) => p.invoice_status === 'READY_TO_INVOICE');
   const awaiting = rows.filter((p) => p.invoice_status === 'AWAITING_APPROVAL');
   const inXero = rows.filter((p) => p.xero_invoice_id);
@@ -38,25 +49,28 @@ export default async function FinancePage() {
       <header className="page-head">
         <div>
           <h1 className="t-page">Finance</h1>
-          <div className="sub">Final invoices move: ready → prepared (AI or staff) → approved by finance → draft in Xero</div>
+          <div className="sub">Final invoices move: ready → prepared by one person → approved by another → sent to Xero as a draft</div>
         </div>
       </header>
       <div className="grid g-2">
         <section className="card">
           <CardHead icon={BadgeDollarSign} title="Ready to invoice"><span className="chip num">{money(sum(ready))}</span></CardHead>
           <div className="card-body">
+            {prepareOff && ready.length > 0 && <p className="t-meta reissue-wait" role="note" aria-label="Preparing invoices">{DISPATCH_OFF.prepare}</p>}
             {ready.length === 0 ? <Empty icon={CheckCircle2} title="Nothing waiting to be invoiced" /> :
               <Rows rows={ready} right={(p) => <>
                 <span className="strong num">{money(p.invoice_amount_inc_gst)}</span>
-                <AskButton question={`Prepare invoice for ${p.project_number}`} text="Prepare with Copilot" />
+                {/* While staff dispatch is off, a signed-in employee prepares in Airtable (the note above); the Copilot would refuse too. */}
+                {mayPrepare ? <PrepareInvoiceForm project={p.project_number} />
+                  : prepareOff ? null : <AskButton question={`Prepare invoice for ${p.project_number}`} text="Prepare with Copilot" />}
               </>} />}
           </div>
         </section>
         <section className="card">
           <CardHead icon={Clock3} title="Awaiting finance approval"><span className="chip num">{money(sum(awaiting))}</span></CardHead>
           <div className="card-body">
-            {awaiting.length === 0 ? <Empty icon={CheckCircle2} title="No invoices awaiting approval" text="Prepared invoices wait here until a finance approver approves them in Airtable." /> :
-              <Rows rows={awaiting} right={(p) => <><span className="strong num">{money(p.invoice_amount_inc_gst)}</span><span className="row-sub">{p.pending_approval_number} · approve in Airtable</span></>} />}
+            {awaiting.length === 0 ? <Empty icon={CheckCircle2} title="No invoices awaiting approval" text="Prepared invoices wait here until a second person approves them (below, or in Airtable)." /> :
+              <Rows rows={awaiting} right={(p) => <><span className="strong num">{money(p.invoice_amount_inc_gst)}</span><span className="row-sub">{p.pending_approval_number} · {invoices?.ok ? <a href="#approvals">review below</a> : INVOICE_NEXT_STEP.approveShort}</span></>} />}
           </div>
         </section>
         <section className="card">
@@ -82,6 +96,8 @@ export default async function FinancePage() {
           </div>
         </section>
       </div>
+      <InvoiceSection overview={invoices} dispatchOn={dispatchOn} />
+      <div style={{ marginTop: 16 }}><ReissueSection overview={reissues} dispatchOn={dispatchOn} /></div>
       <p className="t-meta" style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 6 }}>
         <ChevronRight size={13} aria-hidden /> The Copilot can only prepare an invoice. Approval, and the draft in Xero, always need a person.
       </p>

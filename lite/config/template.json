@@ -1,0 +1,112 @@
+{
+  "business": {
+    "name": "<Business name>",
+    "trade": "<roofing | plumbing | electrical | ...>",
+    "phone": "<Business phone>",
+    "signoff": "<The ... team>",
+    "timezone": "Australia/Sydney"
+  },
+  "airtable": {
+    "baseId": "<appXXXXXXXXXXXXXX: the base that holds the Lite tables>",
+    "credential": {
+      "id": "<n8n Airtable credential id>",
+      "name": "<n8n Airtable credential name>"
+    },
+    "tables": {
+      "contacts": "Lite Contacts",
+      "properties": "Lite Properties",
+      "jobs": "Lite Jobs",
+      "quotes": "Lite Quotes",
+      "messages": "Lite Message Log",
+      "alerts": "Lite Alerts"
+    }
+  },
+  "n8n": {
+    "baseUrl": "<https://your-instance.app.n8n.cloud>",
+    "errorWorkflowId": null
+  },
+  "messaging": {
+    "mode": "test-sink",
+    "provider": "lite-test-sink",
+    "twilio": {
+      "accountSid": "<ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx>",
+      "from": "<+614xxxxxxxx: a Twilio number that can receive SMS>",
+      "messagingServiceSid": null,
+      "credential": {
+        "id": "<n8n Basic Auth credential id: Twilio API Key SID + Secret>",
+        "name": "<credential name>"
+      },
+      "inboundAuth": "signature",
+      "signatureVariable": "LITE_TWILIO_AUTH_TOKEN",
+      "inboundCredential": null,
+      "allowedRecipients": [
+        "<+614xxxxxxxx: the approved test phone>"
+      ],
+      "allowAllRecipients": false
+    }
+  },
+  "consent": {
+    "jurisdiction": "AU",
+    "formName": "Website form",
+    "reviewRequests": "express",
+    "wording": {
+      "service": "Contact me about this enquiry and my job.",
+      "reviews": "After the job, send me a link to leave a review.",
+      "marketing": "Send me occasional reminders and offers. I can reply STOP at any time."
+    }
+  },
+  "leadIntake": {
+    "webhookPath": "<client>-lite/lead",
+    "dedupeWindowDays": 30,
+    "sms": "Hi {firstName}, thanks for contacting {businessName} about {service}. We'll call you within one business day. Reply STOP to opt out.",
+    "emailSubject": "We've received your enquiry - {businessName}",
+    "email": "Hi {firstName},\n\nThanks for contacting {businessName} about {service}. We'll be in touch within one business day.\n\n{signoff}",
+    "services": [
+      "<Service 1>",
+      "<Service 2>",
+      "Other"
+    ]
+  },
+  "reviews": {
+    "googleReviewUrl": "<https://g.page/r/YOUR-PLACE-ID/review>",
+    "delayDays": 2,
+    "maxPerRun": 20,
+    "sms": "Hi {firstName}, thanks for choosing {businessName}. A quick Google review would really help us: {reviewUrl} Reply STOP to opt out.",
+    "emailSubject": "How did we do? - {businessName}",
+    "email": "Hi {firstName},\n\nThanks for choosing {businessName}. We would be grateful for a short Google review:\n{reviewUrl}\n\n{signoff}\n\nReply STOP to stop these emails."
+  },
+  "reactivation": {
+    "inactivityDays": 90,
+    "cooldownDays": 180,
+    "maxPerRun": 20,
+    "stages": [
+      "New Lead",
+      "Contacted",
+      "Quoted"
+    ],
+    "sms": "Hi {firstName}, it's {businessName}. Is your {service} still on your list? Reply YES and we'll call you. Reply STOP to opt out.",
+    "emailSubject": "Still thinking about your {service}? - {businessName}",
+    "email": "Hi {firstName},\n\nIs your {service} still on your list? Reply and we'll book a time that suits you.\n\n{signoff}\n\nReply STOP to stop these emails."
+  },
+  "replies": {
+    "webhookPath": "<client>-lite/reply",
+    "optOutKeywords": [
+      "STOP",
+      "STOPALL",
+      "UNSUBSCRIBE",
+      "OPT OUT",
+      "OPTOUT",
+      "CANCEL",
+      "QUIT",
+      "END",
+      "REMOVE"
+    ]
+  },
+  "monitoring": {
+    "everyHours": 2,
+    "stuckSendingMinutes": 15,
+    "staleLeadHours": 24,
+    "operatorPhone": null
+  },
+  "webhookAuth": null
+}

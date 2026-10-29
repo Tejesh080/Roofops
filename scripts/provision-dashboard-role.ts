@@ -9,7 +9,7 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { openPostgres } from '../src/db/db.js';
-import { hostedDbConfig, requireEnv } from '../src/config/env.js';
+import { hostedDbConfig, mergeEnvFile, requireEnv } from '../src/config/env.js';
 
 const WEB_ENV = 'web/.env.local';
 const ROLE = 'roofops_web';
@@ -46,15 +46,17 @@ try {
   await db.close();
 }
 
-writeFileSync(WEB_ENV, [
-  '# RoofOps dashboard server-side settings. Gitignored. Never prefix any of these with NEXT_PUBLIC_.',
-  `DASHBOARD_DATABASE_URL=${url}`,
-  `DEEPSEEK_API_KEY=${requireEnv('DEEPSEEK_API_KEY')}`,
-  `DEEPSEEK_BASE_URL=${process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com'}`,
-  `DEEPSEEK_MODEL=${process.env.DEEPSEEK_MODEL ?? 'deepseek-flash'}`,
-  '',
-].join('\n'), { mode: 0o600 });
-console.log(`wrote ${WEB_ENV} (values not printed)`);
+// Only the keys this script owns are set; the sign-in settings (DEMO_*, AUTH_SECRET) and the CA setting stay as they are.
+const header = '# RoofOps dashboard server-side settings. Gitignored. Never prefix any of these with NEXT_PUBLIC_.\n';
+writeFileSync(WEB_ENV, mergeEnvFile(existsSync(WEB_ENV) ? readFileSync(WEB_ENV, 'utf8') : header, {
+  DASHBOARD_DATABASE_URL: url,
+  DEEPSEEK_API_KEY: requireEnv('DEEPSEEK_API_KEY'),
+  DEEPSEEK_BASE_URL: process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com',
+  DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL ?? 'deepseek-flash',
+  ...(cfg.caPem && process.env.SUPABASE_CA_CERT && !/^DASHBOARD_DB_CA_(PEM|CERT)=/m.test(existsSync(WEB_ENV) ? readFileSync(WEB_ENV, 'utf8') : '')
+    ? { DASHBOARD_DB_CA_CERT: process.env.SUPABASE_CA_CERT } : {}),
+}), { mode: 0o600 });
+console.log(`updated ${WEB_ENV} (only the database and DeepSeek keys; values not printed)`);
 
 // Prove the privileges by connecting AS the role, through the real pooler.
 const web = await openPostgres(url, tls);

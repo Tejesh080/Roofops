@@ -1,6 +1,7 @@
 import 'server-only';
 import pg from 'pg';
 import type { Query } from './queries.ts';
+import { dashboardDbTarget } from './db-tls.ts';
 
 /**
  * The dashboard's only database connection: the roofops_web login (member of roofops_dashboard),
@@ -15,10 +16,10 @@ function pool(): pg.Pool {
   if (!globalForPool.roofopsPool) {
     const connectionString = process.env.DASHBOARD_DATABASE_URL;
     if (!connectionString) throw new Error('DASHBOARD_DATABASE_URL is not set (run scripts/provision-dashboard-role.ts)');
-    // Encrypted always. Certificate verification when DASHBOARD_DB_CA_PEM (Supabase root CA, PEM text) is set.
-    const ca = process.env.DASHBOARD_DB_CA_PEM?.replace(/\\n/g, '\n');
+    // Remote: TLS with the certificate verified (fails closed without a CA). Local: plain TCP. See db-tls.ts.
+    const target = dashboardDbTarget(connectionString, process.env);
     globalForPool.roofopsPool = new pg.Pool({
-      connectionString, ssl: ca ? { ca, rejectUnauthorized: true } : { rejectUnauthorized: false },
+      connectionString: target.connectionString, ssl: target.ssl,
       max: Number(process.env.DASHBOARD_DB_POOL_MAX ?? 4), idleTimeoutMillis: 10_000, connectionTimeoutMillis: 10_000,
     });
   }

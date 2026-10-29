@@ -1,0 +1,107 @@
+# Pilot release: dashboard TLS, staff sign-in, reissue four-eyes, workflow 07 MCP restriction
+
+Release commit: the branch head that contains this file (`factory/ac14-integrity-followup`). Owner-run; every hosted step
+below needs the owner's approval. No secret appears in this file.
+
+## Pre-flight results (2026-10-08, no hosted writes)
+
+| Check | Result |
+|---|---|
+| 1. CA contract | `DASHBOARD_DB_CA_PEM` (escaped PEM text; wins) or `DASHBOARD_DB_CA_CERT` (absolute file path). A remote database without a readable, valid CA is **refused**; localhost is plain TCP; URL ssl parameters are stripped. Docs corrected; 7 tests. **Live, read-only:** `roofops_web` connected with both forms, `rejectUnauthorized=true` |
+| 2. Migrations vs hosted | Read-only on hosted: 43 migrations; integrity 28 PASS / 4 WARNING / 0 FAIL; pgcrypto already installed (`extensions`); no name collisions. **Rehearsed on a restored copy of hosted:** both apply cleanly (45). Integrity is unchanged. All security checks pass. The workflow role's 22 functions are identical. Only the 4 `web_*` functions are added to the dashboard role. `ops_reissue_decide_core` is byte-identical to the old `ops_reissue_decide`. Data changes: 2 `app_settings` rows, 2 `schema_migrations` rows and 2 new empty tables; nothing else |
+| 3. Security review | No critical or high findings (independent review); its low findings are fixed (one refusal answer, pgcrypto first in `search_path`, 72-byte cap, session purge). Lockout: 5 failures lock that login for 10 minutes; the owner reset unlocks it. Grants: owner-only `ops_staff_set_password`; tables readable by no app role (RLS on). **Rollback rehearsed** on a second restored copy: migrate → `ops/rollback/*.down.sql` → schema state and all 62 tables **identical** to before; re-apply works |
+| 4. Backup | `D:\Claude\roofops-backups\pre-pilot-20261008-230954.dump`, SHA-256 `c2265386499d336755c30586df05ffa81fe385d6a420cc68728f1dd3027a8b72`, file access owner + SYSTEM only. Restored locally: **62/62 tables identical to hosted** |
+| 5. Shared demo login | It **cannot** resolve exceptions or approve or decide anything: those need a database session token that only a staff password produces, and the database checks it. It **can still** start non-privileged writes: Copilot "Prepare invoice" (`wf_invoice_prepare`) records a PENDING preview approval plus its events. Nothing reaches Xero without a finance approver. The sign-in form also lets anyone *attempt* a staff login, which updates that login's failure counter or lockout |
+| 6. Existing flows | n8n uses only `roofops_workflow`, whose functions are unchanged. No `wf_*` function is modified. Airtable and Xero are untouched. The reissue CLI and 08 dispatch work as before (four-eyes ships off). The dashboard sign-in falls back to the demo login if the staff functions are absent. Full suite: 810 passed, 0 failed; hosted read-only Playwright: 20/20 |
+| Live n8n settings (read-only) | 07: MCP **on**, saving off, version `a0ca9e60`. 04: MCP on. 05: MCP on (sub-workflow trigger only). 08: MCP off. 08-health: MCP on |
+
+## Deployment status (2026-10-08 UTC)
+
+Steps 1, 4 (07 only) and 6 are **applied**, plus one repair reconciliation (the approved operations 1–3 at `8622414`); see
+`evidence/pilot-release-deployment.md`. Step 2 (staff logins), step 3 (dashboard TLS and build) and step 5 (four-eyes) are the
+owner's: see `ops/pilot-owner-setup.md`.
+
+## Deployment sequence (owner, in order)
+
+0. **Before:** `npm run security:check` and `npm run integrity:check` (0 FAIL). If anything was written to hosted since the
+   pre-flight, take a fresh backup with the same procedure.
+1. **Migrations:** run `npm run db:load -- --hosted`. Expect exactly `20261009000000_staff_sign_in_and_sessions.sql` and
+   `20261009010000_reissue_needs_a_second_person.sql`.
+   - Verify: 45 migrations; integrity 0 FAIL; `npm run security:check` all PASS; the setting
+     `invoice.reissue_requires_second_person = false`.
+2. **Staff logins:** for each real person, run
+   `STAFF_PASSWORD=<12-72 chars> npm run staff:set-password -- EMP-NNN --login <login>`.
+   - Hosted has **one** FINANCE/ADMIN employee (EMP-900). The other employees can sign in, but they cannot resolve
+     exceptions unless their role allows it.
+   - Verify: sign in on the dashboard as one person; the top bar shows their name.
+3. **Dashboard TLS + build:** where the dashboard runs, set `DASHBOARD_DB_CA_PEM` (or `DASHBOARD_DB_CA_CERT` for a
+   local server) **before** starting this build. Then `npm --prefix web run build` and start or deploy it.
+   - Verify: the dashboard loads (a missing CA makes every page fail, with no unverified connection); staff and demo
+     sign-in both work; /automation shows "Mark resolved" only for a resolver role.
+4. **Workflow 07 MCP:**
+   - Run `npm run n8n:mcp -- disable EiBs0AB2NfOua7AM "[RoofOps] 07 Reconcile & Webhook Supervision"`.
+   - Verify that its output says nodes unchanged, still active, `availableInMCP: false`.
+   - Then run `npm run reconcile -- --dry-run`: COMPLETED, 0 drift.
+   - Optional, same procedure: 04 `YpmpJxQtSIBGSx6Z`, 08-health `e27BO9irmsYfVq6u`.
+5. **Four-eyes (later):** only once a second FINANCE or ADMIN person has a login, set
+   `update app_settings set value = 'true' where key = 'invoice.reissue_requires_second_person'`.
+   - Verify: a reissue requested by A is refused for A (SAME_PERSON) and accepted for B.
+
+6. **Dashboard reissue and Airtable identity** (separately approvable; needs step 1):
+   - Run `npm run db:load -- --hosted` once these two files are on the release commit. Expect exactly
+     `20261009020000_dashboard_reissue.sql` and `20261009030000_airtable_shows_the_reissued_invoice.sql`.
+   - **Rehearsed on a restored copy of hosted:** 47 migrations; integrity unchanged; every privilege check passes.
+     Data changes: 1 `field_contract` row plus migration rows. Exactly **one** project gets a preview
+     expectation, PRJ-2026-0002 (the Stage 3C reissue).
+   - The next repair reconciliation (nightly, or `npm run reconcile`) then rewrites PRJ-2026-0002's Invoice
+     Preview. The new text shows RO-INV-2026-0040 / `61e09cad…` under APR-2026-0013 and "Replaces InvoiceID
+     21545f60…". This closes the Stage 3D gap.
+   - Verify: `npm run reconcile -- --dry-run` lists that one field as SAFE_AUTO_REPAIR; after the repair run,
+     0 drift.
+   - Staff then use Finance → "Invoice reissues": one FINANCE/ADMIN person requests and a different one approves.
+     Creating the Xero draft remains the supervised dispatch (`npm run reissue -- dispatch --invoice … --hosted`,
+     short-lived token).
+
+7. **Current vs replaced Xero document** (separately approvable; read models only):
+   - Run `npm run db:load -- --hosted`. Expect exactly `20261009040000_dashboard_shows_current_and_replaced_xero_invoice.sql`.
+   - What it fixes: during a queued reissue, the project page showed the voided or deleted document as "Draft in Xero",
+     with an "Open in Xero" link to it.
+   - **Rehearsed on a restored copy of hosted:** 48 migrations; every `v_dashboard_projects` row is identical before and
+     after (row hash `031b1087…`); integrity 28/4/0; all privilege checks pass; the new history view is readable by the
+     dashboard role only.
+   - Verify: 48 migrations, checksums equal, integrity 0 FAIL, `npm run security:check` all PASS. PRJ-2026-0002's
+     project page lists `61e09cad…` as Current and `21545f60…` as Replaced (deleted in Xero).
+
+8. **Staff invoices and Xero dispatch** (STAFF-OPS-01; separately approvable). Order matters: steps a, b and c together.
+   a. Run `npm run db:load -- --hosted`. Expect exactly `20261016000000_staff_invoice_approval_and_xero_dispatch.sql`.
+      - It adds dashboard prepare and approve as the signed-in employee (two proven people, exact preview).
+      - It adds staff requests to send one Xero draft write, the operations status view and the exception-source view.
+      - The decision core changes only so that it can be given the proven employee.
+      - **Rehearsed on a restored copy of hosted:** every `v_dashboard_projects` row identical; all privilege checks
+        pass (dashboard SECURITY DEFINER functions 19, workflow functions 23); integrity unchanged apart from the
+        copy's age.
+      - **Rollback rehearsed:** back to 48 migrations, with the decision core byte-identical to before (`9213db08…`).
+   b. Publish **n8n 09 Staff Xero Dispatch** from `n8n/09-staff-xero-dispatch.sdk.ts`. It is validated against the live
+      node types, and nothing has been created or published. It has a one-minute schedule and no webhook or secret. It
+      runs the unchanged 05 (`Y2deCFTZzpv1uo8C`) for at most one write per run. Set it to save no execution data, like 07.
+      **Without 09, staff approvals queue writes that nothing sends**; System health then shows "Xero drafts waiting for
+      automation" as Stuck after 5 minutes.
+   c. Redeploy the dashboard (preview first).
+   - **Verify:**
+     - 49 migrations, checksums equal, `npm run security:check` all PASS;
+     - System health → Operations shows real states;
+     - with two individual logins, prepare and approve one synthetic Demo-tenant invoice; 09 picks it up within a minute;
+       Finance → Xero drafts shows "Draft in Xero".
+
+## Rollback (each step independently)
+
+| Step | Rollback | Proven |
+|---|---|---|
+| 1 | Run `npx tsx scripts/sql.ts -f ops/rollback/20261009010000_reissue_needs_a_second_person.down.sql`, then the `…000000_staff_sign_in_and_sessions.down.sql` one. Logins and sessions are deleted; audit rows stay | yes, on a restored copy (identical before and after) |
+| 2 | The same as 1, or reset one password with `staff:set-password` (this also signs that person out) | tests |
+| 3 | Redeploy the previous dashboard build (it does not need the CA) | — |
+| 4 | Run the same command with `availableInMCP: true`, or set it in the n8n UI. If 07's version changed, re-publish `a0ca9e60` from its history | — |
+| 5 | Set the value to `false` (takes effect at once) | tests |
+| 8 | Deactivate n8n 09, then `npx tsx scripts/sql.ts -f ops/rollback/20261016000000_staff_invoice_approval_and_xero_dispatch.down.sql`. Decisions already made stay; open staff requests are dropped (their writes are then sent by a person through 04/08) | yes: decision core byte-identical after rollback; re-apply works |
+| 7 | `npx tsx scripts/sql.ts -f ops/rollback/20261009040000_dashboard_shows_current_and_replaced_xero_invoice.down.sql` (restores the view exactly; drops the history view) | yes, locally: view definition hash identical to before; re-apply works |
+| 6 | Run `ops/rollback/20261009030000_airtable_shows_the_reissued_invoice.down.sql`, then `…020000_dashboard_reissue.down.sql`. Requests and decisions already made stay; the CLI keeps working | yes: all four rolled back on a restored copy; schema, view definition and 62 tables identical to before |

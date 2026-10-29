@@ -15,11 +15,22 @@ export default defineConfig({
     channel: 'chrome',
     viewport: { width: 1440, height: 900 },
     deviceScaleFactor: 1,
+    // A Vercel preview behind Vercel Authentication: the project's automation-bypass secret (never committed or printed).
+    ...(process.env.VERCEL_BYPASS ? { extraHTTPHeaders: { 'x-vercel-protection-bypass': process.env.VERCEL_BYPASS, 'x-vercel-set-bypass-cookie': 'true' } } : {}),
   },
   projects: [
     { name: 'setup', testMatch: /auth\.setup\.ts/ },
     { name: 'smoke', testMatch: /smoke\.spec\.ts/, dependencies: ['setup'], use: { storageState: 'e2e/.auth/state.json' } },
     { name: 'screens', testMatch: /screens\.spec\.ts/, dependencies: ['setup'], use: { storageState: 'e2e/.auth/state.json' } },
+    { name: 'interactions', testMatch: /interactions\.spec\.ts/, dependencies: ['setup'], use: { storageState: 'e2e/.auth/state.json' } },
     { name: 'state-sync', testMatch: /state-sync\.spec\.ts/, dependencies: ['setup'], use: { storageState: 'e2e/.auth/state.json' } },
+    // Opt-in (E2E_PILOT=1), local rehearsal database only: see scripts/pilot-rehearsal.ts.
+    { name: 'staff-journey', testMatch: /staff-journey\.spec\.ts/ },
+    { name: 'operations', testMatch: /operations\.spec\.ts/ },
+    { name: 'invoice-approval', testMatch: /invoice-approval\.spec\.ts/ },
+    { name: 'dispatch-gate', testMatch: /dispatch-gate\.spec\.ts/ },
+    { name: 'site-work', testMatch: /site-work\.spec\.ts/ },
+    { name: 'job-journey', testMatch: /job-journey\.spec\.ts/ },
+    { name: 'sales-journey', testMatch: /sales-journey\.spec\.ts/ },
   ],
 });

@@ -25,11 +25,16 @@
     "src",
     "scripts",
     "test",
+    "lite",
     "vitest.config.ts",
     "eslint.config.js"
   ],
   "exclude": [
     "node_modules",
-    "scripts/phase0-*.mjs"
+    "scripts/phase0-*.mjs",
+    "lite/n8n",
+    "lite/dist",
+    "lite/demo/output",
+    "lite/demo/output-twilio"
   ]
 }

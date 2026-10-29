@@ -92,7 +92,7 @@ The Vercel CLI on this machine is logged out (`vercel whoami` → "Logged out"),
 3. Set these as Production environment variables, marked Sensitive. The values are in `web/.env.local`; see `web/.env.example`.
    - Required: `DASHBOARD_DATABASE_URL`, `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`, `DEMO_USERNAME`, `DEMO_PASSWORD`, `AUTH_SECRET`.
    - Also set `DASHBOARD_DB_POOL_MAX=1`.
-   - Optionally set `DASHBOARD_DB_CA_PEM` to verify the Supabase certificate.
+   - **Required:** `DASHBOARD_DB_CA_PEM` (the Supabase root CA, newlines escaped as `\n`). Since the autonomous sprint the dashboard refuses any remote database connection it cannot verify.
 4. `npx vercel deploy --prod`
 
 Networking needs no change: the Supabase session pooler is public over TLS, and the web login is the least-privilege `roofops_web` role (connection limit 10). No other credential is needed or should be set on Vercel: no n8n key, no Airtable, Xero or Google tokens, and no owner database URL.
@@ -144,7 +144,7 @@ Nothing else in execution history holds secrets. Credentials themselves live onl
 2. **Single shared login:** the demo login is one shared user. It is fine for an interview, but real use would need per-person accounts (e.g. Supabase Auth or SSO).
 3. **Throttling is per server instance:** login throttling is in memory. On Vercel each instance keeps its own counter, which is acceptable for a demo.
 4. **Airtable webhook pings are not signature-verified.** A ping carries no data, since n8n fetches the changes with its own credential, so a forged ping can only trigger one extra read. This is a documented low risk (Phase 2).
-5. **TLS to Supabase is encrypted but not certificate-verified** unless `DASHBOARD_DB_CA_PEM` is set.
+5. ~~TLS to Supabase is encrypted but not certificate-verified~~ Fixed in the autonomous sprint: the certificate is always verified (`DASHBOARD_DB_CA_PEM` or `DASHBOARD_DB_CA_CERT`), otherwise the dashboard does not connect.
 6. **Scenario 01 consumes a real demo quote per live rehearsal** (9 remain), and scenario 03 is replay-only by design.
 7. **Imported history is thinner than live history:** no checklists or Drive folders for imported projects, and the "Deposit"/"Progress" invoice labels are inferred from invoice dates.
 

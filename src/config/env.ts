@@ -14,6 +14,24 @@ export function requireEnv(name: string): string {
   return v;
 }
 
+/**
+ * Sets KEY=value lines in the text of an env file, keeping every other line (comments, other keys) as it was.
+ * A key that already exists is replaced in place; a new key is appended. Used when a script owns only some keys.
+ */
+export function mergeEnvFile(existing: string, updates: Record<string, string>): string {
+  const lines = existing.split(/\r?\n/);
+  if (lines.at(-1) === '') lines.pop();
+  const left = new Map(Object.entries(updates));
+  const out = lines.map((line) => {
+    const key = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(line)?.[1];
+    if (key === undefined || !left.has(key)) return line;
+    const v = left.get(key)!; left.delete(key);
+    return `${key}=${v}`;
+  });
+  for (const [k, v] of left) out.push(`${k}=${v}`);
+  return out.join('\n') + '\n';
+}
+
 /** Host only: safe to log. Never log the full URL (it may embed a password). */
 export function describeUrl(u: string): string {
   const url = new URL(u);

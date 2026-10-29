@@ -100,6 +100,24 @@ export async function getPurchaseOrders(q: Query, p: string): Promise<PurchaseOr
   return rows.map((r) => ({ ...(r as unknown as PurchaseOrder), total_inc_gst: Number(r.total_inc_gst) }));
 }
 
+/** One Xero draft generation of an invoice: generation 1 is the first draft, each reissue adds the next. */
+export interface XeroGeneration {
+  invoice_number: string; generation: number; status: string; is_current: boolean;
+  xero_invoice_id: string | null; xero_invoice_number: string | null; xero_status_verified: string | null;
+  approval_number: string | null; approval_kind: string | null; requested_by: string | null; approved_by: string | null; approved_at: string | null;
+}
+/** Every Xero document a project's invoices have had, oldest first. Empty where the history view is not installed yet. */
+export async function getXeroHistory(q: Query, p: string): Promise<XeroGeneration[]> {
+  try {
+    return await q<XeroGeneration>(`select invoice_number, generation, status, is_current, xero_invoice_id, xero_invoice_number, xero_status_verified,
+                                           approval_number, approval_kind, requested_by, approved_by, approved_at::text
+                                      from v_dashboard_invoice_xero_history where project_number = $1 order by invoice_number, generation`, [p]);
+  } catch (e) {
+    if ((e as { code?: string }).code === '42P01') return [];   // undefined view: migration 20261009040000 not applied here
+    throw e;
+  }
+}
+
 export interface InvoiceLine { invoice_number: string; status: string; sync_status: string; issue_date: string | null; due_date: string | null;
   total_inc_gst: number; amount_paid: number; outstanding: number; is_overdue: boolean }
 export async function getInvoices(q: Query, p: string): Promise<InvoiceLine[]> {
@@ -121,6 +139,31 @@ export const getTimeline = (q: Query, p: string, limit = 60) =>
 export interface ExceptionRow { exception_number: string; project_number: string | null; business_reference: string | null; workflow_key: string | null;
   error_class: string; error_message: string; retryable: boolean; attempt_count: number; resolution_status: string;
   first_failed_at: string; last_attempt_at: string | null; resolution_note: string | null }
+/** One line of the operations status (v_dashboard_ops_status), computed now from the authoritative rows. */
+export interface OpsStatus { key: string; label: string; state: 'ok' | 'info' | 'attention' | 'problem' | 'stale' | 'unknown'; count: number | null; since: string | null; detail: string }
+/** null where the view is not installed yet (the Health page then shows the service checks only). */
+export async function getOpsStatus(q: Query): Promise<{ rows: OpsStatus[]; read_at: string } | null> {
+  try {
+    const rows = await q<OpsStatus>(`select key, label, state, count::int, to_char(since at time zone 'Australia/Brisbane', 'YYYY-MM-DD HH24:MI') since, detail
+                                     from v_dashboard_ops_status order by ord`);
+    return { rows, read_at: new Date().toISOString() };
+  } catch (e) {
+    if ((e as { code?: string }).code === '42P01') return null;
+    throw e;
+  }
+}
+/** Where an exception came from (v_dashboard_exception_sources; no payload). Empty where that view is not installed yet. */
+export interface ExceptionSource { exception_number: string; source: string | null; event_type: string | null; airtable_record_id: string | null; named_record: string | null }
+export async function getExceptionSources(q: Query, numbers: string[]): Promise<Record<string, ExceptionSource>> {
+  if (!numbers.length) return {};
+  try {
+    const rows = await q<ExceptionSource>('select exception_number, source, event_type, airtable_record_id, named_record from v_dashboard_exception_sources where exception_number = any($1)', [numbers]);
+    return Object.fromEntries(rows.map((r) => [r.exception_number, r]));
+  } catch (e) {
+    if ((e as { code?: string }).code === '42P01') return {};
+    throw e;
+  }
+}
 export const getExceptions = (q: Query, opts: { openOnly?: boolean; project?: string } = {}) =>
   q<ExceptionRow>(`select exception_number, project_number, business_reference, workflow_key, error_class, error_message, retryable, attempt_count::int,
                           resolution_status, to_char(first_failed_at at time zone 'Australia/Brisbane', 'YYYY-MM-DD HH24:MI') first_failed_at,
@@ -146,9 +189,18 @@ export interface PreparedInvoice {
  * the project, and stores a hashed preview awaiting a finance approver. Creating the invoice in Xero happens only after
  * that approval, through the existing n8n workflow.
  */
+/** As a signed-in employee (web_invoice_prepare): the database checks the session and role and records the requester. */
+export async function prepareInvoiceAsStaff(q: Query, projectNumber: string, token: string): Promise<PreparedInvoice> {
+  if (!PROJECT_NUMBER.test(projectNumber)) return { outcome: 'INVALID_EVENT', message: `${projectNumber} is not a project number (PRJ-YYYY-NNNN)` };
+  const [r] = await q<{ r: PreparedInvoice & { ok?: boolean; code?: string; detail?: string } }>('select web_invoice_prepare($1, $2) as r', [token, projectNumber]);
+  const res = r!.r;
+  return res.outcome ? res : { outcome: res.code === 'SIGNED_OUT' ? 'SIGNED_OUT' : 'PERMISSION_DENIED', message: res.detail ?? 'Your role cannot prepare invoices.' };
+}
 export async function prepareInvoice(q: Query, projectNumber: string, requestId: string, actor: string): Promise<PreparedInvoice> {
   if (!PROJECT_NUMBER.test(projectNumber)) return { outcome: 'INVALID_EVENT', message: `${projectNumber} is not a project number (PRJ-YYYY-NNNN)` };
-  const event = { event_id: `dashboard:copilot:${requestId}`, event_type: 'invoice.prepare_requested', source: 'roofops-dashboard',
+  // One request may prepare more than one project (AC-22): the event names the project, so each gets its own preview, and
+  // the same project asked twice in one request is still one preview.
+  const event = { event_id: `dashboard:copilot:${requestId}:${projectNumber}`, event_type: 'invoice.prepare_requested', source: 'roofops-dashboard',
                   actor_id: actor, occurred_at: new Date().toISOString(), payload: { project_number: projectNumber } };
   const [r] = await q<{ r: PreparedInvoice }>(`select wf_invoice_prepare($1::jsonb, 'dashboard') as r`, [JSON.stringify(event)]);
   return r!.r;
@@ -175,6 +227,23 @@ export const recentActivity = (q: Query, limit = 25) =>
                           actor, reference, reason, external_reference, channel
                    from v_dashboard_project_timeline where source = 'EVENT' and occurred_at > now() - interval '30 days'
                    order by v_dashboard_project_timeline.occurred_at desc limit $1`, [limit]);
+
+export interface PreStartBlocked { project_number: string; customer_name: string; status: string; planned_start_date: string | null;
+  project_manager: string | null; open_items: string[] }
+/** Jobs the pre-start gate holds (AC-13B): not started, with a required SWMS / materials item still open. */
+export async function listPreStartBlocked(q: Query): Promise<PreStartBlocked[]> {
+  return q<PreStartBlocked>(`select project_number, customer_name, status, planned_start_date::text, project_manager, open_items
+      from v_dashboard_pre_start_blocked order by planned_start_date nulls last, project_number`);
+}
+
+export interface PendingQuote { quote_number: string; status: string; customer_name: string; site: string; job_type: string | null; estimator: string | null;
+  total_inc_gst: number; created_on: string | null; sent_on: string | null; valid_until: string | null; in_airtable: boolean }
+/** Quotes still open with the customer: drafts not sent yet, and sent quotes not yet accepted, lost or expired. */
+export async function listPendingQuotes(q: Query): Promise<PendingQuote[]> {
+  const rows = await q<Record<string, unknown>>(`select quote_number, status, customer_name, site, job_type, estimator, total_inc_gst::text, created_on::text,
+      sent_on::text, valid_until::text, in_airtable from v_dashboard_quotes where status in ('DRAFT', 'SENT') order by status desc, coalesce(sent_on, created_on), quote_number`);
+  return rows.map((r) => ({ ...(r as unknown as PendingQuote), total_inc_gst: Number(r.total_inc_gst), in_airtable: Boolean(r.in_airtable) }));
+}
 
 export async function listOverdueInvoices(q: Query): Promise<(InvoiceLine & { project_number: string })[]> {
   const rows = await q<Record<string, unknown>>(`select invoice_number, project_number, status, sync_status, issue_date::text, due_date::text, total_inc_gst::text,

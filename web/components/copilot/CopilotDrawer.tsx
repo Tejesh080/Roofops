@@ -7,7 +7,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { ArrowUp, ChevronRight, FileCheck2, Loader2, Sparkles, X } from 'lucide-react';
 import type { CopilotReply, ToolStep } from '@/lib/copilot/agent';
 import type { PreparedInvoiceCard, ToolCard } from '@/lib/copilot/tools';
-import { airtableProjectUrl, date, money } from '@/lib/labels';
+import { INVOICE_NEXT_STEP, airtableProjectUrl, date, money } from '@/lib/labels';
 import { useToast } from '@/components/ui/Providers';
 import { ASK_EVENT } from './AskButton';
 
@@ -76,7 +76,7 @@ function InvoiceAction({ c }: { c: PreparedInvoiceCard }) {
               <tr><td>Reference · due</td><td>{p.reference} · {date(p.due_date)}</td></tr>
             </tbody></table>
             {awaiting && <div className="ac-status"><span className="pulse" aria-hidden />Awaiting finance approval{c.approval_number ? ` · ${c.approval_number}` : ''}</div>}
-            <div className="ac-note">{awaiting ? `Nothing has been sent to Xero. Once approved, RoofOps creates one draft invoice in ${p.xero_tenant_name || 'the Xero Demo Company'} and checks it.` : c.message}</div>
+            <div className="ac-note">{awaiting ? `Nothing has been sent to Xero. Once approved, RoofOps creates one draft invoice in ${p.xero_tenant_name || 'the Xero Demo Company'} and checks it. ${INVOICE_NEXT_STEP.approve}` : c.message}</div>
           </>
         ) : <div className="ac-note">{c.message}</div>}
       </div>
@@ -118,8 +118,12 @@ export function CopilotDrawer() {
       const res = await fetch('/api/copilot', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: next.filter((t) => !t.error).map((t) => ({ role: t.role, content: t.content })) }) });
       if (res.status === 401) { window.location.href = '/login'; return; }
-      const body = (await res.json()) as CopilotReply & { error?: string };
-      if (!res.ok) throw new Error(body.error ?? 'The copilot is unavailable right now.');
+      // A gateway timeout or proxy error page is not JSON: still say something plain.
+      const body = (await res.json().catch(() => null)) as (CopilotReply & { error?: string }) | null;
+      if (!res.ok || !body) {
+        throw new Error(body?.error ?? (res.status === 504 ? 'The copilot took too long to answer. Try again; every page works without it.'
+          : 'The copilot is unavailable right now. Every page of the dashboard still works without it.'));
+      }
       setTurns([...next, { role: 'assistant', content: body.reply, steps: body.steps, cards: body.cards }]);
       const prepared = body.cards.find((c) => c.data.outcome === 'PREVIEW_READY');
       if (prepared) toast({ title: 'Invoice preview prepared', sub: `${prepared.data.project} · awaiting finance approval` });

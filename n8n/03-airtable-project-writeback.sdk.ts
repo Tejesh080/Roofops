@@ -30,7 +30,7 @@ function refuse(step, cls, message) {
 }
 const F = { number: 'fldhhnQXlbuFaveK3', quote: 'fld08eKCeuDCsJLjz', customer: 'fldG4mPoV6sUkA9rM', status: 'fldi2Qwz1dAh2tcTE', pm: 'fldnZcRBxG7hTebD5',
   materialTask: 'fld93YzhrpOVIviRY', driveFolder: 'fldgVDT29UOOOtlqO', roofopsId: 'fldc4T0AgU3zCmANC',
-  completionPhotos: 'fldbbksVL3dT6cqyS', complianceCertificate: 'fldf7iJiyHFxOQgUy' };
+  completionPhotos: 'fldbbksVL3dT6cqyS', complianceCertificate: 'fldf7iJiyHFxOQgUy', swmsSigned: 'fldM6kgPz6QZagPAC', materialsReviewed: 'fldozWSCU877wEZHq' };
 const QF = { projects: 'flduJm0iR7pBb157b', number: 'fldyP20HNafS614d5' };
 const input = $('When Called By Main Workflow').first().json;
 const job = $('Claim Airtable Write-back').last().json.c.payload || {};
@@ -67,10 +67,21 @@ return [{ json: Object.assign({}, input, { airtable: { status: dead ? 'FAILED' :
   message: dead ? 'Dead-lettered after ' + c.attempts + ' attempts: ' + c.last_error : 'Not claimed (' + c.status + ')' } }) }];` } },
   output: [{ airtable: { status: 'NOT_CLAIMED' } }] });
 
+// A retry may find the record an earlier attempt created (that attempt then failed before its proof was recorded).
+const findExisting = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Find Existing Project Record', onError: 'continueRegularOutput',
+  parameters: { method: 'GET', url: PROJECTS, authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi',
+    sendQuery: true, queryParameters: { parameters: [
+      { name: 'filterByFormula', value: expr("{RoofOps ID}='{{ $('Claim Airtable Write-back').last().json.c.payload.project_id }}'") },
+      { name: 'fields[]', value: 'RoofOps ID' }, { name: 'pageSize', value: '10' }] }, options: RAW },
+  credentials: AIRTABLE }, output: [{ statusCode: 200, body: { records: [] } }] });
+
 const build = node({ type: 'n8n-nodes-base.code', version: 2, config: { name: 'Build Project Record',
   parameters: { mode: 'runOnceForAllItems', jsCode: FAIL_JS + `
 if (!job.quote_airtable_record_id) return [{ json: refuse('build record', 'SCHEMA_MISMATCH', 'no verified Airtable record id for quote ' + job.quote_number) }];
 if (!job.drive_folder || !job.drive_folder.web_view_link) return [{ json: refuse('build record', 'SCHEMA_MISMATCH', 'claim did not carry the verified Drive folder') }];
+const found = $('Find Existing Project Record').first().json;
+if (found.statusCode !== 200) return [{ json: fail('find existing project record', found) }];
+const existing = (found.body.records || []).length > 0;
 const fields = {};
 fields[F.number] = job.project_number;
 fields[F.quote] = [job.quote_airtable_record_id];
@@ -81,9 +92,17 @@ fields[F.materialTask] = job.material_task;
 fields[F.driveFolder] = job.drive_folder.web_view_link;
 fields[F.roofopsId] = job.project_id;
 // AC-13A: a new project's completion gate starts To do (wf_quote_accepted creates both items OPEN); staff set them here later.
-fields[F.completionPhotos] = 'To do';
-fields[F.complianceCertificate] = 'To do';
-return [{ json: { ok: true, request: { performUpsert: { fieldsToMergeOn: [F.roofopsId] }, returnFieldsByFieldId: true, typecast: false, records: [{ fields: fields }] } } }];` } },
+// AC-13B: and so does its pre-start gate (both items OPEN at creation; the job cannot start until staff set them).
+// Only on the record's creation: a record that already exists keeps its checklist, because staff may have set an item
+// since (a pre-start item can be Done while the job is still Planning) and RoofOps never writes a checklist value over
+// a person's. Reconciliation compares those fields with RoofOps.
+if (!existing) {
+  fields[F.completionPhotos] = 'To do';
+  fields[F.complianceCertificate] = 'To do';
+  fields[F.swmsSigned] = 'To do';
+  fields[F.materialsReviewed] = 'To do';
+}
+return [{ json: { ok: true, existing: existing, request: { performUpsert: { fieldsToMergeOn: [F.roofopsId] }, returnFieldsByFieldId: true, typecast: false, records: [{ fields: fields }] } } }];` } },
   output: [{ ok: true, request: {} }] });
 const buildOk = ifElse({ version: 2.3, config: { name: 'Record Built?', parameters: OK_IF } });
 
@@ -135,8 +154,12 @@ if (f[F.number] !== job.project_number) problems.push('Project Number is ' + f[F
 if (f[F.roofopsId] !== job.project_id) problems.push('RoofOps ID is ' + f[F.roofopsId]);
 if (f[F.status] !== job.status) problems.push('Status is ' + f[F.status]);
 if (f[F.driveFolder] !== job.drive_folder.web_view_link) problems.push('Drive Folder is ' + f[F.driveFolder]);
-if (f[F.completionPhotos] !== 'To do') problems.push('Completion Photos is ' + f[F.completionPhotos]);
-if (f[F.complianceCertificate] !== 'To do') problems.push('Compliance Certificate is ' + f[F.complianceCertificate]);
+if (!$('Build Project Record').first().json.existing) {               // written by this attempt: they must have landed
+  if (f[F.completionPhotos] !== 'To do') problems.push('Completion Photos is ' + f[F.completionPhotos]);
+  if (f[F.complianceCertificate] !== 'To do') problems.push('Compliance Certificate is ' + f[F.complianceCertificate]);
+  if (f[F.swmsSigned] !== 'To do') problems.push('SWMS Signed is ' + f[F.swmsSigned]);
+  if (f[F.materialsReviewed] !== 'To do') problems.push('Materials Reviewed is ' + f[F.materialsReviewed]);
+}
 const quoteLinks = f[F.quote] || [];
 if (!quoteLinks.includes(job.quote_airtable_record_id)) problems.push('Project is not linked to quote ' + job.quote_airtable_record_id);
 const backLinks = (q.body.fields || {})[QF.projects] || [];
@@ -192,13 +215,13 @@ return [{ json: Object.assign({}, input, { airtable: { status: 'FAILED', excepti
 
 export default workflow('roofops-airtable-project-writeback', '[RoofOps] 03 Airtable Project Write-back')
   .add(start).to(claim).to(claimRoute
-    .onCase(0, build.to(buildOk
+    .onCase(0, findExisting.to(build.to(buildOk
       .onTrue(upsert.to(checkUpsert).to(upsertOk
         .onTrue(readProject.to(readQuote).to(countMatches).to(verify).to(verifyOk
           .onTrue(complete)
           .onFalse(recordFailure)))
         .onFalse(recordFailure)))
-      .onFalse(recordFailure)))
+      .onFalse(recordFailure))))
     .onCase(1, alreadyDone)
     .onCase(2, notClaimed))
   .add(complete).to(done)

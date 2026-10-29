@@ -3,7 +3,7 @@ import { BellRing, ChevronRight, PartyPopper } from 'lucide-react';
 import type { AttentionItem } from '@/lib/insights';
 import { CardHead, Empty } from '@/components/ui/Empty';
 
-const KIND: Record<AttentionItem['kind'], string> = { risk: 'At risk', issue: 'Automation issue', approval: 'Approval', payment: 'Payment' };
+const KIND: Record<AttentionItem['kind'], string> = { risk: 'At risk', issue: 'Automation issue', approval: 'Approval', payment: 'Payment', billing: 'Billing problem' };
 
 export function AttentionPanel({ items, total, compact = true }: { items: AttentionItem[]; total: number; compact?: boolean }) {
   return (

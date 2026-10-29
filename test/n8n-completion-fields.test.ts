@@ -78,9 +78,17 @@ describe.each(TARGETS)('AC-13A: n8n 06 and 03 carry the completion fields [%s]',
         .toEqual([{ status: 'WAIVED', waived_reason: 'Customer refused access for photos' }]);
     });
 
-    it('a Note-only edit is not a checklist change (nothing is sent)', async () => {
+    // AC-13B review: a Note edited on its own now reaches RoofOps (it replaces a waiver's reason). It is still not a
+    // checklist change: the item keeps its status, and a Note on an item that is not waived records and corrects nothing.
+    it('a Note-only edit is forwarded but is not a checklist change: the item keeps its status, nothing is recorded or corrected', async () => {
+      const photos = async () => (await db.query<R>(`select ci.status, ci.waived_reason from project_checklist_items ci join projects p on p.id = ci.project_id
+          where p.project_number = 'PRJ-2026-0024' and ci.item_code = 'COMPLETION_PHOTOS'`))[0];
+      const before = await photos();
+      expect(before).toMatchObject({ waived_reason: null });
       const r = await run([page(recFor('PRJ-2026-0024'), { [F.photosNote]: 'typing…' }, {}, {}, 103)]);
-      expect(r.out.get('Extract Record Changes')![0]!.json).toMatchObject({ no_events: true });
+      expect(r.out.get('Extract Record Changes')![0]!.json).toMatchObject({ event: { changes: { [F.photosNote]: { current: 'typing…' } } } });
+      expect(r.out.get('Apply Change In Postgres')![0]!.json.r as R).toMatchObject({ outcome: 'NO_CHANGE', corrections: {} });
+      expect(await photos()).toEqual(before);
     });
   });
 
@@ -93,6 +101,9 @@ describe.each(TARGETS)('AC-13A: n8n 06 and 03 carry the completion fields [%s]',
       const r = new N8nRun(wf.nodes, wf.edges, { db, http: () => { throw new Error('no HTTP expected'); } });
       r.seed('When Called By Main Workflow', [{ json: { airtable_key: 'airtable:project-writeback:x', project_id: job.project_id } }]);
       r.seed('Claim Airtable Write-back', [{ json: { c: { claimed: true, attempt: 1, payload: job } } }]);
+      // A new project: no Airtable record yet, so this attempt writes the checklist (AC-13B review: never over an existing one).
+      r.seed('Find Existing Project Record', [{ json: { statusCode: 200, body: { records: [] } } }]);
+      r.seed('Build Project Record', [{ json: { ok: true, existing: false } }]);
       return r;
     };
 
@@ -113,7 +124,8 @@ describe.each(TARGETS)('AC-13A: n8n 06 and 03 carry the completion fields [%s]',
         return r.out.get('Verify Airtable Read-Back')![0]!.json;
       };
       const good = { [F.number]: job.project_number, [F.roofopsId]: job.project_id, [F.status]: 'Planning', [F.driveFolder]: job.drive_folder.web_view_link,
-                     [F.quote]: [job.quote_airtable_record_id], [F.photos]: 'To do', [F.cert]: 'To do' };
+                     [F.quote]: [job.quote_airtable_record_id], [F.photos]: 'To do', [F.cert]: 'To do',
+                     fldM6kgPz6QZagPAC: 'To do', fldozWSCU877wEZHq: 'To do' };                  // AC-13B: 03 also writes the pre-start gate
       expect(await verify(good)).toMatchObject({ ok: true });
       const missing = Object.fromEntries(Object.entries(good).filter(([k]) => k !== F.cert));
       expect(await verify(missing)).toMatchObject({ ok: false, failure: { error_class: 'RECONCILIATION_MISMATCH', message: expect.stringMatching(/Compliance Certificate/) as unknown } });

@@ -27,6 +27,7 @@ const T_PROJECTS = 'tblvUPIoebC3zoacv';
 const F = {
   status: 'fldi2Qwz1dAh2tcTE', reason: 'fld5MhzMBtA4CBUHo', start: 'fld8rf6RZLgfs6Ron', end: 'fldvZtiassZEgLMAN', sync: 'fldVrJOuyhbNtxnVh',
   photos: 'fldbbksVL3dT6cqyS', photosNote: 'fldA77ad94yUmvnu3', cert: 'fldf7iJiyHFxOQgUy', certNote: 'fldLi9FkGDFAbf0QB',
+  swms: 'fldM6kgPz6QZagPAC', materials: 'fldozWSCU877wEZHq',
 };
 const APPROVER = 'usr7uCnNO15fCefbH';            // mapped to EMP-900 (employee_external_identities)
 const UNMAPPED = 'usrSTAFFMEMBER01';             // an Airtable user RoofOps cannot attribute
@@ -95,6 +96,8 @@ describe.each(TARGETS)('AC-13A: project and financial lifecycles never contradic
   beforeAll(async () => {
     db = await migratedDb(target);
     await importBundle(db);
+    // Finals with variation lines carry per-line GST for Xero (20261017030000); this suite tests billing/approval, not that gate.
+    await db.query("update app_settings set value = 'on' where key = 'xero.line_tax_amounts'");
     await db.exec(`update app_settings set value = '11111111-2222-3333-4444-555555555555' where key = 'xero.demo_tenant_id';
                    insert into external_links (provider, entity_type, entity_id, external_type, external_id, last_synced_at, verified_at)
                    select 'AIRTABLE', 'project', id, 'Record', 'rec' || substr(md5(project_number), 1, 14), now(), now() from projects`);
@@ -139,6 +142,9 @@ describe.each(TARGETS)('AC-13A: project and financial lifecycles never contradic
   it('3. in progress: Done / Waived / Not applicable through Airtable, attributed, reason required, state machine enforced', async () => {
     expect(await change(P, { [F.start]: '2026-10-01', [F.end]: '2026-10-20' })).toMatchObject({ outcome: 'APPLIED' });
     expect(await change(P, { [F.status]: 'Scheduled' })).toMatchObject({ outcome: 'APPLIED' });
+    // AC-13B: the job starts only once its pre-start items are satisfied.
+    expect(await change(P, { [F.swms]: 'Done' })).toMatchObject({ outcome: 'APPLIED' });
+    expect(await change(P, { [F.materials]: 'Done' })).toMatchObject({ outcome: 'APPLIED' });
     expect(await change(P, { [F.status]: 'In Progress' })).toMatchObject({ outcome: 'APPLIED' });
 
     const unmapped = await change(P, { [F.photos]: 'Done' }, { actor: UNMAPPED });
@@ -212,8 +218,12 @@ describe.each(TARGETS)('AC-13A: project and financial lifecycles never contradic
   });
 
   it('5 + 6. the final invoice is raised; fully invoiced but unpaid: checklist locked, cannot be cancelled or closed', async () => {
+    const finalCard = async () => (await one(`select status from v_dashboard_project_checklist where project_number = $1 and title = 'Final invoice approved'`, [P])).status;
+    expect(await finalCard()).toBe('OPEN');
     expect(await prepare(P)).toMatchObject({ outcome: 'PREVIEW_READY' });
     expect(await approve(P)).toMatchObject({ outcome: 'APPROVED' });
+    // LIFE-01: the project's checklist card shows the final invoice approved (the dashboard view follows its approval).
+    expect(await finalCard()).toBe('DONE');
     expect(await one(`select i.invoice_type, i.status, i.sync_status from invoices i join projects p on p.id = i.project_id where p.project_number = $1`, [P]))
       .toMatchObject({ invoice_type: 'FINAL', status: 'APPROVED', sync_status: 'PENDING' });
     expect(Number((await billing(P)).remaining)).toBe(0);

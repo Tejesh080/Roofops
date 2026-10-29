@@ -70,7 +70,9 @@ export async function importBundle(db: Db, dir = NORMALISED_DIR): Promise<Import
 
     await db.exec(readFileSync(TRANSFORM_SQL, 'utf8'));
 
-    await db.query(`insert into app_settings (key, value) values ('business_date_override', $1)
+    // The bundle's dates are normalised to its demo date, so a database loaded from it runs on that synthetic date,
+    // explicitly (business_date_mode SYNTHETIC); a real deployment sets REAL.
+    await db.query(`insert into app_settings (key, value) values ('business_date_override', $1), ('business_date_mode', 'SYNTHETIC')
                     on conflict (key) do update set value = excluded.value, updated_at = now()`, [manifest.demo_date]);
 
     const rowCounts: Record<string, number> = {};

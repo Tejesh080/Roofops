@@ -10,10 +10,12 @@ import type { Db } from '../../src/db/db.js';
 import type { Edge, SdkNode } from './n8n-sdk-shim.js';
 
 export type Item = { json: Record<string, unknown> };
-export interface HttpRequest { method: string; url: string; headers: Record<string, string>; query: Record<string, string> }
+export interface HttpRequest { method: string; url: string; headers: Record<string, string>; query: Record<string, string>; body?: unknown }
 export type HttpHandler = (req: HttpRequest) => { statusCode: number; body: unknown; headers?: Record<string, string> };
 
 type P = Record<string, unknown>;
+/** A JSON body as the service would receive it (left as text when it is not JSON). */
+const parseBody = (v: unknown): unknown => { try { return JSON.parse(String(v)) as unknown; } catch { return v; } };
 const params = (n: SdkNode) => (n.config.parameters ?? {}) as P;
 
 export class N8nRun {
@@ -71,7 +73,8 @@ ${String(p.jsCode)}
         const kv = (list: unknown) => Object.fromEntries(((list as P | undefined)?.parameters as P[] | undefined ?? [])
           .map((x) => [String(x.name), String(this.evalParam(x.value, input, i))]));
         const req: HttpRequest = { method: typeof p.method === 'string' ? p.method : 'GET', url: String(this.evalParam(p.url, input, i)),
-          headers: p.sendHeaders ? kv(p.headerParameters) : {}, query: p.sendQuery ? kv(p.queryParameters) : {} };
+          headers: p.sendHeaders ? kv(p.headerParameters) : {}, query: p.sendQuery ? kv(p.queryParameters) : {},
+          ...(p.sendBody && p.jsonBody !== undefined ? { body: parseBody(this.evalParam(p.jsonBody, input, i)) } : {}) };
         try {
           const r = this.deps.http(req);
           if (!(((p.options as P | undefined)?.response as P | undefined)?.response as P | undefined)?.fullResponse) throw new Error(`${n.name}: expected fullResponse`);

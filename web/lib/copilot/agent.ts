@@ -5,11 +5,13 @@
  * database, so the figures a person approves never come from model-generated text.
  */
 import { TOOLS, toolSchemas, type ToolCard, type ToolContext } from './tools.ts';
+import { answerWithoutAi, type Unavailable } from './fallback.ts';
 import type { Query } from '../queries.ts';
 
 export interface ChatTurn { role: 'user' | 'assistant'; content: string }
 export interface ToolStep { tool: string; tier: string; args: Record<string, unknown>; ok: boolean }
-export interface CopilotReply { reply: string; steps: ToolStep[]; cards: ToolCard[]; model: string }
+/** fallback: set when the AI provider was unavailable and the answer came straight from RoofOps data (fallback.ts). */
+export interface CopilotReply { reply: string; steps: ToolStep[]; cards: ToolCard[]; model: string; fallback?: Unavailable }
 
 interface Msg { role: 'system' | 'user' | 'assistant' | 'tool'; content: string | null; tool_calls?: ToolCall[]; tool_call_id?: string }
 interface ToolCall { id: string; type: 'function'; function: { name: string; arguments: string } }
@@ -19,7 +21,7 @@ const MAX_ROUNDS = 6;
 function systemPrompt(today: string): string {
   return [
     'You are the RoofOps Operations Copilot for a small Australian roofing business. You speak to the owner, who is not technical.',
-    `Today is ${today} (demo business date). All data is synthetic demo data for a fictional business.`,
+    `Today is ${today} (the RoofOps business date; it may be a synthetic demo date). All data is synthetic demo data for a fictional business.`,
     'Rules:',
     '- Answer ONLY from tool results. Never guess numbers, names, dates or statuses. If a tool has no data, say so.',
     '- A status is exactly the "stage" a tool returns (RoofOps is the source of truth). Never infer a status from dates, invoices or anything else.',
@@ -35,56 +37,133 @@ function systemPrompt(today: string): string {
     '- Mention project numbers (PRJ-YYYY-NNNN) and customer names so the owner can find them. Use AUD with $ and two decimals.',
     '- Keep answers short: a one-line summary, then a few bullet points. No tables.',
     '- Invoices: you can only PREPARE a preview (prepare_invoice) when the user explicitly asks. You cannot create, approve, send or pay an invoice. '
-      + 'After preparing, state the amount and that it now waits for a finance approver, who approves it in Airtable; only then does RoofOps create one DRAFT invoice in the Xero Demo Company.',
+      + 'After preparing, state the amount and that it now waits for a finance approver, who approves it in Airtable; only then does RoofOps create one DRAFT invoice in the Xero Demo Company. '
+      + 'Whenever you say how an invoice awaiting approval gets approved, give the steps in how_it_gets_approved: in Airtable, Prepare on the project row to show the preview there, check it, then Approve.',
     '- Never offer to prepare an invoice that is already awaiting approval or already in Xero.',
     '- After prepare_invoice returns a preview, the app shows the figures in a card: reply in at most two sentences (amount, and that it now waits for a finance approver). Do not repeat the breakdown.',
     '- If asked to do anything else that changes data (approve, send, pay, delete, email), explain that it must be done by a person in the normal process.',
   ].join('\n');
 }
 
-async function chat(messages: Msg[]): Promise<{ message: Msg; model: string }> {
-  const key = process.env.DEEPSEEK_API_KEY;
-  const base = process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com';
-  const model = process.env.DEEPSEEK_MODEL ?? 'deepseek-flash';
-  if (!key) throw new Error('The copilot is not configured (DEEPSEEK_API_KEY missing on the server).');
-  const res = await fetch(`${base}/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-    body: JSON.stringify({ model, messages, tools: toolSchemas(), tool_choice: 'auto', temperature: 0, max_tokens: 900 }),
-    signal: AbortSignal.timeout(60_000),
-  });
-  if (!res.ok) throw new Error(`DeepSeek answered HTTP ${res.status}`);
-  const body = (await res.json()) as { choices?: { message: Msg }[]; model?: string };
-  const message = body.choices?.[0]?.message;
-  if (!message) throw new Error('DeepSeek returned no answer');
-  return { message, model: body.model ?? model };
+/** The provider could not give an answer; `reason` picks the plain-words explanation shown with the data-only answer. */
+export class ProviderUnavailable extends Error {
+  constructor(readonly reason: Unavailable, message: string) { super(message); }
 }
 
-export async function runCopilot(query: Query, history: ChatTurn[], requestId: string): Promise<CopilotReply> {
+/** Transient provider answers worth retrying; anything else (400, 401, 403, 404 …) fails at once. */
+const RETRYABLE = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
+/** Bounded: 3 attempts, each at most 25 s, all within 45 s, so a busy provider never hangs the request. */
+export const RETRY = { attempts: 3, attemptMs: 25_000, deadlineMs: 45_000, backoffMs: [800, 2_000], maxRetryAfterMs: 4_000 };
+
+export interface ChatDeps { fetch: typeof fetch; sleep: (ms: number) => Promise<void>; now: () => number; env: Record<string, string | undefined> }
+const realDeps = (): ChatDeps => ({ fetch, sleep: (ms) => new Promise((r) => setTimeout(r, ms)), now: Date.now, env: process.env });
+
+export async function chat(messages: Msg[], deps: ChatDeps = realDeps()): Promise<{ message: Msg; model: string }> {
+  const key = deps.env.DEEPSEEK_API_KEY;
+  const base = deps.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com';
+  const model = deps.env.DEEPSEEK_MODEL ?? 'deepseek-flash';
+  if (!key) throw new ProviderUnavailable('not_configured', 'DEEPSEEK_API_KEY is not set on the server');
+  const start = deps.now();
+  let last: ProviderUnavailable = new ProviderUnavailable('busy', 'no attempt made');
+  for (let attempt = 1; attempt <= RETRY.attempts; attempt++) {
+    const left = RETRY.deadlineMs - (deps.now() - start);
+    if (left < 1_000) break;
+    let wait = RETRY.backoffMs[attempt - 1] ?? 2_000;
+    let res: Response | null = null;
+    try {
+      res = await deps.fetch(`${base}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+        body: JSON.stringify({ model, messages, tools: toolSchemas(), tool_choice: 'auto', temperature: 0, max_tokens: 900 }),
+        signal: AbortSignal.timeout(Math.min(RETRY.attemptMs, left)),
+      });
+    } catch (e) {
+      const name = (e as Error).name;
+      last = new ProviderUnavailable(name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'busy', `DeepSeek request failed: ${(e as Error).message}`);
+    }
+    if (res?.ok) {
+      const body = (await res.json().catch(() => null)) as { choices?: { message: Msg; finish_reason?: string }[]; model?: string } | null;
+      const message = body?.choices?.[0]?.message;
+      if (!message) throw new ProviderUnavailable('bad_answer', 'DeepSeek returned no answer');
+      // An answer cut off at the length limit may carry a half-written tool call: never act on it.
+      if (body?.choices?.[0]?.finish_reason === 'length') throw new ProviderUnavailable('bad_answer', 'DeepSeek stopped mid-answer (length limit)');
+      return { message, model: body?.model ?? model };
+    }
+    if (res) {
+      last = new ProviderUnavailable('busy', `DeepSeek answered HTTP ${res.status}`);
+      if (!RETRYABLE.has(res.status)) throw last;
+      const after = Number(res.headers.get('retry-after'));
+      if (Number.isFinite(after) && after > 0) wait = Math.min(after * 1000, RETRY.maxRetryAfterMs);
+    }
+    if (attempt < RETRY.attempts && RETRY.deadlineMs - (deps.now() - start) > wait + 1_000) await deps.sleep(wait);
+    else break;
+  }
+  throw last;
+}
+
+interface ParamSchema { properties?: Record<string, { type?: string; enum?: unknown[] }>; required?: string[]; additionalProperties?: boolean }
+
+/**
+ * The tool's arguments against its declared parameters: a JSON object, the required keys, declared keys only, strings
+ * where strings are declared, enum values only. The schemas are sent to the provider, but nothing obliges a model to
+ * follow them, so they are enforced here; a call that does not fit is answered with an error and never runs.
+ */
+export function checkArgs(raw: string, schema: ParamSchema): { ok: true; args: Record<string, unknown> } | { ok: false; error: Record<string, unknown> } {
+  let v: unknown;
+  try { v = JSON.parse(raw.trim() === '' ? '{}' : raw); } catch { return { ok: false, error: { error: 'invalid arguments', detail: 'the arguments are not valid JSON' } }; }
+  if (v === null || typeof v !== 'object' || Array.isArray(v)) return { ok: false, error: { error: 'invalid arguments', detail: 'the arguments must be an object' } };
+  const args = v as Record<string, unknown>;
+  const props = schema.properties ?? {};
+  for (const k of schema.required ?? []) if (!(k in args)) return { ok: false, error: { error: 'invalid arguments', detail: `${k} is required` } };
+  for (const [k, val] of Object.entries(args)) {
+    const p = props[k];
+    if (!p) {
+      if (schema.additionalProperties === false) return { ok: false, error: { error: 'invalid arguments', detail: `${k} is not an argument of this tool` } };
+      continue;
+    }
+    if (p.type === 'string' && typeof val !== 'string') return { ok: false, error: { error: 'invalid arguments', detail: `${k} must be text` } };
+    if (p.enum && !p.enum.includes(val)) return { ok: false, error: { error: 'invalid arguments', detail: `${k} must be one of the allowed values`, allowed: p.enum } };
+  }
+  return { ok: true, args };
+}
+
+export async function runCopilot(query: Query, history: ChatTurn[], requestId: string, actor?: string, deps?: ChatDeps, token?: string): Promise<CopilotReply> {
   const turns = history.filter((t) => (t.role === 'user' || t.role === 'assistant') && typeof t.content === 'string').slice(-10)
     .map((t) => ({ role: t.role, content: t.content.slice(0, 2000) }));
   const lastUser = [...turns].reverse().find((t) => t.role === 'user')?.content ?? '';
   const [{ today } = { today: '' }] = await query<{ today: string }>('select as_of::text as today from v_dashboard_kpis');
   const messages: Msg[] = [{ role: 'system', content: systemPrompt(today) }, ...turns];
-  const ctx: ToolContext = { query, requestId, lastUserMessage: lastUser };
+  const ctx: ToolContext = { query, requestId, lastUserMessage: lastUser, ...(actor ? { actor } : {}), ...(token ? { token } : {}) };
   const steps: ToolStep[] = [];
   const cards: ToolCard[] = [];
   let model = '';
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
-    const { message, model: m } = await chat(messages);
+    let answer: Awaited<ReturnType<typeof chat>>;
+    try {
+      answer = await chat(messages, deps);
+    } catch (e) {
+      if (!(e instanceof ProviderUnavailable)) throw e;
+      // The assistant is down: answer from RoofOps data instead (read-only), keeping anything already prepared.
+      console.error(`copilot provider unavailable (${e.reason}): ${e.message}`);
+      return answerWithoutAi(lastUser, ctx, e.reason, { steps, cards });
+    }
+    const { message, model: m } = answer;
     model = m;
     const calls = message.tool_calls ?? [];
     if (!calls.length) return { reply: (message.content ?? '').trim(), steps, cards, model };
     messages.push({ role: 'assistant', content: message.content ?? '', tool_calls: calls });
     for (const call of calls) {
       const tool = TOOLS[call.function.name];
-      let args: Record<string, unknown> = {};
-      try { args = JSON.parse(call.function.arguments || '{}') as Record<string, unknown>; } catch { /* treated as no args */ }
+      const checked = tool ? checkArgs(call.function.arguments ?? '', tool.parameters as ParamSchema) : null;
+      const args: Record<string, unknown> = checked?.ok ? checked.args : {};
       let content: string;
       if (!tool) {
         content = JSON.stringify({ error: `Unknown tool ${call.function.name}` });
         steps.push({ tool: call.function.name, tier: 'NONE', args, ok: false });
+      } else if (checked && !checked.ok) {
+        content = JSON.stringify(checked.error);
+        steps.push({ tool: call.function.name, tier: tool.tier, args, ok: false });
       } else {
         try {
           const r = await tool.run(args, ctx);

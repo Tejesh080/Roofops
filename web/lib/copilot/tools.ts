@@ -10,16 +10,21 @@
  */
 import {
   PROJECT_FILTERS, PROJECT_NUMBER, getChecklist, getConsistency, getDrift, getExceptions, getInvoices, getKpis, getLatestReconciliation, getProject,
-  getPurchaseOrders, getServiceChecks, getTimeline, listProjects, prepareInvoice, type PreparedInvoice, type ProjectFilter, type ProjectRow, type Query,
+  getPurchaseOrders, getServiceChecks, getTimeline, listPendingQuotes, listPreStartBlocked, listProjects, prepareInvoice, prepareInvoiceAsStaff, type PreparedInvoice,
+  type ProjectFilter, type ProjectRow, type Query,
 } from '../queries.ts';
 import { SERVICES, consistencyLine, serviceState } from '../health.ts';
+import { DISPATCH_OFF, staffDispatchEnabled } from '../dispatch.ts';
 import {
   EXCEPTION_KIND, EXCEPTION_STATUS, INVOICE_LINE_STATUS, INVOICE_STATUS, MATERIAL_STATUS, PO_STATUS, PROJECT_STAGE, RISK_REASON,
   actorName, label, outcomeLabel, plainIssue, plainReason, timelineTitle,
 } from '../labels.ts';
 
 export type Tier = 'GREEN' | 'AMBER';
-export interface ToolContext { query: Query; requestId: string; lastUserMessage: string }
+/** actor: who asked, for the audit trail: dashboard:copilot:<employee code> for a database-verified staff session. */
+/** token: the database session token of a signed-in employee (absent for the shared demo viewer); prepare records that employee. */
+/** env: the server environment (staff Xero dispatch switch); process.env when absent. */
+export interface ToolContext { query: Query; requestId: string; lastUserMessage: string; actor?: string; token?: string; env?: Record<string, string | undefined> }
 export interface ToolCard { kind: 'invoice_preview'; data: PreparedInvoiceCard }
 export interface ToolResult { data: unknown; card?: ToolCard }
 export interface PreparedInvoiceCard extends PreparedInvoice { project: string; airtable_record_id: string | null; status_text: string }
@@ -34,7 +39,7 @@ interface ToolDef {
 const projectArg = { type: 'object', properties: { project_number: { type: 'string', description: 'Project number, e.g. PRJ-2026-0004' } },
                      required: ['project_number'], additionalProperties: false };
 
-function normaliseProject(v: unknown): string {
+export function normaliseProject(v: unknown): string {
   const s = String(v ?? '').trim().toUpperCase();
   const m = /^(?:PRJ-?)?(\d{4})-?(\d{1,4})$/.exec(s) ?? /^(?:PRJ-?)?(\d{1,4})$/.exec(s);
   if (!m) return s;
@@ -65,6 +70,8 @@ const brief = (p: ProjectRow) => ({
   ...(p.status_out_of_sync ? { airtable_sync: syncOf(p) } : {}),
 });
 
+const LIST_GROUPS = PROJECT_FILTERS.filter((f) => f !== 'all' && f !== 'needs_attention');
+
 export const TOOLS: Record<string, ToolDef> = {
   business_overview: {
     tier: 'GREEN',
@@ -76,10 +83,13 @@ export const TOOLS: Record<string, ToolDef> = {
   list_projects: {
     tier: 'GREEN',
     description: 'List projects in one group: at_risk, awaiting_materials, ready_to_invoice, awaiting_approval, active or completed. '
-      + 'For "what needs attention today" use what_needs_attention_today instead (it also covers quotes, issues and payments).',
-    parameters: { type: 'object', properties: { group: { type: 'string', enum: PROJECT_FILTERS.filter((f) => f !== 'all' && f !== 'needs_attention') } }, required: ['group'], additionalProperties: false },
+      + 'For "what needs attention today" use what_needs_attention_today instead (it also covers open issues, invoices awaiting approval and overdue payments). '
+      + 'Quotes are in list_pending_quotes; jobs held by the safety checks are in list_jobs_held_by_pre_start.',
+    parameters: { type: 'object', properties: { group: { type: 'string', enum: LIST_GROUPS } }, required: ['group'], additionalProperties: false },
     run: async (a, { query }) => {
-      const group = (PROJECT_FILTERS.includes(a.group as ProjectFilter) ? a.group : 'active') as ProjectFilter;
+      // An unknown group is an error the model can correct, never a silent answer for another group.
+      if (!(LIST_GROUPS as readonly string[]).includes(String(a.group))) return { data: { error: `Unknown group ${JSON.stringify(a.group ?? null)}`, allowed: LIST_GROUPS } };
+      const group = a.group as ProjectFilter;
       const rows = await listProjects(query, group);
       return { data: { group, count: rows.length, projects: rows.slice(0, 30).map(brief) } };
     },
@@ -168,6 +178,34 @@ export const TOOLS: Record<string, ToolDef> = {
     },
   },
 
+  list_jobs_held_by_pre_start: {
+    tier: 'GREEN',
+    description: 'Jobs that cannot start because a mandatory pre-start check is still open (Safe Work Method Statement signed, materials reviewed), '
+      + 'with the open items, the stage and the planned start.',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    run: async (_a, { query }) => {
+      const rows = await listPreStartBlocked(query);
+      return { data: { count: rows.length, jobs: rows.map((r) => ({
+        project: r.project_number, customer: r.customer_name, stage: label(PROJECT_STAGE, r.status).text, planned_start: r.planned_start_date,
+        project_manager: r.project_manager, still_open: r.open_items,
+        how_it_is_cleared: 'In Airtable (Projects): SWMS Signed must be Done; Materials Reviewed may be Done, or Waived / Not applicable with a reason in its Note.',
+      })) } };
+    },
+  },
+
+  list_pending_quotes: {
+    tier: 'GREEN',
+    description: 'Quotes still open: drafts not sent yet, and sent quotes the customer has not accepted (not lost or expired), with amounts, dates and validity.',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    run: async (_a, { query }) => {
+      const rows = await listPendingQuotes(query);
+      return { data: { count: rows.length, quotes: rows.slice(0, 30).map((r) => ({
+        quote: r.quote_number, state: r.status === 'DRAFT' ? 'draft, not sent yet' : 'sent, waiting for the customer', customer: r.customer_name, site: r.site,
+        job: r.job_type, estimator: r.estimator, total_inc_gst: r.total_inc_gst, created_on: r.created_on, sent_on: r.sent_on, valid_until: r.valid_until,
+      })) } };
+    },
+  },
+
   list_open_issues: {
     tier: 'GREEN',
     description: 'Open automation issues (things the system stopped safely and needs a person for), with plain-English reasons.',
@@ -182,7 +220,7 @@ export const TOOLS: Record<string, ToolDef> = {
     description: 'Prepare (preview only) the final invoice for a completed project. Use ONLY when the user explicitly asks to prepare/create/raise an invoice. '
       + 'It never creates the invoice: it returns the amount and details and waits for a finance approver.',
     parameters: projectArg,
-    run: async (a, { query, requestId, lastUserMessage }) => {
+    run: async (a, { query, requestId, lastUserMessage, actor, token, env }) => {
       if (!/invoice/i.test(lastUserMessage) || !/\b(prepare|create|raise|draft|make|generate|bill)\b/i.test(lastUserMessage)) {
         return { data: { refused: 'Invoices are only prepared when you explicitly ask, e.g. "Prepare invoice for PRJ-2026-0005".' } };
       }
@@ -195,7 +233,15 @@ export const TOOLS: Record<string, ToolDef> = {
                          reason: p.status === 'CANCELLED' ? `${n} is cancelled; a cancelled job is never final-invoiced (earlier invoices stay as they are)`
                            : p.invoice_blocker ?? (p.is_active ? `${n} is still ${label(PROJECT_STAGE, p.status).text.toLowerCase()}; only completed jobs get a final invoice` : 'Nothing left to invoice') } };
       }
-      const r = await prepareInvoice(query, n, requestId, 'dashboard:copilot');
+      // A signed-in employee's preview can only be approved in the dashboard, and that is off while staff Xero dispatch is
+      // off: the dashboard's own rule (dispatch.ts) holds here too, so nothing is prepared that could only be rejected.
+      if (token && !staffDispatchEnabled(env ?? process.env)) return { data: { project: n, prepared: false, refused: DISPATCH_OFF.copilotPrepare } };
+      // A signed-in employee prepares as themselves (recorded as the requester); the demo viewer's preview names nobody.
+      const r = token ? await prepareInvoiceAsStaff(query, n, token) : await prepareInvoice(query, n, requestId, actor ?? 'dashboard:copilot');
+      // The card shows only the preview of the project asked for (AC-22): never another project's figures under this name.
+      if (r.preview && r.preview.project_number !== n) {
+        return { data: { project: n, prepared: false, error: `The preview that came back is for ${r.preview.project_number}, not ${n}; nothing is shown. Ask for one project at a time.` } };
+      }
       const status_text = r.outcome === 'PREVIEW_READY' ? 'Prepared: awaiting approval'
         : r.outcome === 'ALREADY_PENDING' ? 'Already prepared: awaiting approval'
         : r.outcome === 'ALREADY_INVOICED' ? 'Already invoiced: nothing new prepared' : 'Not prepared';
@@ -204,7 +250,9 @@ export const TOOLS: Record<string, ToolDef> = {
       return { card, data: {
         project: n, outcome: status_text, approval_reference: r.approval_number ?? null, reason: r.message ?? null,
         requires_human_approval: r.outcome === 'PREVIEW_READY' || r.outcome === 'ALREADY_PENDING',
-        how_it_gets_approved: 'A finance approver approves it in Airtable: on the project row, set Invoice Action → "Prepare Xero draft invoice" to show this same preview there (no new approval), check it, then set Invoice Action → "Approve Xero draft invoice". An Approve only ever approves the preview shown on that row. RoofOps then creates ONE draft invoice in the Xero Demo Company and checks it. Nothing has been sent to Xero yet.',
+        how_it_gets_approved: token
+          ? 'A second person (finance, admin or operations manager, not the one who prepared it) approves or rejects it in the dashboard on Finance → Invoice approvals, after checking the figures. RoofOps then creates ONE draft invoice in the Xero Demo Company and checks it. Nothing has been sent to Xero yet.'
+          : 'A finance approver approves it in Airtable: on the project row, set Invoice Action → "Prepare Xero draft invoice" to show this same preview there (no new approval), check it, then set Invoice Action → "Approve Xero draft invoice". An Approve only ever approves the preview shown on that row. RoofOps then creates ONE draft invoice in the Xero Demo Company and checks it. Nothing has been sent to Xero yet.',
         preview: pv ? { customer: pv.customer_name, amount_inc_gst: pv.amount_inc_gst, gst: pv.gst_amount, amount_ex_gst: pv.amount_ex_gst,
                         basis: `quote ${pv.quote_number} v${pv.quote_version} ${pv.quote_total_inc_gst} + variations ${pv.approved_variations_inc_gst} - already invoiced ${pv.billed_to_date_inc_gst}`,
                         reference: pv.reference, due_date: pv.due_date, xero_organisation: pv.xero_tenant_name } : null,

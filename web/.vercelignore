@@ -1,0 +1,7 @@
+# Never upload local settings, test logins or test artefacts with `vercel deploy` (settings come from Vercel env vars).
+.env*
+e2e/
+test-results/
+playwright-report/
+playwright.config.ts
+tsconfig.tsbuildinfo

@@ -166,6 +166,10 @@ export const label = (map: Record<string, Label>, code: string | null | undefine
 export const money = (n: number | null | undefined) =>
   n === null || n === undefined ? '—' : n.toLocaleString('en-AU', { style: 'currency', currency: 'AUD' });
 
+/** Database explanations carry plain amounts ("billed 30888.72"); show them as money. Only 2-decimal numbers change. */
+export const moneyInText = (s: string) =>
+  s.replace(/(?<![\w.,$-])(\d+\.\d{2})(?!\d|\.\d)/g, (_m, n: string) => money(Number(n)));
+
 export function date(d: string | null | undefined): string {
   if (!d) return '—';
   const [y, m, day] = d.slice(0, 10).split('-').map(Number);
@@ -176,6 +180,17 @@ export const JOB_TYPE = (t: string | null) => (t ? t.replace(/_/g, ' ').toLowerC
 
 export const airtableProjectUrl = (rec: string | null) =>
   rec ? `https://airtable.com/appMc8V0Wm29tEeHQ/tblvUPIoebC3zoacv/${rec}` : null;
+
+/**
+ * What a person does next with a final invoice, in Airtable (Projects › Invoice Action). An Approve counts only for the
+ * preview 04 has written to and read back from that row (AC-03), so a preview prepared by the Copilot or the dashboard is
+ * first shown on the row with Prepare; Prepare again returns the same pending preview, so the step is always safe.
+ */
+export const INVOICE_NEXT_STEP = {
+  prepare: 'Next: on the Finance page, Prepare invoice (Ready to invoice); a second person then approves it. Setting Invoice Action to “Prepare Xero draft invoice” in Airtable does the same.',
+  approve: 'Next, for a second person: review it on the Finance page (Invoice approvals). To approve in Airtable instead: set Invoice Action to “Prepare Xero draft invoice” so the preview shows on the row, check it, then set “Approve Xero draft invoice”.',
+  approveShort: 'in Airtable: Prepare, check, then Approve',
+} as const;
 
 /** Outcome badge for a history entry: a scheduled retry is progress, not a failure. */
 export function outcomeLabel(kind: string, status: string | null): Label {

@@ -1,21 +1,24 @@
 import Link from 'next/link';
 import { Activity, ShieldCheck, Wrench } from 'lucide-react';
 import { query } from '@/lib/db';
-import { requireSession } from '@/lib/auth';
-import { getExceptions, recentActivity } from '@/lib/queries';
+import { requireSession, staffIdentity } from '@/lib/auth';
+import { getExceptionSources, getExceptions, recentActivity } from '@/lib/queries';
 import { outcomeLabel, timelineTitle } from '@/lib/labels';
 import { Badge } from '@/components/ui/Badge';
 import { CardHead, Empty } from '@/components/ui/Empty';
 import { IssueList } from '@/components/dashboard/IssueList';
+import { ResolveForm } from '@/components/dashboard/ResolveForm';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Automation · RoofOps' };
 
 export default async function AutomationPage() {
-  await requireSession();
+  const session = await requireSession();
+  const me = await staffIdentity(session.t);
   const [issues, activity] = await Promise.all([getExceptions(query), recentActivity(query, 30)]);
   const open = issues.filter((e) => e.resolution_status === 'OPEN' || e.resolution_status === 'RETRY_QUEUED');
   const resolved = issues.filter((e) => !open.includes(e));
+  const sources = await getExceptionSources(query, issues.map((e) => e.exception_number));
   return (
     <>
       <header className="page-head">
@@ -32,11 +35,18 @@ export default async function AutomationPage() {
         <div className="stack">
           <section className="card">
             <CardHead icon={Wrench} title="Needs a person" />
-            <div className="card-body"><IssueList issues={open} emptyTitle="Nothing needs a person" /></div>
+            <div className="card-body">
+              {open.length > 0 && !me?.may_resolve_exceptions && (
+                <p className="t-meta resolve-hint">{me ? `Resolving issues needs a finance, admin, operations manager or project manager sign-in; you are signed in as ${me.role.toLowerCase().replace(/_/g, ' ')}.`
+                  : 'To resolve an issue, sign in as yourself (the shared demo login cannot resolve, approve or change records).'}</p>
+              )}
+              <IssueList issues={open} sources={sources} emptyTitle="Nothing needs a person"
+                action={me?.may_resolve_exceptions ? (e) => e.resolution_status === 'OPEN' ? <ResolveForm exception={e.exception_number} /> : null : undefined} />
+            </div>
           </section>
           <section className="card">
             <CardHead icon={ShieldCheck} title="Resolved" />
-            <div className="card-body"><IssueList issues={resolved} emptyTitle="No resolved issues yet" /></div>
+            <div className="card-body"><IssueList issues={resolved} sources={sources} emptyTitle="No resolved issues yet" /></div>
           </section>
         </div>
         <section className="card" style={{ alignSelf: 'start' }}>

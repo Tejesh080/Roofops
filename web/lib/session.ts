@@ -6,7 +6,8 @@
 export const SESSION_COOKIE = 'roofops_session';
 export const SESSION_TTL_SECONDS = 12 * 60 * 60;
 
-export interface Session { u: string; exp: number }
+/** u: display name. A staff session also carries t (the database session token), e (employee code) and r (role). */
+export interface Session { u: string; exp: number; t?: string; e?: string; r?: string }
 
 const enc = new TextEncoder();
 const b64url = (buf: ArrayBuffer | Uint8Array) =>
@@ -23,10 +24,10 @@ async function hmac(key: string, data: string): Promise<ArrayBuffer> {
   return crypto.subtle.sign('HMAC', k, enc.encode(data));
 }
 
-export async function signSession(username: string): Promise<string> {
+export async function signSession(username: string, staff?: { t: string; e: string; r: string }): Promise<string> {
   const key = secret();
   if (!key) throw new Error('AUTH_SECRET is not configured (min 32 characters)');
-  const payload = b64url(enc.encode(JSON.stringify({ u: username, exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS } satisfies Session)));
+  const payload = b64url(enc.encode(JSON.stringify({ u: username, exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS, ...staff } satisfies Session)));
   return `${payload}.${b64url(await hmac(key, payload))}`;
 }
 
@@ -44,7 +45,8 @@ export async function verifySession(token: string | undefined | null): Promise<S
   if (diff !== 0) return null;
   try {
     const s = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as Session;
-    return typeof s.u === 'string' && typeof s.exp === 'number' && s.exp > Date.now() / 1000 ? s : null;
+    const optional = (v: unknown) => v === undefined || typeof v === 'string';
+    return typeof s.u === 'string' && typeof s.exp === 'number' && s.exp > Date.now() / 1000 && optional(s.t) && optional(s.e) && optional(s.r) ? s : null;
   } catch {
     return null;
   }

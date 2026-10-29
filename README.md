@@ -4,7 +4,7 @@
 
 # RoofOps
 
-### Operations control centre for a roofing contractor: every job, supplier order and invoice kept consistent across Airtable, Postgres, Google Drive and Xero.
+### Operations system for a roofing contractor, from enquiry to paid invoice: every quote, job, supplier order and invoice kept consistent across Postgres, Airtable, Google Drive and Xero.
 
 <br />
 
@@ -21,8 +21,9 @@
 ![Xero](https://img.shields.io/badge/Xero-Demo_Company-13B5EA?style=flat-square&logo=xero&logoColor=white)
 ![Google Drive](https://img.shields.io/badge/Google_Drive-project_folders-4285F4?style=flat-square&logo=googledrive&logoColor=white)
 ![DeepSeek](https://img.shields.io/badge/DeepSeek-Operations_Copilot-4D6BFE?style=flat-square)
+![Twilio](https://img.shields.io/badge/Twilio-SMS_%28RoofOps_Lite%29-F22F46?style=flat-square&logo=twilio&logoColor=white)
 
-![Tests](https://img.shields.io/badge/tests-314_passing-2EA44F?style=flat-square&logo=vitest&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-1%2C335_passing-2EA44F?style=flat-square&logo=vitest&logoColor=white)
 ![Engines](https://img.shields.io/badge/tested_on-PGlite_%2B_Postgres_17-4169E1?style=flat-square)
 ![Playwright](https://img.shields.io/badge/e2e-Playwright-2EAD33?style=flat-square&logo=playwright&logoColor=white)
 ![Promptfoo](https://img.shields.io/badge/AI_eval-Promptfoo_13%2F13-8A2BE2?style=flat-square)
@@ -32,7 +33,7 @@
 
 <br />
 
-[**Screenshots**](#-screenshots) · [**Architecture**](#-architecture) · [**Engineering highlights**](#-engineering-highlights) · [**Quick start**](#-quick-start) · [**Docs**](#-documentation)
+[**Status**](#-project-status) · [**RoofOps Lite**](#-roofops-lite) · [**Screenshots**](#-screenshots) · [**Architecture**](#-architecture) · [**Engineering highlights**](#-engineering-highlights) · [**Quick start**](#-quick-start) · [**Docs**](#-documentation)
 
 </div>
 
@@ -40,8 +41,8 @@
 
 > [!NOTE]
 > **Synthetic data, real integrations.** Every customer, supplier, address and amount is fictional. Every integration
-> is a real service: Supabase, Airtable, n8n Cloud, Google Drive, the Xero **Demo Company** and DeepSeek. Anything not
-> connected is reported **BLOCKED**, never simulated.
+> is a real service: Supabase, Airtable, n8n Cloud, Google Drive, the Xero **Demo Company**, DeepSeek and, for
+> RoofOps Lite, Twilio. Anything not connected is reported **BLOCKED**, never simulated.
 
 <p align="center">
   <img src="docs/screenshots/phase5/01-dashboard.png" alt="RoofOps operations overview: active projects, projects at risk, awaiting materials, ready to invoice, open issues and the needs-attention list" width="880" />
@@ -51,8 +52,14 @@
 
 ## ✨ What it is
 
-RoofOps runs the full job lifecycle for a fictional Australian roofing contractor: **lead → quote → project → purchasing
-→ field work → invoice → payment**. The focus is on what breaks in real operations:
+This repository holds two products:
+- **Advanced RoofOps** (most of this page): the full operations system, with Postgres as the source of truth.
+- **[RoofOps Lite](#-roofops-lite)**: a small Airtable + n8n + **Twilio SMS** package that any trade business can
+  install, with no database or server to run.
+
+Advanced RoofOps runs the full job lifecycle for a fictional Australian roofing contractor: **enquiry → quote →
+accepted job → pre-start checks → materials → site visits → completion → invoice → Xero → payment**. The focus is on
+what breaks in real operations:
 
 - **Webhooks** that arrive twice, late or out of order.
 - **Rate limits and ambiguous writes** to external APIs.
@@ -65,8 +72,23 @@ RoofOps runs the full job lifecycle for a fictional Australian roofing contracto
 | 🧾 **One source of truth** | Postgres owns every business fact. Airtable, Drive and Xero hold objects; Postgres holds the *verified* link to each. |
 | 🔁 **Exactly-once side effects** | A transactional outbox, idempotency keyed on the business fact, and read-back proof before anything counts as done. |
 | 🚦 **State machines as data** | Allowed transitions live in `state_transitions` and are enforced by triggers, even for SQL that bypasses the application. |
-| 🩺 **Self-checking** | Nightly reconciliation of Airtable, Drive and Xero against Postgres, 26 executable integrity rules, and a System Health page backed only by recorded checks. |
+| 🩺 **Self-checking** | Nightly reconciliation of Airtable, Drive and Xero against Postgres, 34 executable integrity rules, and a System Health page backed only by recorded checks. |
+| 👥 **People approve money** | Staff sign in individually; the person who prepares an invoice or a reissue can never approve it. |
 | 🤖 **Bounded AI** | The DeepSeek Copilot answers from named, server-side tools. It can *prepare* an invoice preview, but never approve, send or pay. |
+
+### Features
+
+| Area | What staff can do |
+|---|---|
+| **Sales** | Record an enquiry (duplicates detected), add the customer and site, book an inspection, build a quote, send it, hand it to Airtable |
+| **Jobs** | An accepted quote becomes exactly one project, with its Google Drive folder and Airtable record; status changes follow a state machine |
+| **Safety before work** | A job cannot start until its SWMS is signed and its materials are reviewed *(release pending)* |
+| **Purchasing** | Supplier orders move forward only (ordered → confirmed → delivered) and follow their job |
+| **Site work** | Site visits, crew and tasks, with crew-conflict checks; "My work" for each person |
+| **Completion** | Completion photos and compliance certificate must be done (or waived with a reason) before the final invoice |
+| **Invoicing** | Hashed preview → a second person approves → exactly one Xero DRAFT, read back; void and supervised reissue |
+| **Oversight** | Dashboard, Finance page, needs-attention list, System Health, open exceptions with person-attributed resolution |
+| **Copilot** | Answers questions about jobs, quotes, materials, finance and system health from database views |
 
 ## 📸 Screenshots
 
@@ -140,27 +162,30 @@ flowchart LR
         PG["projects · quotes · POs · invoices<br/>state machines · outbox · audit hash chain<br/>reconciliation · health"]
     end
     subgraph Orchestration["⚙️ n8n Cloud"]
-        N1["01 Quote → Project"]
+        N1["01 Quote accepted → project<br/>02 Drive folder · 03 Airtable project"]
         N6["06 Airtable changes"]
-        N4["04/05 Invoice → Xero draft"]
-        N7["07 Reconcile + webhooks"]
+        N4["04/05 Invoice → Xero draft<br/>08 Reissue dispatch"]
+        N10["10 Quote → Airtable"]
+        N7["07 Reconcile + webhooks<br/>08 Health checks"]
     end
     DRIVE["📁 Google Drive<br/>project folders"]
     XERO["💷 Xero Demo Company<br/>DRAFT invoices"]
 
     AT -- webhooks --> N1 & N6 & N4
-    N1 & N6 & N4 -- "SECURITY DEFINER wf_* only" --> PG
-    PG -- "outbox (claimed, proved)" --> N4
+    N1 & N6 & N4 & N10 -- "SECURITY DEFINER wf_* only" --> PG
+    PG -- "outbox (claimed, proved)" --> N4 & N10
     N4 --> XERO
-    PG -- outbox --> DRIVE
+    N10 --> AT
+    N1 --> DRIVE & AT
     N7 <-- "read · compare · repair" --> AT & DRIVE & XERO
     N7 --> PG
-    WEB -- "read-only views<br/>least-privilege role" --> PG
+    WEB -- "views + web_* functions<br/>least-privilege role, signed-in staff" --> PG
 ```
 
 | Layer | System | Role |
 |---|---|---|
 | Staff-facing operations | **Airtable** | Edits a contracted set of fields; everything else is a read-only projection |
+| Staff app | **Next.js dashboard** | Sales, site work, finance approvals, exceptions, health; every write is a `web_*` database function checked against the signed-in person |
 | Control layer | **Postgres 17 (Supabase)** | Canonical facts, state machines, outbox, audit, reconciliation |
 | Orchestration | **n8n Cloud** | Webhooks and side effects; never bypasses the database's rules |
 | Accounting | **Xero Demo Company** | DRAFT invoices only, pinned to one proven tenant |
@@ -214,8 +239,14 @@ Full picture: [system ownership map](docs/system-ownership-map.md) · [architect
   [catalogue of 30 new failure hypotheses](docs/adversarial-test-catalogue.md).
 - Each defect is then fixed one at a time in a [defect ledger](docs/defect-ledger.md): reproduce → root cause →
   failing test → fix → verify on both database engines → deploy → live check.
-- **AC-01** (a reconciliation read older than a staff edit could revert it) is fixed. It has regression tests,
-  **two-connection race tests** on real Postgres, and is deployed to hosted. Live verification is pending.
+- **13 defects are FIXED and verified live**, including all 9 P0s: stale reconciliation reads (AC-01), exact-preview
+  approval binding (AC-03), Xero voids and tenant pinning (AC-05, AC-06), verified Xero settlement (AC-14) and the
+  supervised reissue of a voided invoice (AC-14C, live in the Xero Demo Company).
+- **15 more are fixed offline** and wait for one release: the pre-start safety gate (AC-13B), fully billed jobs
+  cannot be cancelled (AC-15, AC-15B), deterministic quote acceptance (AC-23, AC-25, AC-18), purchase orders follow
+  their job (AC-21), a cancelled job frees its site visits (OPS-02), Copilot guards (AC-22, COP-01, COP-02) and
+  per-line GST for reissues (FIN-08). Each has failing-first tests, two-connection race tests where it matters, and an
+  exact rollback rehearsed on a restored copy of the hosted database.
 
 </details>
 
@@ -233,18 +264,69 @@ Full picture: [system ownership map](docs/system-ownership-map.md) · [architect
 
 ## 📊 Project status
 
-| Phase | Scope | State |
-|---|---|---|
-| 0 | Architecture, schema, acceptance criteria | ✅ |
-| 1 | Database + canonical data import (dates normalised to 2026-09-29) | ✅ |
-| 2 | Airtable Quote Accepted → n8n → Postgres → Project → Drive → audit → Airtable | ✅ live ([status](docs/phase2-status.md)) |
-| 3 | Approved project → **Xero Demo Company DRAFT invoice** (approval, idempotency, read-back) | ✅ live ([status](docs/phase3-status.md)) |
-| 4 | **Operations Dashboard + DeepSeek Operations Copilot** | ✅ ([status](docs/phase4-status.md)) |
-| 4b | UI polish, interview readiness, auth, demo reset, Vercel-ready | ✅ ([status](docs/phase5-status.md)) |
-| 6 | **State integrity, reconciliation, System Health, AI regression** | ✅ live ([status](docs/phase6-status.md)) |
-| 🔬 | **Adversarial hardening**: [catalogue](docs/adversarial-test-catalogue.md) → [defect ledger](docs/defect-ledger.md) | 🟡 in progress (AC-01 deployed) |
-| 5 | Supplier quote → purchase order | ⏳ planned |
-| 7 | OpenTakeoff experiment (optional) | ⏳ planned |
+Last updated 2026-10-29. **Live** = running on hosted Supabase, n8n Cloud, Airtable, Drive or the Xero Demo Company,
+with recorded evidence. **Local** = proven by the test suite, not yet deployed.
+
+| Capability | State |
+|---|---|
+| Quote accepted in Airtable → one project, Drive folder and Airtable record | ✅ Live |
+| Staff edits in Airtable validated by Postgres, refused edits put back with an explanation | ✅ Live |
+| Invoice preview → second-person approval → one Xero Demo DRAFT, read back | ✅ Live |
+| Void in Xero → supervised reissue of the same invoice (generation 2) | ✅ Live |
+| Nightly reconciliation of Airtable, Drive and Xero; health checks every 30 minutes | ✅ Live |
+| Staff sign-in, roles, sessions, lockout | ✅ Live (synthetic staff only) |
+| Dashboard and Copilot | ✅ Live on a protected Vercel preview |
+| Enquiry → quote → Airtable hand-off | 🟡 Live once (one synthetic quote, 2026-10-20) |
+| Site visits, crew and tasks | 🟡 Deployed, not yet used on the hosted system |
+| Pre-start gate, cancellation and purchase-order guards, Copilot read tools ([release runbook](ops/advanced-release-runbook-20261023.md)) | 🟡 Local; backup and read-only preflight passed 2026-10-23, deployment awaits approval |
+| Per-line GST on multi-line invoices | 🟡 Local; needs one supervised Xero Demo check |
+
+**Not built yet, and needed before a real business could rely on it:**
+- continuous integration (the full suite runs locally today);
+- a staging environment separate from the hosted demo;
+- alerts that notify a person (today failures are recorded and shown on `/health`);
+- a real Xero organisation, real data and real staff (everything is synthetic; the business date is fixed at 2026-09-29);
+- one editing surface for staff (project status is edited in Airtable, site work in the dashboard);
+- phone-friendly screens for crews.
+
+The phase reports ([2](docs/phase2-status.md), [3](docs/phase3-status.md), [4](docs/phase4-status.md),
+[5](docs/phase5-status.md), [6](docs/phase6-status.md)) record how each part was built and proven.
+
+## 📱 RoofOps Lite
+
+A reusable automation package for a small trade business (roofing, plumbing, electrical). An **Airtable** CRM, five
+**n8n** workflows and **Twilio** SMS; everything business-specific is one config file, and a build step generates the
+workflows and the website enquiry form for each client. It is separate from Advanced RoofOps: it touches none of its
+tables, workflows, invoices or Xero. Full guide: [lite/README.md](lite/README.md).
+
+| Module | What it does |
+|---|---|
+| **Quote-to-Paid CRM** | One job per enquiry, New Lead to Paid, with the contact, their recorded consent, site, quote, messages and alerts (6 Airtable tables + an Interface) |
+| **Instant Lead Follow-Up** | A website form posts a lead; it is checked, de-duplicated, saved with the consent given, and acknowledged by SMS once |
+| **Google Review Requests** | Daily: each finished job gets one review request, only with review permission |
+| **Lead Reactivation** | Weekly: quiet enquiries get one follow-up, only with recorded marketing consent, with a cooldown and a cap |
+| **Replies and delivery receipts** | STOP opts out of everything; other replies reopen the enquiry; Twilio delivery receipts update the log |
+| **Monitor** | Failed runs, failed or unconfirmed messages and leads nobody contacted are raised once as alerts; safe retry |
+
+**Built to never double-send or spam:**
+- Each message is reserved in the Message Log before it is sent, so a second run skips it.
+- A message Twilio may have sent (timeout, server error) is marked **Unknown** and never resent by itself.
+- Review and marketing messages need recorded consent, and every message names the business and says how to stop
+  (Australian Spam Act 2003).
+- Messaging is **off by default** (a test sink). In Twilio mode, real SMS go only to an allowlist until go-live.
+
+| Lite status | State |
+|---|---|
+| 70 acceptance tests and a local demo (the workflows' real node code, an in-memory Airtable, a fake Twilio API with signed webhooks and real error codes) | ✅ Local |
+| The workflows in n8n Cloud against a real Airtable base, messages to the test sink, synthetic data (20–21 Oct) | ✅ Live |
+| Twilio connected through n8n's credential; every check that sends no SMS passed against the real Twilio API | ✅ Live |
+| Real SMS | ⏸ Not yet. The supervised live test on 21 Oct stopped when the Twilio trial account refused the first message (error 572003); no SMS has been sent. The test's clean-up (unpublishing Inbound Replies) awaits the owner |
+
+Try it locally (nothing leaves your computer):
+
+```bash
+npx tsx lite/demo/run-demo.ts lite/config/example-plumbing-twilio.json lite/demo/output-twilio
+```
 
 ## 🚀 Quick start
 
@@ -295,28 +377,78 @@ TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres npm te
 | `npm run ai:eval` | Copilot regression with Promptfoo (web app running) |
 | `npm run contract:export` | Regenerate the source-of-truth and state-machine docs |
 
+### 🧾 The supervised reissue CLI
+
+A final invoice whose Xero document was legitimately **voided or deleted** in Xero is not collectible, but the customer
+still owes the job. A FINANCE or ADMIN employee brings the *same* invoice back with two explicit, audited steps against
+the local database (`DATABASE_URL`, default `postgresql://postgres:postgres@127.0.0.1:54322/roofops`; a non-local host
+is refused) or, with `--hosted`, the hosted one:
+
+```bash
+# 1. ask for a reissue of a voided final invoice (the reason is mandatory)
+npm run reissue -- request --invoice INV-2026-0004 --by EMP-900 --reason "Xero deleted the draft; the customer still owes the job"
+
+# 2. a finance approver decides: exactly one new Xero draft generation is queued for the same invoice
+npm run reissue -- decide --approval APR-2026-0009 --by EMP-900 --note "checked the customer account"
+```
+
+Both steps print the JSON the database returns (`{ ok, code, detail, ... }`) and nothing else: the CLI holds no rules
+of its own, writes nothing itself and never calls Xero. Exit codes: `0` success, `2` refused (the canonical code is in
+the JSON - `REASON_REQUIRED`, `ACTOR_UNAUTHORIZED`, `INVOICE_NOT_VOIDED`, `TENANT_MISMATCH`, `PAYMENT_EXISTS`,
+`WRITE_IN_FLIGHT`, `ALREADY_PROCESSED`, ...) and `1` for a usage or connection error. A refusal changes nothing.
+
+The queued generation is then created in Xero by **[RoofOps] 08 Reissue Dispatch**, which runs the unchanged
+[RoofOps] 05 for exactly one write: the invoice number and generation the operator names. Postgres lists it only when it
+is that invoice's current generation ≥ 2, due and proven to be the supervised reissue; no other queued reissue is ever
+dispatched with it, and 05's claim re-proves the write before any Xero call:
+
+```bash
+# 3. where does the invoice's current Xero draft generation stand? (read-only)
+npm run reissue -- status --invoice INV-2026-0004
+
+# 4. create it in Xero through 08 -> 05 and wait for the outcome (hosted only: 08 reads the hosted database)
+npm run reissue -- dispatch --invoice INV-2026-0004 --hosted
+```
+
+`--hosted` runs any step against the hosted database (`SUPABASE_DB_URL`, like `db:load --hosted`). `dispatch` POSTs
+08's webhook with `REISSUE_DISPATCH_TOKEN` from `.env.local` and the selection (`{ invoice_number, generation }`, read
+from the invoice's current generation); Postgres keeps only the token's SHA-256 in
+`app_settings.reissue.dispatch_token_sha256` (empty = every dispatch refused). It reports `REISSUE_CREATED` (exit 0),
+`NO_REISSUE_QUEUED`, `REISSUE_NOT_CREATED` (05 failed it: see `last_error` / `open_exceptions`) or `STILL_PENDING`
+(token refused, 08 not published, or the write not proven - see `open_exceptions`) (exit 2).
+
 ## 🧪 Testing
+
+1,335 tests pass (37 skipped on PGlite only) across 67 Vitest files, on PGlite and real Postgres 17. External services
+are simulated in these tests by calling the database functions with the payloads the workflows send, so live checks are
+recorded separately in [evidence/](evidence/).
 
 | Suite | Where | Notes |
 |---|---|---|
 | Unit, database and workflow | `test/*.test.ts` (Vitest) | Every database suite runs on PGlite **and** real Postgres 17 |
+| n8n workflow code | `test/n8n-*.test.ts` | The real Code-node JavaScript and HTTP requests of the workflows, run in a harness |
+| Business lifecycle | `test/business-lifecycle.test.ts` | Enquiry to Xero draft at the database boundary, with failure injections |
+| RoofOps Lite | `test/lite.test.ts` | 70 acceptance tests: consent, opt-out, de-duplication, Twilio errors, retries, monitoring |
 | State integrity | `test/state-integrity.test.ts` | All state-machine pairs are generated from `state_transitions`; includes real two-connection race tests |
-| End to end | `web/e2e/*.spec.ts` (Playwright) | Screens, smoke, Airtable ↔ dashboard state sync |
+| End to end | `web/e2e/*.spec.ts` (Playwright, 11 specs) | Staff, sales, site-work and invoice-approval journeys; Airtable ↔ dashboard state sync |
 | AI regression | `promptfoo/` | Grounded against the database; refusals for approve, pay, credential and SQL requests |
 | Live proofs | `test/live-*.test.ts` | Read-only checks against hosted, opt-in via `RUN_HOSTED_TESTS=1` |
 
 ## 🗂 Repository layout
 
 ```text
-supabase/migrations/   schema, workflow functions, state machines, reconciliation (18 ordered migrations)
+supabase/migrations/   schema, workflow functions, state machines, reconciliation (64 ordered migrations)
 src/                   importer, date normalisation, event envelope (zod), db port and migration runner
-n8n/                   the 13 n8n workflows as code (SDK)
+n8n/                   the 16 n8n workflows as code (SDK)
 web/                   Next.js dashboard, Copilot (agent + tools), auth, Playwright e2e
 test/                  Vitest suites and fixtures (webhooks, HTTP failures)
-scripts/               load, reconcile, integrity, security, AI eval, contract export
+scripts/               load, reconcile, integrity, security, staff, reissue, AI eval, contract export
 promptfoo/             Copilot regression suite
 data/                  raw synthetic bundle and normalised dataset (with hashes)
 docs/                  architecture, ADRs, contracts, state machines, phase reports, defect ledger
+ops/                   release and demo runbooks; ops/rollback/ holds the exact down file for each recent migration
+evidence/              live and offline verification records
+lite/                  RoofOps Lite: a separate Airtable + n8n + Twilio package for small trade businesses
 ```
 
 ## 📚 Documentation

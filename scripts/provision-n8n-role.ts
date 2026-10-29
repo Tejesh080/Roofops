@@ -1,5 +1,5 @@
 /**
- * npm run db:provision-n8n [-- --rotate]
+ * npm run db:provision-n8n -- --confirm <project-ref> [--rotate]
  *
  * Creates the hosted login role n8n uses (roofops_n8n), a member of roofops_workflow,
  * so it can EXECUTE the four wf_* entry points and nothing else. The generated password
@@ -9,13 +9,14 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { openPostgres } from '../src/db/db.js';
-import { hostedDbConfig } from '../src/config/env.js';
+import { confirmHostedWrite, hostedDbConfig } from '../src/config/env.js';
 
 const SECRET_FILE = 'secrets/roofops-n8n-postgres.env';
 const ROLE = 'roofops_n8n';
 const rotate = process.argv.includes('--rotate');
 
 const cfg = hostedDbConfig();
+confirmHostedWrite(cfg.url, process.argv);
 const admin = new URL(cfg.url);
 const projectRef = decodeURIComponent(admin.username).split('.')[1];
 if (!projectRef) throw new Error('SUPABASE_DB_URL must use the pooler username form postgres.<project-ref>');

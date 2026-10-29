@@ -1,5 +1,5 @@
 /**
- * npx tsx scripts/provision-dashboard-role.ts [--rotate]
+ * npx tsx scripts/provision-dashboard-role.ts --confirm <project-ref> [--rotate]
  *
  * Creates the hosted login role the dashboard's web server uses (roofops_web), a member of
  * roofops_dashboard: it can read the dashboard views and ask for an invoice preview, nothing else.
@@ -9,13 +9,14 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { openPostgres } from '../src/db/db.js';
-import { hostedDbConfig, mergeEnvFile, requireEnv } from '../src/config/env.js';
+import { confirmHostedWrite, hostedDbConfig, mergeEnvFile, requireEnv } from '../src/config/env.js';
 
 const WEB_ENV = 'web/.env.local';
 const ROLE = 'roofops_web';
 const rotate = process.argv.includes('--rotate');
 
 const cfg = hostedDbConfig();
+confirmHostedWrite(cfg.url, process.argv);
 const admin = new URL(cfg.url);
 const projectRef = decodeURIComponent(admin.username).split('.')[1];
 if (!projectRef) throw new Error('SUPABASE_DB_URL must use the pooler username form postgres.<project-ref>');

@@ -8,11 +8,13 @@
  * result from Postgres. Never prints connection details or the token.
  */
 import { openPostgres } from '../src/db/db.js';
-import { hostedDbConfig } from '../src/config/env.js';
+import { confirmHostedWrite, hostedDbConfig } from '../src/config/env.js';
 import { runReconciliation } from '../src/ops/reconcile-run.js';
 
 const mode = process.argv.includes('--dry-run') ? 'observe' : 'repair';
 const cfg = hostedDbConfig();
+// Both modes: a dry run still triggers 07 with the operator token and keeps the Airtable webhooks alive.
+confirmHostedWrite(cfg.url, process.argv);
 const db = await openPostgres(cfg.url, cfg.caPem ? { caPem: cfg.caPem } : undefined);
 
 try {

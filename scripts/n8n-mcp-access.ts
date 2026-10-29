@@ -5,12 +5,13 @@
  * An MCP client can read, edit and EXECUTE any workflow with MCP access, including schedule- and webhook-triggered ones
  * (for 07 that is a repair-mode reconciliation, with no operator token). Deployment and inspection use the public API,
  * so RoofOps workflows need no MCP access. `disable` refuses if the workflow's name is not the expected one, then proves
- * that nodes and connections are unchanged and the workflow is still active. Key from .env.local, never printed.
+ * that nodes and connections are unchanged and the workflow is still active. Key from ~/.roofops/hosted.env, never printed.
  */
 import { isDeepStrictEqual } from 'node:util';
-import { loadLocalEnv, requireEnv } from '../src/config/env.js';
+import { loadHostedEnv, loadLocalEnv, requireEnv } from '../src/config/env.js';
 
 loadLocalEnv();
+loadHostedEnv();
 const [cmd, id, expectedName] = process.argv.slice(2);
 if (!id || !['status', 'disable'].includes(cmd ?? '') || (cmd === 'disable' && !expectedName)) {
   throw new Error('usage: n8n-mcp-access.ts status <workflowId> | disable <workflowId> "<expected name>"');

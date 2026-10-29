@@ -410,8 +410,8 @@ npm run reissue -- status --invoice INV-2026-0004
 npm run reissue -- dispatch --invoice INV-2026-0004 --hosted
 ```
 
-`--hosted` runs any step against the hosted database (`SUPABASE_DB_URL`, like `db:load --hosted`). `dispatch` POSTs
-08's webhook with `REISSUE_DISPATCH_TOKEN` from `.env.local` and the selection (`{ invoice_number, generation }`, read
+`--hosted` runs any step against the hosted database (`SUPABASE_DB_URL` in `~/.roofops/hosted.env`, like `db:load --hosted`); every hosted write also needs `--confirm <project-ref>`. `dispatch` POSTs
+08's webhook with `REISSUE_DISPATCH_TOKEN` from `~/.roofops/hosted.env` and the selection (`{ invoice_number, generation }`, read
 from the invoice's current generation); Postgres keeps only the token's SHA-256 in
 `app_settings.reissue.dispatch_token_sha256` (empty = every dispatch refused). It reports `REISSUE_CREATED` (exit 0),
 `NO_REISSUE_QUEUED`, `REISSUE_NOT_CREATED` (05 failed it: see `last_error` / `open_exceptions`) or `STILL_PENDING`

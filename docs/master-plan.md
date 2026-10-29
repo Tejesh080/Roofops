@@ -108,22 +108,24 @@ The five failure modes most likely to hurt a person using the software, and the 
 ### Task 0.1: Hosted credentials out of the agent's reach, writes need a confirmation
 
 **Files:**
-- Modify: `src/config/env.ts` (`hostedDbConfig`)
-- Modify: `scripts/db-load.ts`
+- Modify: `src/config/env.ts` (`loadLocalEnv`, `hostedDbConfig`; new `HOSTED_ONLY_KEYS`, `hostedEnvDir`, `loadHostedEnv`, `supabaseProjectRef`, `confirmHostedWrite`)
+- Modify: every hosted-write script: `db-load` (`--hosted`), `sql` (without `--read-only`), `exception`, `staff` (without `--local`), `reconcile` (both modes: a dry run still triggers 07 and keeps the webhooks alive), `demo reset`, `reissue request|decide|dispatch --hosted`, `provision-dashboard-role`, `provision-n8n-role`, `verify-airtable-load`; `n8n-mcp-access` loads the hosted env
 - Create: `test/env-hosted.test.ts`
 - Modify: `.env.local` (owner; values never pasted into chat)
 
 **Interfaces:**
-- Produces: `hostedDbConfig(target: 'hosted' | 'staging' = 'hosted'): HostedDbConfig`, reading `%USERPROFILE%\.roofops\<target>.env` (override with `ROOFOPS_ENV_DIR`), never a file inside the repository. `db:load -- --hosted` and any future hosted write script also require `--confirm <supabase-project-ref>` equal to the ref in the URL's hostname.
+- Produces: `hostedDbConfig(target: 'hosted' | 'staging' = 'hosted', cwd?): HostedDbConfig`, reading `%USERPROFILE%\.roofops\<target>.env` (override with `ROOFOPS_ENV_DIR`; refused if inside the repository), never `process.env`. `loadLocalEnv()` refuses a repository `.env`/`.env.local` holding any of `SUPABASE_DB_URL, N8N_API_KEY, RECONCILE_TRIGGER_TOKEN, REISSUE_DISPATCH_TOKEN, LITE_REPLY_WEBHOOK_PASSWORD, LITE_LIVE_TEST_TO`, naming the key, never the value. `confirmHostedWrite(url, argv)` requires `--confirm <ref>` equal to the pooler user's `<role>.<ref>` or the direct host `db.<ref>.supabase.co`; its errors never print the expected ref.
 - Consumes: nothing new.
 
-- [ ] **Step 1: Write the failing tests** in `test/env-hosted.test.ts`: `hostedDbConfig()` throws `HOSTED_ENV_INSIDE_REPO` when `ROOFOPS_ENV_DIR` resolves inside `process.cwd()`; it reads `staging.env` for `target: 'staging'`; `db-load` exits non-zero with `--hosted` and no `--confirm`, and with a `--confirm` that does not match the URL's project ref (use a fake URL; no network).
-- [ ] **Step 2: Run** `npx vitest run test/env-hosted.test.ts` → FAIL.
-- [ ] **Step 3: Implement.** `env.ts` loads `.env`/`.env.local` for local values only; `hostedDbConfig` reads the external file with `node:util` `parseEnv`. `db-load.ts` parses `--confirm` and compares with the ref parsed from the hostname (`db.<ref>.supabase.co` or the pooler form).
-- [ ] **Step 4: Run** the test file and `npm run check` → PASS, exit 0.
-- [ ] **Step 5: ✍️ Owner moves** `SUPABASE_DB_URL`, `SUPABASE_CA_CERT`, the n8n API key and any Airtable/Xero/Twilio value from `.env.local` to `%USERPROFILE%\.roofops\hosted.env`, leaving only local Docker values in `.env.local`.
+- [x] **Step 1: Write the failing tests** in `test/env-hosted.test.ts` (39 cases: the directory rule, every hosted key refused in `.env`/`.env.local`, `hosted.env`/`staging.env`, shell value ignored, the CA path, the ref parser, the gate, and each CLI run as a real process against a closed local port: 11 write commands refuse without `--confirm`, 5 read commands do not ask for it).
+- [x] **Step 2: Run** `npx vitest run test/env-hosted.test.ts` → FAIL (exports missing).
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run** the test file (39 pass), lint and both typechecks (exit 0). The full suite runs in the Phase 0 check.
+- [ ] **Step 5: ✍️ Owner moves** the keys the refusal names (today: `LITE_LIVE_TEST_TO, LITE_REPLY_WEBHOOK_PASSWORD, N8N_API_KEY, RECONCILE_TRIGGER_TOKEN, SUPABASE_DB_URL`) plus `SUPABASE_CA_CERT` (absolute path, or a file next to `hosted.env`) from `.env.local` to `%USERPROFILE%\.roofops\hosted.env`. `N8N_BASE_URL` and the `LITE_REPLY_WEBHOOK_USER`/`_CREDENTIAL_ID` names may stay or move. Until this is done every hosted script stops with `HOSTED_ENV_INSIDE_REPO`.
+- [ ] **Step 5b: ✍️ Owner, recommended:** `web/.env.local` points the **local** dashboard at the **hosted** database as `roofops_web` (it can request previews and approvals). Point it at the local Docker database instead (`npm run db:load` locally, then provision the role locally) and keep the hosted `roofops_web` URL only in Vercel. `secrets/roofops-n8n-postgres.env` (written by `provision-n8n-role`) holds the n8n role's hosted password: once it is in the n8n credential, move it next to `hosted.env` or delete it.
+- [ ] **Step 5c: ✍️ Owner, recommended:** in Claude Code permissions, an `ask` rule for any command containing `--confirm` and a `deny` rule for reading `~/.roofops/**`, so the agent never sees the values and every hosted write asks you even in auto mode.
 - [ ] **Step 6: Verify read path:** `npm run integrity:check` runs and reports (0 FAIL expected); `npm run db:load -- --hosted` without `--confirm` refuses.
-- [ ] **Step 7: Commit** `git commit -m "Hosted credentials live outside the repo; hosted writes need --confirm <ref>"`.
+- [x] **Step 7: Commit** `Hosted credentials live outside the repo; hosted writes need --confirm <ref>`.
 
 **Done when:** no hosted credential exists under `D:\Claude\roofops`; the read-only checks still run; a hosted write cannot start without the project ref typed by a person.
 

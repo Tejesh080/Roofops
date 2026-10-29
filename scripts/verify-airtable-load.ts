@@ -9,11 +9,14 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { openPostgres, withTransaction } from '../src/db/db.js';
-import { hostedDbConfig } from '../src/config/env.js';
+import { confirmHostedWrite, hostedDbConfig } from '../src/config/env.js';
 import { AIRTABLE_BASE_ID } from '../src/integrations/airtable/schema.js';
 
 const dir = process.argv[2];
-if (!dir) throw new Error('usage: verify-airtable-load.ts <dir>');
+if (!dir) throw new Error('usage: verify-airtable-load.ts <dir> --confirm <project-ref>');
+// It persists verified record ids (external_links + audit) when every check passes: a hosted write.
+const cfg = hostedDbConfig();
+confirmHostedWrite(cfg.url, process.argv);
 const tsv = (f: string) => readFileSync(join(dir, f), 'utf8').split('\n').filter(Boolean).map((l) => l.split('\t'));
 const createMap = (f: string) => JSON.parse(readFileSync(join(dir, f), 'utf8')) as Record<string, string>;
 const norm = (s: string) => s.toUpperCase().replace(/ /g, '_');
@@ -56,7 +59,6 @@ const SPECS: Spec[] = [
       ...(r[5] === d.v3 ? [] : [`supplier ${r[5]} != ${d.v3}`])] },
 ];
 
-const cfg = hostedDbConfig();
 const db = await openPostgres(cfg.url, cfg.caPem ? { caPem: cfg.caPem } : undefined);
 const failures: string[] = [];
 const verified: { entity: string; id: string; rec: string }[] = [];

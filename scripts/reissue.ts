@@ -2,8 +2,9 @@
  * npm run reissue -- request  --invoice INV-2026-0004 --by EMP-900 --reason "why this invoice must be reissued"
  * npm run reissue -- decide   --approval APR-2026-0009 --by EMP-900 [--note "what you checked"]
  * npm run reissue -- status   --invoice INV-2026-0004
- * npm run reissue -- dispatch --invoice INV-2026-0004 --hosted
- * (add --hosted to any subcommand to run it against the hosted Supabase database, SUPABASE_DB_URL in .env.local)
+ * npm run reissue -- dispatch --invoice INV-2026-0004 --hosted --confirm <project-ref>
+ * (add --hosted to any subcommand to run it against the hosted Supabase database, SUPABASE_DB_URL in
+ * ~/.roofops/hosted.env; request, decide and dispatch then also need --confirm <project-ref>)
  *
  * The operator CLI for the supervised reissue of a voided final invoice (AC-14C Part B2, audit P2-D3). It is a
  * convenience only - the database decides: `request` and `decide` call ops_reissue_request / ops_reissue_decide on the
@@ -22,7 +23,7 @@
  */
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { describeUrl, hostedDbConfig } from '../src/config/env.js';
+import { confirmHostedWrite, describeUrl, hostedDbConfig } from '../src/config/env.js';
 import { openPostgres, type Db } from '../src/db/db.js';
 import { dispatchReissue, n8nReissueTrigger, reissueStatus, type DispatchSelection } from '../src/ops/reissue-dispatch.js';
 
@@ -43,7 +44,8 @@ export const USAGE = [
   'status shows the invoice\'s current Xero draft generation, its write and any open exception;',
   'dispatch asks [RoofOps] 08 in n8n to create exactly that invoice\'s queued generation in Xero (REISSUE_DISPATCH_TOKEN;',
   'no other queued reissue can be sent) and waits for it.',
-  '--hosted runs against the hosted database (SUPABASE_DB_URL); without it DATABASE_URL picks the local database',
+  '--hosted runs against the hosted database (SUPABASE_DB_URL in ~/.roofops/hosted.env); request, decide and dispatch',
+  'then also need --confirm <project-ref>. Without --hosted, DATABASE_URL picks the local database',
   '(default postgresql://postgres:postgres@127.0.0.1:54322/roofops). dispatch needs --hosted.',
   'Exit codes: 0 success, 2 refused or not finished (the code is in the JSON), 1 usage or connection error.',
 ].join('\n');
@@ -140,11 +142,12 @@ const row = (rows: { r: Record<string, unknown> }[]): Record<string, unknown> =>
  */
 async function main(argv: string[]): Promise<number> {
   const hosted = argv.includes('--hosted');
-  const args = argv.filter((a) => a !== '--hosted');
+  const args = argv.filter((a, i) => a !== '--hosted' && a !== '--confirm' && argv[i - 1] !== '--confirm');
   let url: string;
   let caPem: string | undefined;
   if (hosted) {
     const cfg = hostedDbConfig();
+    if (args[0] !== 'status') confirmHostedWrite(cfg.url, argv);
     url = cfg.url; caPem = cfg.caPem;
     console.error(`reissue: target HOSTED ${describeUrl(url)} (TLS ${cfg.verified ? 'verified against SUPABASE_CA_CERT' : 'encrypted, certificate NOT verified: set SUPABASE_CA_CERT'})`);
   } else {

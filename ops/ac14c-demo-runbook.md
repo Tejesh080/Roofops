@@ -84,7 +84,7 @@ old 05 works on the new one.
 
 ```powershell
 # 3.1 - pg_dump 17 from the local container; the URL is passed by environment and never printed.
-$env:PGURL = ((Select-String -Path .env.local -Pattern '^\s*SUPABASE_DB_URL\s*=').Line -split '=', 2)[1].Trim().Trim('"') + '?sslmode=require'
+$env:PGURL = ((Select-String -Path "$env:USERPROFILE\.roofops\hosted.env" -Pattern '^\s*SUPABASE_DB_URL\s*=').Line -split '=', 2)[1].Trim().Trim('"') + '?sslmode=require'
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 docker exec -e PGURL roofops-postgres sh -c "pg_dump `"`$PGURL`" --schema=public --format=custom --no-owner --file=/tmp/pre-ac14c-$stamp.dump"
 docker exec roofops-postgres pg_restore --list "/tmp/pre-ac14c-$stamp.dump" | Select-Object -First 5   # readable?

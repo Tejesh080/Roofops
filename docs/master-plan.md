@@ -202,17 +202,17 @@ As built (29 Oct): `.github/workflows/ci.yml` uses `postgres:17-alpine` (the loc
 
 Source: `evidence/lite-activation-investigation-20261022.md` §6, items 1–10. Item 11 (the trial-From fix) is **dropped**: the Twilio upgrade (Task L2) makes it moot.
 
-- [ ] 🔒 1. Unpublish `[Lite] Inbound Replies` (`3Jeal7RQAhUmgLZ3`); confirm `active: false`, `activeVersionId: null`.
-- [ ] 🔒 2. Restore version `cd14b31d-ca74-4fa8-bec9-8e6675a4fd3b` on `9BjHeFBUKqnmQqHl` (Instant Lead Follow-Up), unpublished; verify node for node against `lite/dist/demo/lead-follow-up.json`.
-- [ ] 🔒 3. Restore version `ab0f14c6-b596-44ff-ad73-02039087105b` on `Tmk4lj7VrbHix9A9` (Monitor), unpublished; verify against `lite/dist/demo/monitor.json`.
-- [ ] 🔒 4. Restore version `49aeb37c-394b-41b9-b50a-4a9265ee2f02` on `3Jeal7RQAhUmgLZ3`, unpublished (only after 1).
-- [ ] 🔒 5. Remove the pinned S7 test lead from `9BjHeFBUKqnmQqHl`.
+- [x] 🔒 1. Unpublish `[Lite] Inbound Replies` (`3Jeal7RQAhUmgLZ3`); confirm `active: false`, `activeVersionId: null`.
+- [ ] ~~🔒 2.~~ (29 Oct: the version has aged out of n8n history; not possible) Restore version `cd14b31d-ca74-4fa8-bec9-8e6675a4fd3b` on `9BjHeFBUKqnmQqHl` (Instant Lead Follow-Up), unpublished; verify node for node against `lite/dist/demo/lead-follow-up.json`.
+- [ ] ~~🔒 3.~~ (not possible, as 2) Restore version `ab0f14c6-b596-44ff-ad73-02039087105b` on `Tmk4lj7VrbHix9A9` (Monitor), unpublished; verify against `lite/dist/demo/monitor.json`.
+- [ ] ~~🔒 4.~~ (not possible, as 2) Restore version `49aeb37c-394b-41b9-b50a-4a9265ee2f02` on `3Jeal7RQAhUmgLZ3`, unpublished (only after 1).
+- [ ] ✍️ 5. (owner, n8n editor: the tools cannot read or remove pin data) Remove the pinned S7 test lead from `9BjHeFBUKqnmQqHl`.
 - [ ] ✍️ 6. Twilio Console: Try out SMS › Auto-reply › Standard › Save.
 - [ ] ✍️ 7. Delete the Twilio Webhook Rule (`EXACT_MATCH`, reply URL) and its Webhook Setting.
-- [ ] 🔒 8. Clear the Login Setup data table (`y28wzAvfOC2U7fwI`, verify the id first).
-- [ ] 🔒 9. Archive the five Twilio helper workflows (`HWJdTkYMLBFXE5bn`, `0h3YTk1ewoemNQCq`, `CRYdGYERCuVGcaEs`, `ikWTxNSgiH3u1TWr`, `VcTE56qoxldxCeDt`).
-- [ ] 10. Keep `rec4IUGCUBSSiBd4N` as evidence, Retry Requested unticked.
-- [ ] After each item: `get_workflow_details` re-read; append the result to a new `evidence/lite-cleanup-<date>.md`.
+- [ ] ✍️ 8. (owner: a permanent row deletion) Clear the Login Setup data table (`y28wzAvfOC2U7fwI`, verify the id first).
+- [x] 🔒 9. Archive the five Twilio helper workflows (`HWJdTkYMLBFXE5bn`, `0h3YTk1ewoemNQCq`, `CRYdGYERCuVGcaEs`, `ikWTxNSgiH3u1TWr`, `VcTE56qoxldxCeDt`).
+- [x] 10. Keep `rec4IUGCUBSSiBd4N` as evidence, Retry Requested unticked.
+- [x] After each item: re-read; recorded in `evidence/lite-cleanup-20261029.md`. The three drafts keep the live one-recipient build (unpublished; trial account) until Task L3 rebuilds Lite from `lite/dist/`.
 
 **Done when:** no Lite workflow is published; every Lite draft matches `lite/dist/demo/*.json` node for node; the evidence file exists.
 

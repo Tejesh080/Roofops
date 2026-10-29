@@ -1,5 +1,9 @@
 # Advanced RoofOps release runbook: the 2026-10-22/23 sprint (8 migrations, n8n 06, 03, 05, dashboard)
 
+> **Superseded on 2026-10-30 by [release-phase1.md](release-phase1.md)**, which releases everything on `main` (nine
+> migrations, n8n 00/01/03/04/06/07/95, the dashboard) in one order. This file's §2 behaviour notes and §8 owner
+> decisions still apply.
+
 Owner-run. Every 🔒 step changes a live system and needs the owner's approval for that step; everything else is
 read-only. No secret appears here. Branch `feature/advanced-sprint-lifecycle`, stacked on AC-13B (`3672195`) and AC-15
 (`75b76eb`). Nothing in this release has been deployed.

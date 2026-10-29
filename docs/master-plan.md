@@ -229,19 +229,37 @@ Source: `evidence/lite-activation-investigation-20261022.md` §6, items 1–10. 
 
 ## 8. Phase 1: deploy and alerts (6 – 19 Nov)
 
-### Task 1.1: 🔒 Release the 15 waiting fixes (runbook `ops/advanced-release-runbook-20261023.md`)
+### Task 1.1: 🔒 Release everything on `main` that is not on hosted (`ops/release-phase1.md`)
 
-Preconditions: Phase 0 done; the hosted head is still `20261017060000` (56 migrations); no error executions in n8n since the last read.
+**Scope (prepared 30 Oct):**
+- nine migrations: the sprint's eight plus `20261029120000_airtable_ping_mac`, in log mode;
+- n8n: publish 06, 03, 01, 04, 07 and 00, and create 95;
+- the dashboard.
 
-- [ ] **Step 1: Fresh backup** (§3, repeat: the 23 Oct dump is older than 7 days): new `pg_dump` to `D:\Claude\roofops-backups\pre-advanced-release-<date>.dump` with `.sha256`; restore test into a scratch database; record n8n `versionId`s for 06, 03, 05, 07 **and 01, 04** (Task 0.4 adds them to the publish list).
-- [ ] **Step 2: Preflight** (§4, read-only): `integrity:check` 0 FAIL, `security:check` 16/16, head 56, the six SQL checks from the 23 Oct evidence (saved as `ops/preflight.sql`), n8n active states as expected. Append to `evidence/advanced-release-<date>.md`.
-- [ ] **Step 3: 🔒 §5 steps 1–10 in order**, one approval per 🔒 row, verifying each before the next: pause 07; Airtable To-do fields on PRJ-2026-0031..0033; `npm run db:load -- --hosted --confirm <ref>` (exactly 8 files; "already imported" for the dataset); post-migration read-only checks (integrity 0 FAIL, 64 migrations); resume 07 and `reconcile --dry-run` 0 drift; publish 06, then 03, then 01 and 04 (INT-03), node for node equal to the files; dashboard deploy to the protected Preview with `STAFF_XERO_DISPATCH` unset; §6 live acceptance rows; 05 only when the owner schedules the FIN-GST-01 check.
-- [ ] **Step 4: Evidence and ledger:** rows move to **FIXED** only where the live check passed; the rest stay "Fixed offline, live check pending" with the reason.
-- [ ] **Step 5: §7 monitoring for 7 days** (replaced by Task 1.2's alerts as they land).
+Each workflow's live version was matched to its commit, and the node-level changes listed in the checklist come from a
+diff of the files. 05 (FIN-GST-01) stays a separate supervised step.
 
-**Rollback triggers (§8) apply unchanged.** If any §5 step fails its verify line, stop, roll that step back with the recorded version or `ops/rollback/*.down.sql`, and re-ask.
+**Precondition:** the credentials have moved (Task 0.1 step 5).
 
-**Done when:** hosted head `20261022070000`; integrity 0 FAIL; 06/03/01/04 live at the new versions; the Preview serves the new dashboard; the evidence file and ledger are updated; 7 days with no error executions.
+- [x] **Step 0: Rehearsal tooling** (`scripts/release-rehearsal.ts`, `test/release-rehearsal.test.ts`): restore a backup locally, apply the pending migrations, run integrity and privilege checks, roll everything back, compare the schema, and re-apply.
+  - On the 23 Oct backup every check held: 32 PASS / 5 WARNING / 0 FAIL after applying, and a schema identical to the backup after the nine rollbacks.
+  - The preflight queries are saved as `ops/release-preflight.sql`.
+- [ ] **Step 1: Before** (`ops/release-phase1.md` §3):
+  - a fresh `npm run backup:hosted`;
+  - the rehearsal on that backup;
+  - the rollback points;
+  - the read-only preflight.
+- [ ] **Step 2: 🔒 Steps 1–14 in order** (§4), one approval per 🔒 row, verifying each before the next.
+- [ ] **Step 3: Evidence and ledger:** rows move to **FIXED** only where their live check passed.
+- [ ] **Step 4: First week** (§5).
+
+**Rollback:** §6, newest layer first. Rehearsed.
+
+**Done when:**
+- hosted is at head `20261029120000` with integrity 0 FAIL;
+- 06, 03, 01, 04, 07 and 00 are live at `main`'s versions, and 95 is set as their error workflow;
+- the Preview serves `main`'s dashboard;
+- the evidence file exists.
 
 ### Task 1.2: Alerting that reaches a phone
 

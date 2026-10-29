@@ -7,9 +7,9 @@
  * root .env. Never prints a secret. Then connects AS the role and proves its privileges.
  */
 import { randomBytes } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { openPostgres } from '../src/db/db.js';
-import { confirmHostedWrite, hostedDbConfig, mergeEnvFile, requireEnv } from '../src/config/env.js';
+import { confirmHostedWrite, hostedDbConfig, mergeEnvFile, readFileIfExists, requireEnv } from '../src/config/env.js';
 
 const WEB_ENV = 'web/.env.local';
 const ROLE = 'roofops_web';
@@ -21,7 +21,9 @@ const admin = new URL(cfg.url);
 const projectRef = decodeURIComponent(admin.username).split('.')[1];
 if (!projectRef) throw new Error('SUPABASE_DB_URL must use the pooler username form postgres.<project-ref>');
 const tls = cfg.caPem ? { caPem: cfg.caPem } : undefined;
-const stored = existsSync(WEB_ENV) ? /DASHBOARD_DATABASE_URL=(.*)/.exec(readFileSync(WEB_ENV, 'utf8'))?.[1]?.trim() : undefined;
+// Read once: the same text decides the stored URL and is what the update below merges into.
+const current = readFileIfExists(WEB_ENV);
+const stored = current === undefined ? undefined : /DASHBOARD_DATABASE_URL=(.*)/.exec(current)?.[1]?.trim();
 
 const db = await openPostgres(cfg.url, tls);
 let url: string;
@@ -49,12 +51,12 @@ try {
 
 // Only the keys this script owns are set; the sign-in settings (DEMO_*, AUTH_SECRET) and the CA setting stay as they are.
 const header = '# RoofOps dashboard server-side settings. Gitignored. Never prefix any of these with NEXT_PUBLIC_.\n';
-writeFileSync(WEB_ENV, mergeEnvFile(existsSync(WEB_ENV) ? readFileSync(WEB_ENV, 'utf8') : header, {
+writeFileSync(WEB_ENV, mergeEnvFile(current ?? header, {
   DASHBOARD_DATABASE_URL: url,
   DEEPSEEK_API_KEY: requireEnv('DEEPSEEK_API_KEY'),
   DEEPSEEK_BASE_URL: process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com',
   DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL ?? 'deepseek-flash',
-  ...(cfg.caPem && process.env.SUPABASE_CA_CERT && !/^DASHBOARD_DB_CA_(PEM|CERT)=/m.test(existsSync(WEB_ENV) ? readFileSync(WEB_ENV, 'utf8') : '')
+  ...(cfg.caPem && process.env.SUPABASE_CA_CERT && !/^DASHBOARD_DB_CA_(PEM|CERT)=/m.test(current ?? '')
     ? { DASHBOARD_DB_CA_CERT: process.env.SUPABASE_CA_CERT } : {}),
 }), { mode: 0o600 });
 console.log(`updated ${WEB_ENV} (only the database and DeepSeek keys; values not printed)`);

@@ -61,6 +61,16 @@ export function requireEnv(name: string): string {
   return v;
 }
 
+/** The file's text, or undefined when it does not exist: one read, so there is no exists-then-read race. */
+export function readFileIfExists(path: string): string | undefined {
+  try {
+    return readFileSync(path, 'utf8');
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw e;
+  }
+}
+
 /**
  * Sets KEY=value lines in the text of an env file, keeping every other line (comments, other keys) as it was.
  * A key that already exists is replaced in place; a new key is appended. Used when a script owns only some keys.

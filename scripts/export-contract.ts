@@ -7,6 +7,7 @@
  *   docs/state-machines.md      Mermaid diagram + transition table per machine
  */
 import { writeFileSync } from 'node:fs';
+import { markdownCell as cell } from '../src/data/markdown.js';
 import { openPglite } from '../src/db/db.js';
 import { migrate } from '../src/db/migrate.js';
 
@@ -44,7 +45,6 @@ for (const entity of [...new Set(contract.map((c) => String(c.entity)))]) {
   md.push(`## ${entity}`, '', '| Field | Canonical | Owner | Editable where | Change path | Validation | Event | Downstream | Read-back | Reconcile | AI |',
     '|---|---|---|---|---|---|---|---|---|---|---|');
   for (const c of contract.filter((x) => x.entity === entity)) {
-    const cell = (v: string | boolean | null | undefined) => String(v ?? '—').replace(/\|/g, '\\|');
     md.push(`| ${cell(c.airtable_name ?? c.field_key)}${c.value_type === 'date' ? ' _(date: Brisbane business day)_' : ''}${c.airtable_field_id ? `<br>\`${String(c.airtable_field_id)}\`` : ''} | ${cell(c.canonical)} | \`${String(c.owner)}\` | ${cell(c.editable_in)} | ${cell(c.change_path)} | ${cell(c.validation)} | ${cell(c.event_generated)} | ${cell(c.downstream)} | ${cell(c.readback)} | \`${String(c.reconcile)}\` | ${c.ai_visible ? 'yes' : 'no'} |`);
   }
   md.push('');

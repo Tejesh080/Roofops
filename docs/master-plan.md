@@ -177,9 +177,9 @@ As built (29 Oct): `.github/workflows/ci.yml` uses `postgres:17-alpine` (the loc
 **Interfaces:**
 - Produces: `Validate Ping` outputs `{ webhook_id, ping_timestamp }` only; the payload fetch uses the Postgres cursor (`$json.cursor`) unconditionally. Operator replays use the existing SQL path (`ops/requeue-*.sql`, 🔒), never the webhook.
 
-- [ ] **Step 1: Failing test:** in each suite, a ping body `{ base: {id}, webhook: {id}, timestamp, replay_from_cursor: 1 }` leaves the fetch cursor equal to the stored cursor (assert the HTTP request the runner records carries the stored value).
-- [ ] **Step 2: Run** those suites → FAIL (cursor is 1).
-- [ ] **Step 3: Implement:** delete the `replay` parsing lines and the `?? $json.cursor` fallback in both files.
+- [x] **Step 1: Failing test:** in each suite, a ping body `{ base: {id}, webhook: {id}, timestamp, replay_from_cursor: 1 }` leaves the fetch cursor equal to the stored cursor (assert the HTTP request the runner records carries the stored value).
+- [x] **Step 2: Run** those suites → FAIL (cursor is 1). As built: `test/n8n-ping-cursor.test.ts` runs the real node code of 01 and 04; red before the fix in both (the ping output carried `replay_from_cursor`).
+- [x] **Step 3: Implement:** delete the `replay` parsing lines and the `?? $json.cursor` fallback in both files.
 - [ ] **Step 4: Run** `npm run check` → exit 0.
 - [ ] **Step 5:** Ledger row INT-03 → "Fixed offline; hosted publish with the Phase 1 release". PR, merge (🔒). Commit: `INT-03: the Airtable ping body no longer chooses the replay cursor (01, 04)`.
 

@@ -44,6 +44,11 @@ describe.each(TARGETS)('AC-06: a Xero write is bound to its approved tenant [%s]
     const remove = () => outcome(db.query(`delete from app_settings where key = 'xero.demo_tenant_id'`));
     const insert = (v: string) => outcome(db.query(`insert into app_settings (key, value) values ('xero.demo_tenant_id', $1)`, [v]));
     const pinNow = async () => (await col(db, `select value v from app_settings where key = 'xero.demo_tenant_id'`))[0];
+    /** Waits until the job is due by the database's own clock. A queued job is due at once (next_attempt_at defaults to
+     *  now()), but a database clock that steps back (Docker's VM on Windows sets its clock from the host's when it drifts)
+     *  turns a claim inside the step into a refusal, not due yet: the one way this file has failed. No assertion changes. */
+    const due = (key: string) => expect.poll(async () => (await col(db, `select (next_attempt_at <= now())::text v from outbox where idempotency_key = $1`, [key]))[0],
+      { interval: 20, timeout: 15_000, message: `${key} is due by the database clock` }).toBe('true');
     /** Prepare and approve a project's final invoice exactly as n8n 04 does (with tenant A pinned first, unless told not to). */
     const approve = async (project: string, pinFirst = true) => {
       if (pinFirst) expect(await outcome(db.query(`insert into app_settings (key, value) values ('xero.demo_tenant_id', $1)
@@ -55,6 +60,7 @@ describe.each(TARGETS)('AC-06: a Xero write is bound to its approved tenant [%s]
       expect(r).toMatchObject({ outcome: 'APPROVED' });
       const [job] = await db.query<{ key: string; payload: R }>(`select idempotency_key key, payload from outbox where aggregate_id = $1`, [r.invoice_id]);
       expect(job!.payload.xero_tenant_id).toBe(A);
+      await due(job!.key);
       return { project, invoice: String(r.invoice_number), id: String(r.invoice_id), key: job!.key, payload: job!.payload };
     };
     /** What [RoofOps] 05 sends after reading its draft back from Xero, from the given tenant. */
@@ -76,7 +82,7 @@ describe.each(TARGETS)('AC-06: a Xero write is bound to its approved tenant [%s]
     /** The open exceptions a person sees for this project's stopped Xero write. */
     const holds = (project: string) => col(db, `select error_class || ' ' || error_message v from workflow_exceptions
         where business_reference = $1 and resolution_status = 'OPEN' and error_message like '%Xero write stopped%' order by created_at`, [project]);
-    return { q1, change, remove, insert, pinNow, approve, claim, complete, fail, job, syncHistory, holds };
+    return { q1, change, remove, insert, pinNow, due, approve, claim, complete, fail, job, syncHistory, holds };
   };
   const setup = async () => {
     const db = await migratedDb(target);
@@ -153,6 +159,7 @@ describe.each(TARGETS)('AC-06: a Xero write is bound to its approved tenant [%s]
       expect(await k.insert(B)).toBe(true);
       // Re-queued by an operator (ops/requeue-dead-lettered-side-effect.sql) while B is pinned: held, visibly, no Xero call.
       await db.query(`update outbox set status = 'PENDING', next_attempt_at = now(), last_error = null where idempotency_key = $1`, [a.key]);
+      await k.due(a.key);
       for (const w of ['w2', 'w3']) expect(await k.claim(a.key, w)).toMatchObject({ claimed: false, status: 'TENANT_CHANGED' });
       expect(await k.job(a)).toMatchObject({ outbox: 'PENDING', attempts: 1, tenant: A, xero_linked: false });
       expect(await k.holds(a.project)).toEqual([expect.stringMatching(new RegExp(
@@ -177,6 +184,7 @@ describe.each(TARGETS)('AC-06: a Xero write is bound to its approved tenant [%s]
       expect(await k.job(a)).toMatchObject({ outbox: 'FAILED', sync_status: 'PENDING' });
       for (const attempt of [k.change(B), k.change(''), k.remove()]) expect(await attempt).toMatch(blocked(a.invoice, 'retry scheduled'));
       await db.query(`update outbox set next_attempt_at = now() where idempotency_key = $1`, [a.key]);   // the retry is due
+      await k.due(a.key);
       expect(await k.claim(a.key, 'w2')).toMatchObject({ claimed: true, attempt: 2, payload: { xero_tenant_id: A } });
       expect(await k.complete(a, A)).toMatchObject({ status: 'RECORDED' });
       expect(await k.job(a)).toMatchObject({ outbox: 'DONE', sync_status: 'SYNCED', tenant: A });

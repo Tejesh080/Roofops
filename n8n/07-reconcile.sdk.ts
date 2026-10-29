@@ -275,19 +275,43 @@ const createHook = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, conf
       filters: { dataTypes: ['tableData'], changeTypes: ['update'] }, includes: { includeCellValuesInFieldIds: 'all', includePreviousCellValues: true } } } }),
     options: RAW }, credentials: AIRTABLE }, output: [{ statusCode: 200, body: { id: 'ach' } }] });
 
+// The create response carries the webhook's MAC secret, which Airtable returns only this once: it goes straight to
+// Postgres and no further (ADR-041). Only the status code and whether it was stored are passed on.
+const storeSecret = node({ type: 'n8n-nodes-base.postgres', version: 2.7, config: { name: 'Store Webhook Secret',
+  parameters: { operation: 'executeQuery', query: 'select $1::int as "statusCode", wf_airtable_webhook_created($2, $3, $4) as s',
+    options: { queryReplacement: expr("{{ [ $json.statusCode, ($json.body || {}).id ?? null, 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/changes', " +
+      '($json.body || {}).macSecretBase64 ?? null ] }}') } },
+  credentials: PG }, output: [{ statusCode: 200, s: { stored: true, webhook_id: 'ach' } }] });
+
 const refreshHook = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Refresh Webhook',
   parameters: { method: 'POST', url: expr(HOOKS + '/{{ $json.id }}/refresh'), authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi', options: RAW },
   credentials: AIRTABLE }, output: [{ statusCode: 200 }] });
 
+// The wake ping looks like Airtable's and is signed by Postgres with the webhook's stored secret (ADR-041), so the
+// consumer's signature check treats it like Airtable's own. The body is built once and sent exactly as signed.
+const buildWake = node({ type: 'n8n-nodes-base.code', version: 2, config: { name: 'Build Wake Ping',
+  parameters: { mode: 'runOnceForAllItems', jsCode: `
+return $input.all().map(function (i) {
+  const body = JSON.stringify({ base: { id: 'appMc8V0Wm29tEeHQ' }, webhook: { id: i.json.id }, timestamp: new Date().toISOString() });
+  return { json: { id: i.json.id, url: i.json.url, body: body } };
+});` } }, output: [{ id: 'ach', url: 'https://example.app.n8n.cloud/webhook/x', body: '{}' }] });
+
+const signWake = node({ type: 'n8n-nodes-base.postgres', version: 2.7, config: { name: 'Sign Wake Ping',
+  parameters: { operation: 'executeQuery', query: 'select $1::text as id, $2::text as url, $3::text as body, wf_airtable_sign_ping($1, $3) as mac',
+    options: { queryReplacement: expr('{{ [ $json.id, $json.url, $json.body ] }}') } }, credentials: PG },
+  output: [{ id: 'ach', url: 'https://example.app.n8n.cloud/webhook/x', body: '{}', mac: 'hmac-sha256=' }] });
+
 const drain = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Wake Consumer With Unread Payloads',
-  parameters: { method: 'POST', url: expr('{{ $json.url }}'), sendBody: true, contentType: 'json', specifyBody: 'json',
-    jsonBody: expr("{{ JSON.stringify({ base: { id: '" + BASE_ID + "' }, webhook: { id: $json.id }, timestamp: $now.toISO() }) }}"), options: RAW } },
+  parameters: { method: 'POST', url: expr('{{ $json.url }}'),
+    sendHeaders: true, headerParameters: { parameters: [{ name: 'X-Airtable-Content-MAC', value: expr("{{ $json.mac || '' }}") }] },
+    sendBody: true, contentType: 'json', specifyBody: 'json', jsonBody: expr('{{ $json.body }}'), options: RAW } },
   output: [{ statusCode: 200 }] });
 
 const checkAction = node({ type: 'n8n-nodes-base.code', version: 2, config: { name: 'Check Maintenance Result',
   parameters: { mode: 'runOnceForEachItem', jsCode: `
-// Only status codes leave this node: the create response contains the webhook MAC secret, which is never passed on.
+// Only status codes leave this node. The create response's MAC secret went only to Postgres (Store Webhook Secret).
 if ($json.statusCode !== 200) throw new Error('webhook maintenance failed: HTTP ' + $json.statusCode);
+if ($json.s && $json.s.stored !== true) throw new Error('webhook created but its MAC secret was not stored: ' + ($json.s.reason || 'unknown'));
 return { json: { ok: true, status: $json.statusCode } };` } }, output: [{ ok: true }] });
 
 export default workflow('roofops-reconcile', '[RoofOps] 07 Reconcile & Webhook Supervision')
@@ -308,6 +332,6 @@ export default workflow('roofops-reconcile', '[RoofOps] 07 Reconcile & Webhook S
     .onTrue(findUncertainByNumber.to(findUncertainByRef).to(settleUncertain))
     .onFalse(settleUncertain))
   .add(settleUncertain).to(listHooks).to(checkHooks).to(finish).to(actions).to(route
-    .onCase(0, createHook.to(checkAction))
+    .onCase(0, createHook.to(storeSecret).to(checkAction))
     .onCase(1, refreshHook.to(checkAction))
-    .onCase(2, drain.to(checkAction)));
+    .onCase(2, buildWake.to(signWake).to(drain).to(checkAction)));

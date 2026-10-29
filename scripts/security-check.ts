@@ -61,6 +61,14 @@ try {
       cross join (values ('roofops_workflow'), ('roofops_dashboard')) r(r)
       where n.nspname = 'public' and c.relkind = 'r' and c.relname = 'invoice_xero_draft_generations'
         and (has_table_privilege(r.r, c.oid, 'select') or has_table_privilege(r.r, c.oid, 'insert'))`), (g) => g.length === 0);
+  // ADR-041: no app role reads the Airtable webhook MAC secrets or the ping verdicts (the dashboard sees counts through
+  // v_integration_activity); the ping check runs in log or enforce mode (absent until the migration is deployed).
+  check('webhook MAC secrets, ping verdicts: app-role access', await list(`select c.relname || ':' || r.r v from pg_class c join pg_namespace n on n.oid = c.relnamespace
+      cross join (values ('roofops_workflow'), ('roofops_dashboard')) r(r)
+      where n.nspname = 'public' and c.relkind = 'r' and c.relname in ('integration_webhook_secrets', 'airtable_ping_checks')
+        and (has_table_privilege(r.r, c.oid, 'select') or has_table_privilege(r.r, c.oid, 'insert'))`), (g) => g.length === 0);
+  check('Airtable ping MAC mode', await list(`select value v from app_settings where key = 'airtable.ping_mac'`),
+    (g) => g.length === 0 || g[0] === 'log' || g[0] === 'enforce');
   check('Xero writes pinned to the proven Demo tenant', await list(`select value v from app_settings where key = 'xero.demo_tenant_id'`),
     (g) => g[0] === '96643bb0-3a0a-406e-96fb-ab8a933ee6b8');
   check('reconcile trigger token stored only as a hash', await list(`select length(value)::text v from app_settings where key = 'reconcile.trigger_token_sha256'`),

@@ -1,6 +1,7 @@
 import { workflow, node, trigger, ifElse, switchCase, expr } from '@n8n/workflow-sdk';
 
 const DRIVE = { googleDriveOAuth2Api: { id: 'o7IjcWsTr1ZUy9wU', name: 'RoofOps Google Drive' } };
+const PG = { postgres: { id: 'kWqjtv0gz7ref2EN', name: 'RoofOps Postgres' } };
 const RAW = { response: { response: { fullResponse: true, neverError: true } }, timeout: 20000 };
 const FILES = 'https://www.googleapis.com/drive/v3/files';
 
@@ -84,6 +85,13 @@ const createHook = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, conf
       includes: { includeCellValuesInFieldIds: ['fldyP20HNafS614d5', 'fldQpTa5tvrzlNg1h', 'fldEjEqlzE8Y0M1nf', 'fldVUpqZkVKid3Fyy', 'fldfhsHggkGd8GKVq'], includePreviousCellValues: true } } } }),
     options: RAW }, credentials: AIRTABLE }, output: [{ statusCode: 200 }] });
 
+// The create response carries the webhook's MAC secret, which Airtable returns only this once: it goes straight to
+// Postgres and no further (ADR-041). A failed create stores nothing; the verify step reports it.
+const storeQuoteSecret = node({ type: 'n8n-nodes-base.postgres', version: 2.7, config: { name: 'Store Webhook Secret',
+  parameters: { operation: 'executeQuery', query: 'select wf_airtable_webhook_created($1, $2, $3) as s',
+    options: { queryReplacement: expr("{{ [ ($json.body || {}).id ?? null, '" + NOTIFY + "', ($json.body || {}).macSecretBase64 ?? null ] }}") } },
+  credentials: PG }, output: [{ s: { stored: true, webhook_id: 'ach' } }] });
+
 const readHooks = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Read Back Airtable Webhooks',
   parameters: { method: 'GET', url: HOOKS, authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi', options: RAW },
   credentials: AIRTABLE }, output: [{ statusCode: 200, body: { webhooks: [] } }] });
@@ -94,6 +102,7 @@ const NOTIFY = 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/quote-ev
 const prior = $('Decide Webhook Action').first().json;
 const change = prior.exists ? $('Refresh Airtable Webhook').first().json : $('Create Airtable Webhook').first().json;
 if (change.statusCode !== 200) throw new Error((prior.exists ? 'refresh' : 'create') + ' failed: HTTP ' + change.statusCode + ' ' + JSON.stringify(change.body.error || change.body).slice(0, 300));
+if (!prior.exists && (($('Store Webhook Secret').first().json.s || {}).stored !== true)) throw new Error('webhook created but its MAC secret was not stored in RoofOps');
 const r = $input.first().json;
 if (r.statusCode !== 200) throw new Error('webhook read-back failed: HTTP ' + r.statusCode);
 const ours = (r.body.webhooks || []).filter(function (w) { return w.notificationUrl === NOTIFY; });
@@ -135,6 +144,10 @@ const createInvoiceHook = node({ type: 'n8n-nodes-base.httpRequest', version: 4.
       filters: { dataTypes: ['tableData'], recordChangeScope: 'tblvUPIoebC3zoacv', watchDataInFieldIds: ['fldYnINTdtOckOzK4'], changeTypes: ['update'] },
       includes: { includeCellValuesInFieldIds: ['fldhhnQXlbuFaveK3', 'fldc4T0AgU3zCmANC', 'fldYnINTdtOckOzK4'], includePreviousCellValues: true } } } }),
     options: RAW }, credentials: AIRTABLE }, output: [{ statusCode: 200 }] });
+const storeInvoiceSecret = node({ type: 'n8n-nodes-base.postgres', version: 2.7, config: { name: 'Store Invoice Webhook Secret',
+  parameters: { operation: 'executeQuery', query: 'select wf_airtable_webhook_created($1, $2, $3) as s',
+    options: { queryReplacement: expr("{{ [ ($json.body || {}).id ?? null, '" + NOTIFY_INVOICE + "', ($json.body || {}).macSecretBase64 ?? null ] }}") } },
+  credentials: PG }, output: [{ s: { stored: true, webhook_id: 'ach' } }] });
 const readInvoiceHooks = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Read Back Invoice Webhook',
   parameters: { method: 'GET', url: HOOKS, authentication: 'predefinedCredentialType', nodeCredentialType: 'airtableTokenApi', options: RAW },
   credentials: AIRTABLE }, output: [{ statusCode: 200, body: { webhooks: [] } }] });
@@ -144,6 +157,7 @@ const NOTIFY = 'https://tejesh08.app.n8n.cloud/webhook/roofops/airtable/project-
 const prior = $('Decide Invoice Webhook Action').first().json;
 const change = prior.exists ? $('Refresh Invoice Webhook').first().json : $('Create Invoice Webhook').first().json;
 if (change.statusCode !== 200) throw new Error((prior.exists ? 'refresh' : 'create') + ' failed: HTTP ' + change.statusCode + ' ' + JSON.stringify(change.body.error || change.body).slice(0, 300));
+if (!prior.exists && (($('Store Invoice Webhook Secret').first().json.s || {}).stored !== true)) throw new Error('webhook created but its MAC secret was not stored in RoofOps');
 const r = $input.first().json;
 if (r.statusCode !== 200) throw new Error('webhook read-back failed: HTTP ' + r.statusCode);
 const ours = (r.body.webhooks || []).filter(function (w) { return w.notificationUrl === NOTIFY; });
@@ -165,9 +179,9 @@ export default workflow('roofops-setup', '[RoofOps] 00 Setup & Maintenance')
   .add(findRoot).to(decideRoot).to(needCreate.onTrue(createRoot.to(readRoot).to(verifyRoot)))
   .add(manual).to(listHooks)
   .add(daily).to(listHooks)
-  .add(listHooks).to(decideHook).to(hookExists.onTrue(refreshHook.to(readHooks)).onFalse(createHook.to(readHooks)))
+  .add(listHooks).to(decideHook).to(hookExists.onTrue(refreshHook.to(readHooks)).onFalse(createHook.to(storeQuoteSecret).to(readHooks)))
   .add(readHooks).to(verifyHook)
   .add(manual).to(listInvoiceHooks)
   .add(daily).to(listInvoiceHooks)
-  .add(listInvoiceHooks).to(decideInvoiceHook).to(invoiceHookExists.onTrue(refreshInvoiceHook.to(readInvoiceHooks)).onFalse(createInvoiceHook.to(readInvoiceHooks)))
+  .add(listInvoiceHooks).to(decideInvoiceHook).to(invoiceHookExists.onTrue(refreshInvoiceHook.to(readInvoiceHooks)).onFalse(createInvoiceHook.to(storeInvoiceSecret).to(readInvoiceHooks)))
   .add(readInvoiceHooks).to(verifyInvoiceHook);

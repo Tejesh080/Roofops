@@ -14,17 +14,26 @@ const ping = trigger({ type: 'n8n-nodes-base.webhook', version: 2.1, config: { n
 
 const validatePing = node({ type: 'n8n-nodes-base.code', version: 2, config: { name: 'Validate Ping',
   parameters: { mode: 'runOnceForAllItems', jsCode: `
-// Pings carry no record data; everything acted on is fetched from Airtable with our own credential.
-const b = $input.first().json.body || {};
+// Pings carry no record data; everything acted on is fetched from Airtable with our own credential, from the
+// durable Postgres cursor. Postgres checks the ping's signature (ADR-041) from the body as Airtable signs it
+// (JSON.stringify of the parsed ping, per Airtable's docs) and X-Airtable-Content-MAC; the secret never comes here.
+// 07's wake pings to this workflow are signed by Postgres too, so they pass the same check.
+const j = $input.first().json;
+const b = j.body || {};
 const hook = b.webhook && b.webhook.id;
 if (!b.base || b.base.id !== 'appMc8V0Wm29tEeHQ' || !/^ach[A-Za-z0-9]{14}$/.test(hook || '')) return [];
-return [{ json: { webhook_id: hook } }];` } },
+const mac = (j.headers || {})['x-airtable-content-mac'];
+return [{ json: { webhook_id: hook, body_text: JSON.stringify(b), mac: typeof mac === 'string' ? mac : null } }];` } },
   output: [{ webhook_id: 'achXXXXXXXXXXXXXX' }] });
 
+// The cursor, or null when enforce mode refuses a ping Postgres cannot verify (the verdict is recorded either way).
 const loadCursor = node({ type: 'n8n-nodes-base.postgres', version: 2.7, config: { name: 'Load Payload Cursor',
-  parameters: { operation: 'executeQuery', query: 'select wf_airtable_cursor($1)::text as cursor',
-    options: { queryReplacement: expr('{{ [ $json.webhook_id ] }}') } }, credentials: PG },
+  parameters: { operation: 'executeQuery', query: 'select wf_airtable_ping_cursor($1, $2, $3)::text as cursor',
+    options: { queryReplacement: expr('{{ [ $json.webhook_id, $json.body_text, $json.mac ] }}') } }, credentials: PG },
   output: [{ cursor: '1' }] });
+
+const verified = ifElse({ version: 2.3, config: { name: 'Ping Verified?', parameters: { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'loose' },
+  conditions: [{ leftValue: expr('{{ $json.cursor != null }}'), rightValue: true, operator: { type: 'boolean', operation: 'true', singleValue: true } }], combinator: 'and' } } } });
 
 const listPayloads = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'List Airtable Payloads',
   retryOnFail: true, maxTries: 3, waitBetweenTries: 5000,
@@ -154,7 +163,8 @@ const advance = node({ type: 'n8n-nodes-base.postgres', version: 2.7, config: { 
   credentials: PG }, output: [{ cursor: '2' }] });
 
 export default workflow('roofops-airtable-changes', '[RoofOps] 06 Airtable Changes → Postgres')
-  .add(ping).to(validatePing).to(loadCursor).to(listPayloads).to(extract).to(anyEvents
+  .add(ping).to(validatePing).to(loadCursor).to(verified.onTrue(listPayloads))
+  .add(listPayloads).to(extract).to(anyEvents
     .onTrue(apply)
     .onFalse(advance))
   .add(apply).to(plan).to(needsWrite

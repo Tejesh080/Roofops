@@ -15,18 +15,25 @@ const ping = trigger({ type: 'n8n-nodes-base.webhook', version: 2.1, config: { n
 const validatePing = node({ type: 'n8n-nodes-base.code', version: 2, config: { name: 'Validate Ping',
   parameters: { mode: 'runOnceForAllItems', jsCode: `
 // Airtable pings carry no record data: they only say "new payloads exist". Everything we act on is
-// fetched from Airtable with our own credential, so a forged ping can at worst cause one extra read.
-// Nothing in the body chooses what is read: the fetch starts at the durable Postgres cursor (INT-03).
-const b = $input.first().json.body || {};
+// fetched from Airtable with our own credential, from the durable Postgres cursor: nothing in the body chooses
+// what is read (INT-03). Postgres also checks the ping's signature (ADR-041): it gets the body as Airtable signs it
+// (Airtable's docs hash JSON.stringify of the parsed ping) and the X-Airtable-Content-MAC header, never the secret.
+const j = $input.first().json;
+const b = j.body || {};
 const hook = b.webhook && b.webhook.id;
 if (!b.base || b.base.id !== 'appMc8V0Wm29tEeHQ' || !/^ach[A-Za-z0-9]{14}$/.test(hook || '')) return [];
-return [{ json: { webhook_id: hook, ping_timestamp: b.timestamp || null } }];` } },
+const mac = (j.headers || {})['x-airtable-content-mac'];
+return [{ json: { webhook_id: hook, ping_timestamp: b.timestamp || null, body_text: JSON.stringify(b), mac: typeof mac === 'string' ? mac : null } }];` } },
   output: [{ webhook_id: 'achXXXXXXXXXXXXXX' }] });
 
+// The cursor, or null when enforce mode refuses a ping Postgres cannot verify (the verdict is recorded either way).
 const loadCursor = node({ type: 'n8n-nodes-base.postgres', version: 2.7, config: { name: 'Load Payload Cursor',
-  parameters: { operation: 'executeQuery', query: 'select wf_airtable_cursor($1)::text as cursor',
-    options: { queryReplacement: expr('{{ [ $json.webhook_id ] }}') } }, credentials: PG },
+  parameters: { operation: 'executeQuery', query: 'select wf_airtable_ping_cursor($1, $2, $3)::text as cursor',
+    options: { queryReplacement: expr('{{ [ $json.webhook_id, $json.body_text, $json.mac ] }}') } }, credentials: PG },
   output: [{ cursor: '1' }] });
+
+const verified = ifElse({ version: 2.3, config: { name: 'Ping Verified?', parameters: { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'loose' },
+  conditions: [{ leftValue: expr('{{ $json.cursor != null }}'), rightValue: true, operator: { type: 'boolean', operation: 'true', singleValue: true } }], combinator: 'and' } } } });
 
 const listPayloads = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'List Airtable Payloads',
   retryOnFail: true, maxTries: 3, waitBetweenTries: 5000,
@@ -175,7 +182,8 @@ return { json: { verified: true, superseded_by_concurrent_delivery: superseded, 
   output: [{ verified: true }] });
 
 export default workflow('roofops-quote-accepted-to-project', '[RoofOps] 01 Quote Accepted → Project')
-  .add(ping).to(validatePing).to(loadCursor).to(listPayloads).to(extract).to(anyEvents
+  .add(ping).to(validatePing).to(loadCursor).to(verified.onTrue(listPayloads))
+  .add(listPayloads).to(extract).to(anyEvents
     .onTrue(accept)
     .onFalse(advance))
   .add(accept).to(advance)

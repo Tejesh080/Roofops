@@ -208,3 +208,51 @@ Observe mode records findings without changing anything. The same run refreshes 
 ### ADR-040: AI regression is deterministic and grounded in the database
 **Status:** Accepted
 **Decision:** Promptfoo (dev-only, pinned, telemetry and sharing off) runs the real `/api/copilot`. JavaScript assertions check the structured output (tools, tiers, cards) against ground truth read from Postgres at run time: exact status, exact ready-to-invoice list, no unknown identifiers or amounts, no SQL, no secret values, and refusals for approve/send/pay. No model grades the model.
+
+### ADR-041: Airtable pings are verified inside Postgres; the MAC secret never leaves it
+**Status:** Accepted. Built offline 2026-10-30 (migration `20261029120000_airtable_ping_mac.sql` with its rollback; n8n 00, 01, 04, 06, 07; `test/airtable-ping-mac.test.ts`, `test/n8n-ping-mac.test.ts`). Not deployed: `ops/airtable-ping-mac-rollout.md`.
+**Context:**
+- Airtable signs every notification ping: `X-Airtable-Content-MAC: hmac-sha256=<hex>`.
+  - The HMAC-SHA256 is keyed with the webhook's base64 MAC secret.
+  - It covers the JSON body; Airtable's own example hashes `JSON.stringify` of the parsed body.
+  - The secret is returned **only** by the create call: "There is no way to retrieve this value after the initial creation of the webhook".
+- 07's create node deliberately drops it, and 01, 04 and 06 check only the base id and the webhook-id format. So no current webhook's secret is known; they must be re-created to be verified.
+- 07 also sends its own unsigned "wake" ping to a consumer with unread payloads (ADR-022).
+- After INT-03 (Task 0.4) a forged ping can only cause one read from the stored cursor. So what is left is cost and abuse:
+  - each forged ping is one n8n execution plus at least one Airtable API call (5 requests per second per base);
+  - the logs cannot tell a real ping from a forged one.
+
+**Findings (spike):**
+- **pgcrypto** is already installed on both engines (staff sign-in). On Postgres 17,
+  `encode(hmac(convert_to(<body>, 'UTF8'), decode(<secret>, 'base64'), 'sha256'), 'hex')` equals Node's
+  `createHmac('sha256', <secret bytes>)` over the same string.
+- **n8n's Webhook node** gives the next node `{ headers, params, query, body }`, with lowercase header names. Its
+  "Only Run If" guard lets a request through when the expression errors, so it cannot be the check. "Raw Body" exists if
+  re-serialising ever differs from what Airtable signed.
+
+**Decision:**
+1. **Storage.** A new table `integration_webhook_secrets (provider, webhook_id, notification_url, mac_secret_base64, created_at)`:
+   - RLS on, no grants.
+   - Written only by `wf_airtable_webhook_created(id, url, mac_secret_base64)`, which returns `{stored: true}` and never the secret.
+   - The secret is never readable by any role; not even the n8n role can select it.
+2. **Verification in the database.**
+   - `wf_airtable_ping_cursor(webhook_id, body_text, mac)` replaces `wf_airtable_cursor` in 01, 04 and 06.
+   - It returns the stored cursor when the MAC matches the stored secret (constant-time compare). Otherwise it records a bounded rejection row and returns null; the workflow then stops before any Airtable call.
+   - `Validate Ping` passes `JSON.stringify(body)` and `headers['x-airtable-content-mac']`.
+3. **07's wake ping is signed by the database.** `wf_airtable_sign_ping(webhook_id, body_text)` returns the header value. 07 sends exactly that body, so a wake ping passes the same check as Airtable's.
+4. **Secrets are captured at creation.**
+   - 07 (the change webhook) and 00 (quote-events, project-invoice-events) hand the create response straight to `wf_airtable_webhook_created`.
+   - Both workflows stop saving successful executions, so the secret does not sit in n8n's execution log.
+5. **Staged rollout.** A setting `airtable.ping_mac` controls the mode:
+   - `log` (the migration's default): verdicts are recorded and every ping still proceeds.
+   - `enforce`: an unverified ping stops.
+
+   Each existing webhook is then re-created one at a time (🔒): drain to 0 unread, delete, re-create, confirm the secret is stored, confirm the first real ping logs "valid". `enforce` is switched on only when all three log valid.
+6. **Visibility.** System Health shows rejected pings in the last 24 hours. `/api/healthz` stays as it is, because a flood of forged pings is not something a person can fix at 3 am.
+
+**Not solved:** a forged ping still costs one n8n execution, because the check runs inside it. Stopping that needs something
+in front of n8n (a proxy with a shared secret in the URL, or a higher plan's limits). It is recorded, not built.
+**Cost:**
+- Offline: about one day (one migration with rollback; 00, 01, 04, 06 and 07; tests on both engines).
+- Hosted: three supervised webhook re-creations.
+- Re-creating a webhook resets its cursor, so each one is drained to 0 unread first.

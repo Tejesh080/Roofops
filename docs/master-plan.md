@@ -434,6 +434,10 @@ Step-level plan written when the phase starts (`docs/plans/phase-2-demo.md`). Ta
 ## 10. Phase 3: simplify (1 – 19 Dec, overlapping Phase 2)
 
 **Task 3.1: Current definitions in git.** `scripts/export-current-schema.ts` writes `supabase/schema.sql` (`pg_dump --schema-only` of a from-scratch local load, normalised) and `supabase/current/functions/<name>.sql` (`pg_get_functiondef` for every `wf_*`, `web_*`, `integrity_check`, triggers). CI job `schema`: regenerate, `git diff --exit-code`. **Done when:** anyone can read the current body of `integrity_check` in one file, and a migration that changes a function without regenerating fails CI.
+- **Built 30 Oct, ahead of the phase:** `npm run schema:export`. The 65 migrations give `supabase/schema.sql` (14,571 lines, grants included) and 168 files in `supabase/current/functions/`.
+  - It exports every function in `public` that no extension owns: a superset of the list above, so helpers such as `xero_record_settlement` can be read too.
+  - Two runs give identical files. The CI job is pinned to Postgres 17.11, the version they were generated with, and the script refuses any other.
+  - The CI job checks untracked files as well (`git status --porcelain`, not `git diff`), so a new function also fails it.
 
 **Task 3.2: n8n drift check.** `scripts/n8n-drift.ts`: public API `GET /api/v1/workflows` (available on Starter and Pro), normalise (ids, positions, timestamps stripped), compare node for node with the SDK build output of `n8n/*.sdk.ts` and `lite/dist/*`. CI `drift` job on a weekly schedule with the API key as a repository secret (✍️). **Done when:** the report is empty for every published workflow and a deliberate live edit (🔒, reverted) is reported.
 

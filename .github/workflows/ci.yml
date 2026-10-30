@@ -81,6 +81,48 @@ jobs:
           dump > after.sql
           diff -u before.sql after.sql && echo "round trip identical: $(basename "$newest")"
 
+  # The current definitions (docs/master-plan.md Task 3.1): regenerated from the migrations, they must match what is
+  # committed. The image is pinned to the Postgres version they were generated with (PG_VERSION in the script),
+  # because pg_dump's output can change between minor versions.
+  schema:
+    name: schema (current definitions match the migrations)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17.11-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Regenerate supabase/schema.sql and supabase/current/
+        env:
+          ROOFOPS_PG_CONTAINER: ${{ job.services.postgres.id }}
+          SCHEMA_ADMIN_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+        run: npm run schema:export
+      - name: The committed files match
+        run: |
+          changes=$(git status --porcelain -- supabase/schema.sql supabase/current)
+          if [ -n "$changes" ]; then
+            echo "::error::supabase/schema.sql or supabase/current/ is out of date: run npm run schema:export and commit the result"
+            echo "$changes"
+            git diff --stat -- supabase/schema.sql supabase/current
+            exit 1
+          fi
+          echo "current definitions match the migrations"
+
   secrets:
     name: secrets (gitleaks, whole history)
     runs-on: ubuntu-latest
@@ -117,6 +159,11 @@ jobs:
           - { suite: job-journey, projects: --project=job-journey }
           - { suite: sales-journey, projects: --project=sales-journey }
     steps:
+      # 54322 lies inside Linux's ephemeral port range (32768-60999). An outgoing connection (checkout, the npm cache,
+      # the image pull) can be given it, and the container's port mapping then fails: "address already in use".
+      # Reserve it before anything connects out; the start below also retries, for a connection made even earlier.
+      - name: Keep port 54322 for the rehearsal database
+        run: sudo sysctl -w net.ipv4.ip_local_reserved_ports=54322
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
@@ -127,8 +174,15 @@ jobs:
             web/package-lock.json
       - name: Postgres 17 where the rehearsal expects it (container roofops-postgres, port 54322)
         run: |
-          docker run -d --name roofops-postgres -e POSTGRES_PASSWORD=postgres -p 54322:5432 postgres:17-alpine
+          docker pull -q postgres:17-alpine
+          for attempt in $(seq 1 12); do
+            docker run -d --name roofops-postgres -e POSTGRES_PASSWORD=postgres -p 54322:5432 postgres:17-alpine && break
+            docker rm -f roofops-postgres > /dev/null 2>&1 || true
+            echo "port 54322 is busy (attempt $attempt of 12); retrying in 5 s"
+            sleep 5
+          done
           for _ in $(seq 1 30); do docker exec roofops-postgres pg_isready -U postgres -q && break; sleep 2; done
+          docker exec roofops-postgres pg_isready -U postgres
       - run: npm ci
       - run: npm ci --prefix web
       - name: Rehearsal database, synthetic staff and their test logins

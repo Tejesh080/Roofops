@@ -139,14 +139,16 @@ The five failure modes most likely to hurt a person using the software, and the 
 **Interfaces:**
 - Produces: jobs `check` and `db` that later tasks extend (`e2e` in Task 1.3, `drift` in Task 3.2, `schema` in Task 3.1).
 
-- [ ] **Step 1: Write `ci.yml`.** `on: [pull_request, push: {branches: [main]}]`; `concurrency: {group: ci-${{ github.ref }}, cancel-in-progress: true}`; `permissions: {contents: read}`.
+- [x] **Step 1: Write `ci.yml`.** `on: [pull_request, push: {branches: [main]}]`; `concurrency: {group: ci-${{ github.ref }}, cancel-in-progress: true}`; `permissions: {contents: read}`.
   - Job `check`: `ubuntu-latest`, `actions/setup-node@v4` with `node-version: 24` and `cache: npm` (cache paths `package-lock.json` and `web/package-lock.json`), `npm ci`, `npm --prefix web ci`, `npm run check` (lint, typecheck, typecheck:web, vitest on PGlite).
   - Job `db`: `services: postgres: {image: postgres:17, env: {POSTGRES_PASSWORD: postgres}, ports: ['5432:5432'], options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 10}`; same setup; `TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/postgres npm test` (runs both engines; the two-connection race tests included).
   - Job `rollback-roundtrip` (inside `db`, last step): apply all migrations to a fresh database, apply `ops/rollback/<newest>.down.sql`, re-apply the newest migration, `pg_dump --schema-only` before and after are identical. Expected: `diff` exit 0.
-- [ ] **Step 2: Write the PR template:** What changed / Why / Tests run (command and result) / Hosted impact (none | migration | n8n publish | dashboard deploy | Airtable | Twilio) / Rollback / Evidence link (only for hosted changes).
-- [ ] **Step 3: Push a branch and open a PR** (🔒 the push). Expected: `check` green in under 10 minutes, `db` green in under 15. Record the two run times in the PR.
+- [x] **Step 2: Write the PR template:** What changed / Why / Tests run (command and result) / Hosted impact (none | migration | n8n publish | dashboard deploy | Airtable | Twilio) / Rollback / Evidence link (only for hosted changes).
+- [x] **Step 3: Push a branch and open a PR** (🔒 the push). Expected: `check` green in under 10 minutes, `db` green in under 15. Record the two run times in the PR.
+  - PR #2 (29 Oct): `check` 4 min 55 s, `db` 9 min 28 s. The PR description did not list them, so they are recorded here.
 - [ ] **Step 4: ✍️ Owner sets branch protection on `main`:** require PR, require status checks `check` and `db`, no force-push. (`gh api -X PUT repos/Tejesh080/Roofops/branches/main/protection` with the two contexts, or the Settings page.)
-- [ ] **Step 5: Merge** (🔒). Commit message: `CI: lint, typecheck and the full suite on PGlite and Postgres 17 on every PR`.
+  - **Open (checked 30 Oct):** `main` is not protected, so a PR can still merge with a failing check.
+- [x] **Step 5: Merge** (🔒). Merged with the rest of Phase 0 in PR #2 (29 Oct), as §0 item 3 says, so not under a commit message of its own.
 
 **Done when:** a PR cannot merge to `main` without both jobs green; the README badge shows the workflow status.
 
@@ -162,7 +164,7 @@ As built (29 Oct): `.github/workflows/ci.yml` uses `postgres:17-alpine` (the loc
 
 - [x] **Step 1:** Full-history scan with the default rules (29 Oct, 205 commits): 771 findings, **every one an Airtable id** (`airtable-api-key` and `generic-api-key` match `rec…`/`fld…`/`tbl…` + 14). No credential. With the allowlist: no leaks.
 - [x] **Step 2:** Config, hook and CI job written; in a throwaway repository the hook let an Airtable id commit and blocked a random `ghp_…` token ("leaks found: 1", commit refused).
-- [ ] **Step 3:** PR, CI green, merge (🔒).
+- [x] **Step 3:** PR, CI green, merge (🔒). Merged in PR #2 (29 Oct); the `secrets` job passed.
 
 **Done when:** a staged secret cannot be committed on this machine and cannot pass CI.
 
@@ -180,8 +182,8 @@ As built (29 Oct): `.github/workflows/ci.yml` uses `postgres:17-alpine` (the loc
 - [x] **Step 1: Failing test:** in each suite, a ping body `{ base: {id}, webhook: {id}, timestamp, replay_from_cursor: 1 }` leaves the fetch cursor equal to the stored cursor (assert the HTTP request the runner records carries the stored value).
 - [x] **Step 2: Run** those suites → FAIL (cursor is 1). As built: `test/n8n-ping-cursor.test.ts` runs the real node code of 01 and 04; red before the fix in both (the ping output carried `replay_from_cursor`).
 - [x] **Step 3: Implement:** delete the `replay` parsing lines and the `?? $json.cursor` fallback in both files.
-- [ ] **Step 4: Run** `npm run check` → exit 0.
-- [ ] **Step 5:** Ledger row INT-03 → "Fixed offline; hosted publish with the Phase 1 release". PR, merge (🔒). Commit: `INT-03: the Airtable ping body no longer chooses the replay cursor (01, 04)`.
+- [x] **Step 4: Run** `npm run check` → exit 0 (29 Oct, with Postgres 17: 1,389 passed, 37 skipped).
+- [x] **Step 5:** Ledger and merge (🔒). The ledger has no INT-03 row of its own, so the AC-18 row records the second part as **Fixed offline**, live with Task 1.1. Merged in PR #2 (29 Oct).
 
 **Done when:** both suites pin the behaviour; the live publish is a 🔒 step inside Task 1.1 (record 01's and 04's current `versionId` first).
 
@@ -194,7 +196,7 @@ As built (29 Oct): `.github/workflows/ci.yml` uses `postgres:17-alpine` (the loc
 - [x] **Step 3: Untracked work:** `ops/staging/` holds the generator, a placeholder-only `env.staging.example` and an ids-only schema (6 tables, 92 fields); gitleaks finds nothing; `test/staging.test.ts` passes (5, 3 skipped). Committed. Note for Task 1.4: the generator reads `ops/staging/.env.staging` inside the repository (gitignored); move it to `hostedDbConfig('staging')` when staging is built.
 - [x] **Step 4: Modified files:** `web/next-env.d.ts` reverted (generated). **Not committed, left as local changes:** `.claude/launch.json` (three of its six entries point into an old session's temp folder on this machine) and the 10 regenerated screenshots (`phase5/05-…-recovery.png` shows a "Not found" page: the batch was captured against the wrong data). Phase 2's journey regenerates the screenshots.
 - [x] **Step 5: Corrections:** Twilio's error dictionary (checked 29 Oct) has no 572003 and lists "The 'From' number isn't assigned to this verified Messaging recipient" as **572002**, but **572003 is what the live API returned** on 21 Oct (stored in the Message Log). So the evidence keeps 572003 with a dated note, and the README states both. `lite/DELIVERY-CHECKLIST.md`: 70 Lite tests. README "Not built yet" links this plan.
-- [ ] **Step 6:** PR, merge (🔒). Commit: `Hygiene: worktrees, merged branches, staging generator committed, Twilio error code corrected, plan linked`.
+- [x] **Step 6:** PR, merge (🔒). Merged in PR #2 (29 Oct).
 
 **Done when:** `git worktree list` shows one entry; `git branch` shows `main` and `backup/…` only; `git status` is clean on `main`.
 
@@ -324,11 +326,12 @@ No ping URL, address or secret goes into git, and n8n 07/08 need no change. Lite
 - **Not in CI:** `state-sync` (hosted database only) and `dispatch-gate` (needs its own `E2E_PILOT_GATE` setup; a follow-up).
 
 - [x] **Step 1:** Reproduce locally. Done, as above.
-- [x] **Step 2:** Job `e2e`. Written; actionlint clean. Not yet run on GitHub.
+- [x] **Step 2:** Job `e2e`. Written; actionlint clean. It runs on every PR since PR #6: all seven suites green, one to two minutes each.
 - [x] **Step 3:** `smoke-deployment.yml` written.
   - ✍️ The owner adds the repository secrets `E2E_DEMO_USERNAME`, `E2E_DEMO_PASSWORD` and `VERCEL_BYPASS`.
   - Running it against the Preview is 🔒 (it signs in there).
-- [ ] **Step 4:** PR, CI green, merge (🔒). ✍️ Add the seven `e2e (…)` checks to the required checks.
+- [x] **Step 4:** PR, CI green, merge (🔒). Merged in PR #6 (29 Oct).
+- [ ] **Step 4b: ✍️** Add the seven `e2e (…)` checks to the required checks, together with Task 0.2 Step 4.
 
 **Done when:** the e2e suites run on every PR and pass, and a smoke run against the Preview is green and linked from the release evidence.
 

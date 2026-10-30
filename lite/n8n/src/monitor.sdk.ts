@@ -198,4 +198,12 @@ if (TWILIO) {
 } else w = w.add(retryChecks).to(planRetries);
 w = w.add(planRetries).to(send.chain);
 for (const [from, to] of send.links) w = w.add(from).to(to);
+// Liveness (master plan Task L5): every scheduled run also pings monitoring.heartbeatUrl, so an uptime service alerts
+// when the pings stop (n8n down, Monitor unpublished). Run Now does not ping, and a ping that fails never stops Monitor.
+if (CONFIG.monitoring.heartbeatUrl) {
+  const heartbeat = node({ type: 'n8n-nodes-base.httpRequest', version: 4.5, config: { name: 'Heartbeat', onError: 'continueRegularOutput',
+    parameters: { method: 'GET', url: CONFIG.monitoring.heartbeatUrl, options: { timeout: 10000, response: { response: { fullResponse: true, neverError: true } } } } },
+  output: [{ statusCode: 200, body: 'OK' }] });
+  w = w.add(every).to(heartbeat);
+}
 export default w;

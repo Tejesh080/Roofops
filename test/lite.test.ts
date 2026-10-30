@@ -15,7 +15,7 @@ import { FakeAirtable } from '../lite/demo/fake-airtable.js';
 import { FakeTwilio, route } from '../lite/demo/fake-twilio.js';
 import { seed, type Seeded } from '../lite/demo/fixtures.js';
 import { loadWorkflow, type LoadedWorkflow } from '../lite/tools/load-workflow.js';
-import { runError, runNow, runWebhook, type HttpReq } from '../lite/tools/runner.js';
+import { runError, runNow, runSchedule, runWebhook, type HttpReq } from '../lite/tools/runner.js';
 
 type R = Record<string, unknown>;
 type Wfs = Record<(typeof WORKFLOWS)[number], LoadedWorkflow>;
@@ -1218,5 +1218,39 @@ describe('Factory release gate 2: the three SMS safety failures stay fixed', () 
     expect(to('143')).toHaveLength(1);
     expect(monitor()).toMatchObject({ retried: 1, resent: 1 });
     expect(to('143')).toHaveLength(2);
+  });
+});
+
+// ---- Monitor heartbeat (docs/master-plan.md Task L5) ----------------------------------------------------------------
+describe('Monitor heartbeat: a missed ping means n8n or Monitor stopped (master plan L5)', () => {
+  const BEAT = 'https://hc-ping.example.test/lite-monitor';
+  let beat: Wfs;
+  beforeAll(async () => {
+    const c = structuredClone(config);
+    c.monitoring.heartbeatUrl = BEAT;
+    beat = await buildAll(c, 'heartbeat');
+  }, 60_000);
+
+  it('is built only when configured, is pinged from the schedule only (not Run Now), and must be an https address', () => {
+    const m = imports('heartbeat', 'monitor');
+    expect(m.nodes.find((n) => n.name === 'Heartbeat')).toMatchObject({ type: 'n8n-nodes-base.httpRequest', onError: 'continueRegularOutput',
+      parameters: { method: 'GET', url: BEAT } });
+    const into = Object.entries(m.connections).filter(([, c]) => c.main.flat().some((t) => t.node === 'Heartbeat')).map(([from]) => from);
+    expect(into).toEqual([`Every ${String(config.monitoring.everyHours)} Hours`]);
+    expect(imports('demo', 'monitor').nodes.some((n) => n.name === 'Heartbeat')).toBe(false);
+    const bad = structuredClone(config);
+    bad.monitoring.heartbeatUrl = 'http://hc-ping.example.test/lite-monitor';
+    expect(configProblems(bad)).toContain('monitoring.heartbeatUrl must be an https address (an uptime or heartbeat ping), or null');
+  });
+
+  it('a scheduled run pings once and still does all its checks; a ping that cannot be sent does not stop Monitor', () => {
+    fresh();
+    const pings: HttpReq[] = [];
+    const ok = runSchedule(beat.monitor, (req) => (req.url === BEAT ? (pings.push(req), { statusCode: 200, body: 'OK' }) : at.http(req)));
+    expect(pings).toHaveLength(1);
+    expect(ok.run.executed).toEqual(expect.arrayContaining(['Heartbeat', 'Find Message Problems', 'Plan Health', 'Plan Retries']));
+    fresh();
+    const down = runSchedule(beat.monitor, (req) => { if (req.url === BEAT) throw new Error('getaddrinfo ENOTFOUND hc-ping.example.test'); return at.http(req); });
+    expect(down.run.executed).toEqual(expect.arrayContaining(['Heartbeat', 'Find Message Problems', 'Plan Health', 'Plan Retries']));
   });
 });

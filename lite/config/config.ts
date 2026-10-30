@@ -27,7 +27,8 @@ export interface LiteConfig {
   reviews: { googleReviewUrl: string; delayDays: number; maxPerRun: number; sms: string; emailSubject: string; email: string };
   reactivation: { inactivityDays: number; cooldownDays: number; maxPerRun: number; stages: string[]; sms: string; emailSubject: string; email: string };
   replies: { webhookPath: string; optOutKeywords: string[] };
-  monitoring: { everyHours: number; stuckSendingMinutes: number; staleLeadHours: number; operatorPhone?: string | null };
+  /** heartbeatUrl: an uptime service's ping address (for example healthchecks.io); every scheduled Monitor run calls it. */
+  monitoring: { everyHours: number; stuckSendingMinutes: number; staleLeadHours: number; operatorPhone?: string | null; heartbeatUrl?: string | null };
   /** An n8n "Header Auth" credential the lead webhook (and, in test-sink mode, the reply webhook) requires. */
   webhookAuth?: Cred | null;
 }
@@ -150,6 +151,9 @@ export function configProblems(input: LiteConfig | Incomplete<LiteConfig>): stri
   if (typeof c.monitoring?.everyHours !== 'number' || c.monitoring.everyHours < 1 || c.monitoring.everyHours > 24) p.push('monitoring.everyHours must be 1 to 24');
   pos(c.monitoring?.stuckSendingMinutes, 'monitoring.stuckSendingMinutes'); pos(c.monitoring?.staleLeadHours, 'monitoring.staleLeadHours');
   if (c.monitoring?.operatorPhone && !E164.test(c.monitoring.operatorPhone)) p.push('monitoring.operatorPhone must be an E.164 number, or null');
+  if (c.monitoring?.heartbeatUrl && !/^https:\/\/[^\s/]+\/\S*$/.test(c.monitoring.heartbeatUrl)) {
+    p.push('monitoring.heartbeatUrl must be an https address (an uptime or heartbeat ping), or null');
+  }
   if (c.webhookAuth && (!CRED_ID.test(c.webhookAuth.id ?? '') || !c.webhookAuth.name)) p.push('webhookAuth must be { id, name } of an n8n Header Auth credential, or null');
   return p;
 }

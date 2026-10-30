@@ -142,6 +142,14 @@ export function runWebhook(wf: LoadedWorkflow, http: Http, body: unknown, opt?: 
   return r;
 }
 
+/** A workflow started by its schedule trigger (what n8n runs on the timer, as opposed to Run Now). */
+export function runSchedule(wf: LoadedWorkflow, http: Http, opt?: string | RunOptions) {
+  const o = opts(opt);
+  const start = [...wf.nodes.values()].find((n) => n.type === 'n8n-nodes-base.scheduleTrigger');
+  if (!start) throw new Error(`${wf.meta.name} has no schedule trigger`);
+  return { run: new LiteRun(wf, http, o.executionId, o.vars).run(start.name, [{ json: {} }]) };
+}
+
 /** A scheduled workflow, run as its "Run Now" manual trigger would; returns the last node's output too. */
 export function runNow(wf: LoadedWorkflow, http: Http, opt?: string | RunOptions) {
   const o = opts(opt);

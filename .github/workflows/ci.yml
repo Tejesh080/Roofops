@@ -81,6 +81,48 @@ jobs:
           dump > after.sql
           diff -u before.sql after.sql && echo "round trip identical: $(basename "$newest")"
 
+  # The current definitions (docs/master-plan.md Task 3.1): regenerated from the migrations, they must match what is
+  # committed. The image is pinned to the Postgres version they were generated with (PG_VERSION in the script),
+  # because pg_dump's output can change between minor versions.
+  schema:
+    name: schema (current definitions match the migrations)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17.11-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Regenerate supabase/schema.sql and supabase/current/
+        env:
+          ROOFOPS_PG_CONTAINER: ${{ job.services.postgres.id }}
+          SCHEMA_ADMIN_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+        run: npm run schema:export
+      - name: The committed files match
+        run: |
+          changes=$(git status --porcelain -- supabase/schema.sql supabase/current)
+          if [ -n "$changes" ]; then
+            echo "::error::supabase/schema.sql or supabase/current/ is out of date: run npm run schema:export and commit the result"
+            echo "$changes"
+            git diff --stat -- supabase/schema.sql supabase/current
+            exit 1
+          fi
+          echo "current definitions match the migrations"
+
   secrets:
     name: secrets (gitleaks, whole history)
     runs-on: ubuntu-latest

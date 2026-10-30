@@ -29,6 +29,7 @@
     "integrity:check": "tsx scripts/integrity-check.ts",
     "reconcile": "tsx scripts/reconcile.ts",
     "contract:export": "tsx scripts/export-contract.ts",
+    "schema:export": "tsx scripts/export-current-schema.ts",
     "ai:eval": "tsx scripts/ai-eval.ts",
     "security:check": "tsx scripts/security-check.ts",
     "typecheck:web": "npm --prefix web run typecheck",

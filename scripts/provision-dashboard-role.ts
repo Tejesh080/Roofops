@@ -1,21 +1,24 @@
 /**
  * npx tsx scripts/provision-dashboard-role.ts --confirm <project-ref> [--rotate]
+ * npx tsx scripts/provision-dashboard-role.ts --staging --confirm <staging-project-ref> [--rotate]
  *
  * Creates the hosted login role the dashboard's web server uses (roofops_web), a member of
  * roofops_dashboard: it can read the dashboard views and ask for an invoice preview, nothing else.
  * Writes web/.env.local (gitignored) with that role's URL plus the DeepSeek settings copied from the
- * root .env. Never prints a secret. Then connects AS the role and proves its privileges.
+ * root .env. With --staging it writes only the database keys, to staging-dashboard.env beside staging.env, for
+ * the staging deployment's settings (Task 1.4). Never prints a secret. Then connects AS the role and proves its privileges.
  */
 import { randomBytes } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { openPostgres } from '../src/db/db.js';
-import { confirmHostedWrite, hostedDbConfig, mergeEnvFile, readFileIfExists, requireEnv } from '../src/config/env.js';
+import { confirmHostedWrite, credentialFile, hostedDbConfig, hostedTarget, mergeEnvFile, readFileIfExists, requireEnv } from '../src/config/env.js';
 
-const WEB_ENV = 'web/.env.local';
+const target = hostedTarget(process.argv);
+const WEB_ENV = credentialFile(target, 'web/.env.local', 'staging-dashboard.env');
 const ROLE = 'roofops_web';
 const rotate = process.argv.includes('--rotate');
 
-const cfg = hostedDbConfig();
+const cfg = hostedDbConfig(target);
 confirmHostedWrite(cfg.url, process.argv);
 const admin = new URL(cfg.url);
 const projectRef = decodeURIComponent(admin.username).split('.')[1];
@@ -50,16 +53,21 @@ try {
 }
 
 // Only the keys this script owns are set; the sign-in settings (DEMO_*, AUTH_SECRET) and the CA setting stay as they are.
-const header = '# RoofOps dashboard server-side settings. Gitignored. Never prefix any of these with NEXT_PUBLIC_.\n';
+// Staging gets the database keys only: its deployment settings are copied from that file (Task 1.4 Step 3).
+const header = target === 'staging'
+  ? '# RoofOps dashboard database settings for the STAGING project: copy them into the staging deployment. Never commit.\n'
+  : '# RoofOps dashboard server-side settings. Gitignored. Never prefix any of these with NEXT_PUBLIC_.\n';
 writeFileSync(WEB_ENV, mergeEnvFile(current ?? header, {
   DASHBOARD_DATABASE_URL: url,
-  DEEPSEEK_API_KEY: requireEnv('DEEPSEEK_API_KEY'),
-  DEEPSEEK_BASE_URL: process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com',
-  DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL ?? 'deepseek-flash',
+  ...(target === 'hosted' ? {
+    DEEPSEEK_API_KEY: requireEnv('DEEPSEEK_API_KEY'),
+    DEEPSEEK_BASE_URL: process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com',
+    DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL ?? 'deepseek-flash',
+  } : {}),
   ...(cfg.caPem && process.env.SUPABASE_CA_CERT && !/^DASHBOARD_DB_CA_(PEM|CERT)=/m.test(current ?? '')
     ? { DASHBOARD_DB_CA_CERT: process.env.SUPABASE_CA_CERT } : {}),
 }), { mode: 0o600 });
-console.log(`updated ${WEB_ENV} (only the database and DeepSeek keys; values not printed)`);
+console.log(`updated ${WEB_ENV} (only the database${target === 'hosted' ? ' and DeepSeek' : ''} keys; values not printed)`);
 
 // Prove the privileges by connecting AS the role, through the real pooler.
 const web = await openPostgres(url, tls);

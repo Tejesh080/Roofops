@@ -14,14 +14,16 @@
  *   npx tsx ops/staging/staging.ts synthetic-quote [--local-test]   one synthetic enquiry -> customer -> site -> quote, sent
  *
  * Connection: ONLY ops/staging/.env.staging (STAGING_DB_URL, optional STAGING_CA_CERT). This file never reads
- * process.env for a database, never imports src/config/env.ts (which loads .env.local), and refuses any database that
- * looks like production (see guard()). Secrets it creates go to ops/staging/secrets/ (gitignored) and are never printed.
+ * process.env for a database and never loads an env file into it; from src/config/env.ts it uses only hostedEnvDir(), to
+ * find the production project in hosted.env so guard() can refuse it. It refuses any database that looks like
+ * production (see guard()). Secrets it creates go to ops/staging/secrets/ (gitignored) and are never printed.
  */
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseEnv } from 'node:util';
+import { hostedEnvDir } from '../../src/config/env.js';
 import { openPostgres, type Db } from '../../src/db/db.js';
 import { MIGRATIONS_DIR, migrate } from '../../src/db/migrate.js';
 
@@ -161,11 +163,15 @@ export function stagingEnv(file = join(DIR, '.env.staging')): { url: string; caP
   return { url: env.STAGING_DB_URL, caPem: env.STAGING_CA_CERT ? readFileSync(env.STAGING_CA_CERT, 'utf8') : undefined };
 }
 
-/** Production identifiers, read (never used to connect) from the production env and secret files, if present. */
-function productionFingerprints(root = '.'): string[] {
+/**
+ * Production identifiers, read (never used to connect) from the production env and secret files, if present: the
+ * hosted env file outside the repository (where Task 0.1 keeps SUPABASE_DB_URL) and the older files inside it.
+ */
+function productionFingerprints(root = '.', envDir = hostedEnvDir(root)): string[] {
   const out: string[] = [];
-  for (const [file, key] of [['.env.local', 'SUPABASE_DB_URL'], ['.env', 'SUPABASE_DB_URL'], ['web/.env.local', 'DASHBOARD_DATABASE_URL']] as const) {
-    const p = join(root, file);
+  const files: [string, string][] = [[join(envDir, 'hosted.env'), 'SUPABASE_DB_URL'], [join(root, '.env.local'), 'SUPABASE_DB_URL'],
+    [join(root, '.env'), 'SUPABASE_DB_URL'], [join(root, 'web/.env.local'), 'DASHBOARD_DATABASE_URL']];
+  for (const [p, key] of files) {
     if (!existsSync(p)) continue;
     const v = parseEnv(readFileSync(p, 'utf8'))[key];
     if (!v) continue;
@@ -182,12 +188,12 @@ function productionFingerprints(root = '.'): string[] {
 }
 
 /** Refuses anything that is not clearly the staging database, before and after connecting. */
-export async function guard(url: string, opts: { localTest: boolean; caPem?: string | undefined }, root = '.'): Promise<Db> {
+export async function guard(url: string, opts: { localTest: boolean; caPem?: string | undefined; envDir?: string }, root = '.'): Promise<Db> {
   const u = new URL(url);
   const local = ['127.0.0.1', 'localhost', '::1'].includes(u.hostname);
   if (opts.localTest !== local) throw new Error(opts.localTest ? '--local-test only runs against a local database' : 'refusing a local database without --local-test');
   const user = decodeURIComponent(u.username);
-  for (const f of productionFingerprints(root)) {
+  for (const f of productionFingerprints(root, opts.envDir)) {
     if (f.includes('|') ? `${u.hostname}${u.pathname}|${user}` === f : user.split('.')[1] === f || u.hostname.includes(f)) {
       throw new Error('refusing: STAGING_DB_URL points at the PRODUCTION Supabase project');
     }

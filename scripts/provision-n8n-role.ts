@@ -1,21 +1,24 @@
 /**
  * npm run db:provision-n8n -- --confirm <project-ref> [--rotate]
+ * npm run db:provision-n8n -- --staging --confirm <staging-project-ref> [--rotate]
  *
  * Creates the hosted login role n8n uses (roofops_n8n), a member of roofops_workflow,
  * so it can EXECUTE the four wf_* entry points and nothing else. The generated password
- * is written only to secrets/roofops-n8n-postgres.env (gitignored) and never printed.
- * Then connects AS that role through the real pooler and proves its privileges.
+ * is written only to secrets/roofops-n8n-postgres.env (gitignored), or for staging to staging-n8n-postgres.env
+ * beside staging.env, and never printed. Then connects AS that role through the real pooler and proves its privileges.
  */
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { openPostgres } from '../src/db/db.js';
-import { confirmHostedWrite, hostedDbConfig } from '../src/config/env.js';
+import { confirmHostedWrite, credentialFile, hostedDbConfig, hostedTarget } from '../src/config/env.js';
 
-const SECRET_FILE = 'secrets/roofops-n8n-postgres.env';
+const target = hostedTarget(process.argv);
+const SECRET_FILE = credentialFile(target, 'secrets/roofops-n8n-postgres.env', 'staging-n8n-postgres.env');
 const ROLE = 'roofops_n8n';
 const rotate = process.argv.includes('--rotate');
 
-const cfg = hostedDbConfig();
+const cfg = hostedDbConfig(target);
 confirmHostedWrite(cfg.url, process.argv);
 const admin = new URL(cfg.url);
 const projectRef = decodeURIComponent(admin.username).split('.')[1];
@@ -36,9 +39,9 @@ try {
       [exists ? 'alter' : 'create', ROLE, password]);
     await db.exec(sql);
     await db.exec(`grant roofops_workflow to ${ROLE}; alter role ${ROLE} set search_path = public;`);
-    mkdirSync('secrets', { recursive: true });
+    mkdirSync(dirname(SECRET_FILE), { recursive: true });
     writeFileSync(SECRET_FILE, [
-      '# n8n Postgres credential for RoofOps (hosted Supabase). Gitignored. Copy into n8n; never commit.',
+      `# n8n Postgres credential for RoofOps (${target} Supabase). Gitignored. Copy into n8n; never commit.`,
       `PGHOST=${admin.hostname}`, `PGPORT=${admin.port || '5432'}`, `PGDATABASE=${admin.pathname.slice(1)}`,
       `PGUSER=${ROLE}.${projectRef}`, `PGPASSWORD=${password}`, 'PGSSLMODE=require', '',
     ].join('\n'), { mode: 0o600 });

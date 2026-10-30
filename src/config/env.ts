@@ -46,6 +46,21 @@ export function hostedEnvDir(cwd = process.cwd(), env: NodeJS.ProcessEnv = proce
 
 export type HostedTarget = 'hosted' | 'staging';
 
+/** The target a command line names: --staging selects staging.env, anything else the hosted project. Naming both is refused. */
+export function hostedTarget(argv: readonly string[]): HostedTarget {
+  const staging = argv.includes('--staging');
+  if (staging && argv.includes('--hosted')) throw new Error('HOSTED_TARGET_AMBIGUOUS: name one target, --hosted or --staging, not both');
+  return staging ? 'staging' : 'hosted';
+}
+
+/**
+ * Where a provisioning script keeps a credential it creates: the hosted path as before, or for staging a file beside
+ * staging.env, so a staging credential never replaces a hosted one and never lands in the repository.
+ */
+export function credentialFile(target: HostedTarget, hostedPath: string, stagingName: string, cwd = process.cwd()): string {
+  return target === 'staging' ? join(hostedEnvDir(cwd), stagingName) : hostedPath;
+}
+
 /** Reads <hostedEnvDir()>/<target>.env and adds its keys to process.env (a key already set wins, as with --env-file). */
 export function loadHostedEnv(target: HostedTarget = 'hosted', cwd = process.cwd()): NodeJS.Dict<string> {
   const path = join(hostedEnvDir(cwd), `${target}.env`);
@@ -99,13 +114,21 @@ export interface HostedDbConfig { url: string; caPem?: string; verified: boolean
 
 /**
  * The hosted database, from the hosted env file only (a SUPABASE_DB_URL in the shell is ignored). A relative
- * SUPABASE_CA_CERT is read from the env directory.
+ * SUPABASE_CA_CERT is read from the env directory. Staging is refused when its file names the hosted project.
  */
 export function hostedDbConfig(target: HostedTarget = 'hosted', cwd = process.cwd()): HostedDbConfig {
   loadLocalEnv(cwd);
   const vars = loadHostedEnv(target, cwd);
   const url = vars.SUPABASE_DB_URL;
   if (!url) throw new Error(`Missing SUPABASE_DB_URL in ${join(hostedEnvDir(cwd), `${target}.env`)}`);
+  if (target === 'staging') {
+    const hosted = readFileIfExists(join(hostedEnvDir(cwd), 'hosted.env'));
+    const production = hosted === undefined ? undefined : parseEnv(hosted).SUPABASE_DB_URL;
+    if (production && supabaseProjectRef(production) === supabaseProjectRef(url)) {
+      throw new Error(`STAGING_IS_PRODUCTION: ${join(hostedEnvDir(cwd), 'staging.env')} names the same Supabase project as hosted.env. `
+        + 'Staging must be a project of its own (docs/master-plan.md Task 1.4)');
+    }
+  }
   const ca = vars.SUPABASE_CA_CERT;
   const caPath = ca && (isAbsolute(ca) ? ca : join(hostedEnvDir(cwd), ca));
   if (caPath && existsSync(caPath)) return { url, caPem: readFileSync(caPath, 'utf8'), verified: true };

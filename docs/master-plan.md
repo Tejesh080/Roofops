@@ -459,6 +459,9 @@ Step-level plan written when the phase starts (`docs/plans/phase-2-demo.md`). Ta
   - `test/docs-links.test.ts` keeps every relative link in the README, `docs/`, `ops/` and the evidence index resolving, and every evidence file indexed.
 
 **Task 3.4: Editing surfaces, written down.** `docs/editing-surfaces.md`: for each Airtable field in `field_contract`, its owner (Postgres-only / Airtable-writes-validated / attachment), which surface staff use for status, dates and approvals (the dashboard), what Airtable keeps (views, Completion Photos, Compliance Certificate, Lite), the sync log's place on the dashboard (an e2e assertion), and the **retreat trigger**: more than three staff-visible reverts or echo exceptions in one pilot week on a field → that field becomes dashboard-only, Airtable read-only, within the following week. **Done when:** the document exists, the e2e assertion passes, and the trigger is a line in the weekly walkthrough log.
+- **Done 30 Oct, ahead of the phase.** `docs/editing-surfaces.md` lists the 19 fields staff edit in Airtable (of 92) and what RoofOps checks on each. It also covers today's surfaces against the recommended ones (a §15 decision), what Airtable keeps, the sync log and the retreat trigger.
+  - The sync log is each project's Automation history. `web/e2e/job-journey.spec.ts` step 7 pins an applied edit, two refused edits and one put back there; it passed locally against the rehearsal database.
+  - The trigger is a line in `docs/walkthrough-log.md`.
 
 ## 11. Phase 4: a business runs on it (12 weeks from a chosen start)
 

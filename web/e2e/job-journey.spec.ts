@@ -22,7 +22,8 @@ test.use({ storageState: { cookies: [], origins: [] } });
 type R = Record<string, unknown>;
 const APPROVER = 'usr7uCnNO15fCefbH';   // the office's Airtable user, mapped to EMP-900
 const F = { status: 'fldi2Qwz1dAh2tcTE', start: 'fld8rf6RZLgfs6Ron', end: 'fldvZtiassZEgLMAN', photos: 'fldbbksVL3dT6cqyS', photosNote: 'fldA77ad94yUmvnu3',
-  cert: 'fldf7iJiyHFxOQgUy', certNote: 'fldLi9FkGDFAbf0QB', swms: 'fldM6kgPz6QZagPAC', materials: 'fldozWSCU877wEZHq' };
+  cert: 'fldf7iJiyHFxOQgUy', certNote: 'fldLi9FkGDFAbf0QB', swms: 'fldM6kgPz6QZagPAC', materials: 'fldozWSCU877wEZHq',
+  actualStart: 'fldIje5e0a72cBfVD' };   // owned by RoofOps: an edit in Airtable is put back
 const REC = 'recJOURNEYQ004100';
 let db: pg.Client;
 let seq = 0;
@@ -149,6 +150,8 @@ test('accepted quote → one project → visit booked and worked → In Progress
   expect(noReason).toMatchObject({ outcome: 'REJECTED' });
   expect(await airtable({ [F.photos]: 'Waived' }, { [F.photosNote]: 'Synthetic test job: photos exist only on the crew phone, not uploaded' })).toMatchObject({ outcome: 'APPLIED' });
   expect(await airtable({ [F.cert]: 'Not applicable' }, { [F.certNote]: 'Repair only: no compliance certificate for this work' })).toMatchObject({ outcome: 'APPLIED' });
+  // Someone also types over a date RoofOps owns: it is put back, not applied.
+  expect(await airtable({ [F.actualStart]: '2026-01-01' })).toMatchObject({ outcome: 'REVERTED' });
   expect((await db.query(`select ci.item_code, ci.status, ci.waived_reason is not null has_reason from project_checklist_items ci join projects p on p.id = ci.project_id
                           where p.project_number = $1 and ci.stage = 'COMPLETION' order by 1`, [P])).rows)
     .toEqual([{ item_code: 'COMPLETION_PHOTOS', status: 'WAIVED', has_reason: true }, { item_code: 'COMPLIANCE_CERTIFICATE', status: 'NOT_APPLICABLE', has_reason: true }]);
@@ -160,6 +163,23 @@ test('accepted quote → one project → visit booked and worked → In Progress
   const fin = await signIn(browser, 'FIN', baseURL!);
   await fin.page.goto('/finance');
   await expect(fin.page.getByRole('button', { name: `Prepare invoice for ${P}` })).toBeVisible();
+
+  // 7. The sync log (master plan Task 3.4, docs/editing-surfaces.md): the project's Automation history shows the office's
+  //    Airtable edits, the refused ones flagged, and the edit RoofOps put back.
+  await admin.page.goto(`/projects/${P}`);
+  const history = admin.page.locator('#history');
+  await history.getByRole('button', { name: /Show full history/ }).click();
+  const entry = (note: string) => history.getByRole('listitem').filter({ hasText: note });
+  for (const [note, state] of [
+    ['✓ Status: Scheduled → In Progress applied', 'Completed'],
+    ['✗ Status: "In Progress" not applied: pre-start items are still open', 'Needs attention or stopped safely'],
+    ['✗ Completion Photos: "Waived" not applied: Waived needs a reason in Completion Photos Note', 'Needs attention or stopped safely'],
+    ['↺ Actual Start is managed by RoofOps; "2026-01-01" was reverted to "2026-09-29".', 'Needs attention or stopped safely'],
+  ] as const) {
+    await expect(entry(note)).toHaveCount(1);
+    await expect(entry(note)).toContainText('Change made in Airtable');
+    await expect(entry(note)).toContainText(state);
+  }
 
   // The whole job is on the project's audit trail, attributed.
   const actions = (await db.query(`select action, actor_id from audit_events where business_reference = $1 and action ~ '^(job|task|project\\.checklist)\\.' order by occurred_at, action`, [P])).rows

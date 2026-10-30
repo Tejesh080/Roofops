@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "baseUrl": ".", "paths": { "@n8n/workflow-sdk": ["./test/helpers/n8n-sdk-shim.ts"] } }
+}

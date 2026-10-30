@@ -35,6 +35,7 @@
     "typecheck:web": "npm --prefix web run typecheck",
     "staff:set-password": "tsx scripts/staff.ts set-password",
     "n8n:mcp": "tsx scripts/n8n-mcp-access.ts",
+    "n8n:drift": "tsx --tsconfig tsconfig.n8n.json scripts/n8n-drift.ts",
     "staff:add-employee": "tsx scripts/staff.ts add-employee"
   },
   "devDependencies": {

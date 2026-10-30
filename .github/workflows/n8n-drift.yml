@@ -1,0 +1,36 @@
+# What runs in n8n, compared node for node with the workflow files (docs/master-plan.md Task 3.2). Read-only: the n8n
+# public API, GET requests only. Needs the repository secrets N8N_BASE_URL and N8N_API_KEY (the owner adds them); until
+# then it says so and passes.
+name: n8n drift
+
+on:
+  schedule:
+    - cron: '0 21 * * 0'   # Monday 07:00 in Brisbane
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    name: n8n drift (published workflows match their files)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Compare
+        env:
+          N8N_BASE_URL: ${{ secrets.N8N_BASE_URL }}
+          N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
+        run: |
+          if [ -z "$N8N_BASE_URL" ] || [ -z "$N8N_API_KEY" ]; then
+            echo "::notice::N8N_BASE_URL and N8N_API_KEY are not set as repository secrets yet; nothing was compared"
+            exit 0
+          fi
+          npm run -s n8n:drift

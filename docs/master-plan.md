@@ -440,6 +440,17 @@ Step-level plan written when the phase starts (`docs/plans/phase-2-demo.md`). Ta
   - The CI job checks untracked files as well (`git status --porcelain`, not `git diff`), so a new function also fails it.
 
 **Task 3.2: n8n drift check.** `scripts/n8n-drift.ts`: public API `GET /api/v1/workflows` (available on Starter and Pro), normalise (ids, positions, timestamps stripped), compare node for node with the SDK build output of `n8n/*.sdk.ts` and `lite/dist/*`. CI `drift` job on a weekly schedule with the API key as a repository secret (✍️). **Done when:** the report is empty for every published workflow and a deliberate live edit (🔒, reverted) is reported.
+- **Built 30 Oct, offline, ahead of the phase.** `npm run n8n:drift` compares the published version of each workflow with its file. That is n8n's `activeVersion` when it differs from the draft, which matters: 02's draft and published versions differ.
+  - It compares type, version, parameters, credential ids, node settings and every connection, and ignores ids, positions, credential names, webhook ids and two known defaults.
+  - `.github/workflows/n8n-drift.yml` runs weekly and on demand, and passes with a notice until the secrets exist.
+- **Calibrated read-only** against the live workflows (n8n MCP): the published 02 (34 nodes, nine node types) matches its file exactly.
+- **Found:** live 08 Health has `onError: continueRegularOutput` and `alwaysOutputData: true` on its three HTTP nodes, and the file has neither. The owner decides which is right; the file can follow.
+- **Expected until the Phase 1 release:** 00, 01, 03, 04, 05, 06 and 07 differ from `main` by exactly the release's changes.
+- **08 Reissue and 09** cannot be read through the n8n MCP (their MCP access is off); the public API check covers them.
+- **Open:**
+  - ✍️ The repository secrets `N8N_BASE_URL` and `N8N_API_KEY`.
+  - The first API run must confirm the public API returns `activeVersion` like the MCP does.
+  - After the release: the empty report and the deliberate live edit (🔒).
 
 **Task 3.3: Documents.** `evidence/README.md` index; `docs/phase2-status.md` … `phase6-status.md` and superseded runbooks move to `docs/archive/`; per-defect evidence files stop (a PR with CI, a ledger row and, for hosted changes, one release evidence file replace them); README links only current documents. **Done when:** the README's document list is under 15 links and every link resolves.
 

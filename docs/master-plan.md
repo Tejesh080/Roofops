@@ -423,10 +423,13 @@ Step-level plan written when the phase starts (`docs/plans/phase-2-demo.md`). Ta
 **Task 2.2: Demo video.** 10 minutes, the journey above, narrated; linked from the README "Demo" section. **Done when:** the link plays.
 
 **Task 2.3: Xero integration contract.** `docs/xero-integration-contract.md`: for each bookkeeper expectation from the research (push only on approval, never a zero-value invoice, ContactID/InvoiceID stored and used, contact matched by stored id then email never name, invoice numbers from one sequence checked against Xero including VOIDED/DELETED, `Idempotency-Key` on every write [already true in 05], 429 handled with `Retry-After`, nightly reconciliation catches lost webhooks [07], DRAFT vs AUTHORISED on approval, tracking category mapping) write **verified where / deferred to Phase 4 with the owner decision**. **Done when:** every line has one of the two.
+- **Done 30 Oct, ahead of the phase:** every line has one. Verified, with only a test or a backstop to add: 2, 5, 6. Partly verified: 1, 3, 4, 7, 8, 9. Not implemented: 10. The five bookkeeper decisions and the code changes are listed for Phase 4.
 
 **Task 2.4: "The engineer is unavailable" runbook.** `ops/engineer-unavailable.md`, one page: what runs where, how to read `/api/healthz` and healthchecks.io, how to pause everything safely (which workflows to unpublish, in which order), how to restore a backup, whom to call. **Done when:** the owner reads it and can answer "how do I stop all automation right now" without the engineer.
+- **Written 30 Oct.** It waits for the owner to read it and to fill in the contacts.
 
 **Task 2.5: Weekly owner walkthrough starts.** 15 minutes, the owner alone, one scripted path per week from Task 2.1; `docs/walkthrough-log.md` gets one line: date, path, what broke or "nothing". **Done when:** three consecutive entries exist.
+- The log exists (30 Oct), empty until the first walkthrough.
 
 ## 10. Phase 3: simplify (1 – 19 Dec, overlapping Phase 2)
 

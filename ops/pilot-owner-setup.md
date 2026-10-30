@@ -79,7 +79,7 @@ row. Running it again resets that person's password.
 
 **Order (do not skip ahead):**
 1. Create both logins.
-2. Each person signs in and the first supervised acceptance test passes (`ops/pilot-release-checklist.md`).
+2. Each person signs in and the first supervised acceptance test passes (`docs/archive/pilot-release-checklist.md`).
 3. Only then remove `DEMO_USERNAME`/`DEMO_PASSWORD`.
 4. Only then consider four-eyes on the CLI (below). With it on, `npm run reissue -- decide` must name a different FINANCE or ADMIN person than the requester, and EMP-900 alone can no longer complete a CLI reissue.
 

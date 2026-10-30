@@ -10,7 +10,7 @@ import type { Db } from '../db/db.js';
 export type DemoStatus = 'READY' | 'ALREADY RUN' | 'NEEDS RESET' | 'BLOCKED';
 export interface ScenarioReport { id: string; name: string; status: DemoStatus; detail: string; resettable: boolean }
 
-/** Sent quotes set aside for live "Quote → Project" rehearsals (synthetic; see docs/phase2-status.md). */
+/** Sent quotes set aside for live "Quote → Project" rehearsals (synthetic; see docs/archive/phase2-status.md). */
 export const QUOTE_CANDIDATES = ['Q-2026-0050', 'Q-2026-0051', 'Q-2026-0052', 'Q-2026-0054', 'Q-2026-0058', 'Q-2026-0064', 'Q-2026-0032', 'Q-2026-0034', 'Q-2026-0036'];
 export const INVOICE_DEMO_PROJECT = 'PRJ-2026-0005';
 export const INVOICE_BACKUP_PROJECTS = ['PRJ-2026-0001', 'PRJ-2026-0002'];

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task by task. Steps use checkbox (`- [ ]`) syntax for tracking. A step marked 🔒 touches a hosted system (Supabase, n8n Cloud, Airtable, Vercel, Xero, Twilio) and needs the owner's approval **in chat, for that step, at that time**. A step marked ✍️ is the owner's own (accounts, payments, identity checks); the engineer prepares, the owner performs. Nothing in this file is a standing approval.
 
-**Written:** 2026-10-29. **Owner:** Tejesh (sole engineer, with Claude). **Supersedes:** the phase plans implied by `ops/pilot-release-checklist.md`, `ops/ops-sales-release-plan.md` and the per-defect sprint pattern. Those documents stay as records; this file is the plan we follow.
+**Written:** 2026-10-29. **Owner:** Tejesh (sole engineer, with Claude). **Supersedes:** the phase plans implied by `docs/archive/pilot-release-checklist.md`, `docs/archive/ops-sales-release-plan.md` and the per-defect sprint pattern. Those documents stay as records; this file is the plan we follow.
 
 **Goal:** Turn what is already built, RoofOps Lite and Advanced RoofOps, into systems a roofing business can trust, by adding the rails that are missing (CI, staging, alerting, a production SMS account, off-platform backups) and then proving each product with a person, not by adding features.
 
@@ -12,7 +12,7 @@
 
 **Spec and evidence this plan argues from:**
 - `reports/RoofOps master plan research.md` (29 Oct 2026; 159 cited sources; notes in `research_notes/RoofOps master plan research/`).
-- `evidence/advanced-release-preflight-20261023.md` and `ops/advanced-release-runbook-20261023.md` (the waiting release).
+- `evidence/advanced-release-preflight-20261023.md` and `docs/archive/advanced-release-runbook-20261023.md` (the waiting release).
 - `evidence/lite-activation-investigation-20261022.md` §6 (the Lite clean-up list) and `lite/DELIVERY-CHECKLIST.md`.
 - `docs/defect-ledger.md`, `docs/functional-coverage.md`, `docs/decisions.md` (ADR-001 to ADR-040).
 
@@ -442,6 +442,10 @@ Step-level plan written when the phase starts (`docs/plans/phase-2-demo.md`). Ta
 **Task 3.2: n8n drift check.** `scripts/n8n-drift.ts`: public API `GET /api/v1/workflows` (available on Starter and Pro), normalise (ids, positions, timestamps stripped), compare node for node with the SDK build output of `n8n/*.sdk.ts` and `lite/dist/*`. CI `drift` job on a weekly schedule with the API key as a repository secret (✍️). **Done when:** the report is empty for every published workflow and a deliberate live edit (🔒, reverted) is reported.
 
 **Task 3.3: Documents.** `evidence/README.md` index; `docs/phase2-status.md` … `phase6-status.md` and superseded runbooks move to `docs/archive/`; per-defect evidence files stop (a PR with CI, a ledger row and, for hosted changes, one release evidence file replace them); README links only current documents. **Done when:** the README's document list is under 15 links and every link resolves.
+- **Done 30 Oct, ahead of the phase.** Ten files moved to `docs/archive/` (the five phase reports, the phase 6 tool evaluation, and four superseded or executed runbooks); every current reference was updated, and older evidence files were left as written.
+  - `evidence/README.md` indexes all 79 evidence files and states the new rule.
+  - The README's document list has 14 links, all current.
+  - `test/docs-links.test.ts` keeps every relative link in the README, `docs/`, `ops/` and the evidence index resolving, and every evidence file indexed.
 
 **Task 3.4: Editing surfaces, written down.** `docs/editing-surfaces.md`: for each Airtable field in `field_contract`, its owner (Postgres-only / Airtable-writes-validated / attachment), which surface staff use for status, dates and approvals (the dashboard), what Airtable keeps (views, Completion Photos, Compliance Certificate, Lite), the sync log's place on the dashboard (an e2e assertion), and the **retreat trigger**: more than three staff-visible reverts or echo exceptions in one pilot week on a field → that field becomes dashboard-only, Airtable read-only, within the following week. **Done when:** the document exists, the e2e assertion passes, and the trigger is a line in the weekly walkthrough log.
 

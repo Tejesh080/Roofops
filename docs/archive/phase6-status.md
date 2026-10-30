@@ -46,12 +46,12 @@ Status on 29 Sep 2026 (business date), hosted Supabase + n8n Cloud + real Airtab
 
 ## 3. Source-of-truth map
 
-[system-ownership-map.md](system-ownership-map.md); field by field: [source-of-truth.md](source-of-truth.md) and
-[source-of-truth.json](source-of-truth.json). Both are generated from the enforcing table.
+[system-ownership-map.md](../system-ownership-map.md); field by field: [source-of-truth.md](../source-of-truth.md) and
+[source-of-truth.json](../source-of-truth.json). Both are generated from the enforcing table.
 
 ## 4. State diagrams
 
-[state-machines.md](state-machines.md): 10 machines, 98 legal transitions. The generated tests cover every pair (242 on the
+[state-machines.md](../state-machines.md): 10 machines, 98 legal transitions. The generated tests cover every pair (242 on the
 generic trigger + 56 project pairs through the real handler).
 
 Decisions:
@@ -61,7 +61,7 @@ Decisions:
 
 ## 5. Airtable editability
 
-[airtable-editability-audit.md](airtable-editability-audit.md). Before this phase, 12 editable fields were **BROKEN**. Now:
+[airtable-editability-audit.md](../airtable-editability-audit.md). Before this phase, 12 editable fields were **BROKEN**. Now:
 
 - **SUPPORTED:** 11 fields
 - **READ ONLY** (enforced by revert/repair): all others
@@ -69,7 +69,7 @@ Decisions:
 
 ## 6. Mutation matrix
 
-[mutation-matrix.md](mutation-matrix.md). Functional coverage per system: [functional-coverage.md](functional-coverage.md).
+[mutation-matrix.md](../mutation-matrix.md). Functional coverage per system: [functional-coverage.md](../functional-coverage.md).
 
 ## 7. Reconciliation design
 
@@ -101,7 +101,7 @@ Webhook supervision on the same run:
 
 ## 9. Health
 
-`/health` ([screenshot](screenshots/phase6/01-system-health.png)): every service is **Healthy** from recorded checks.
+`/health` ([screenshot](../screenshots/phase6/01-system-health.png)): every service is **Healthy** from recorded checks.
 - Airtable: 231/231 in sync; Drive: 3/3; Xero: 1/1.
 - Xero is healthy only if the pinned Demo tenant is among the connections.
 - A service with no check within its interval shows **Unknown**; there are no defaults.
@@ -189,7 +189,7 @@ Web:
 
 AI: no DB credentials and no SQL tool; the injection cases above are refused.
 
-Credentials stay in n8n or server-side env ([ownership map](system-ownership-map.md#credentials-where-they-live)). The Airtable PAT's scope is set in Airtable and can't be read through the API (see manual operations).
+Credentials stay in n8n or server-side env ([ownership map](../system-ownership-map.md#credentials-where-they-live)). The Airtable PAT's scope is set in Airtable and can't be read through the API (see manual operations).
 
 ## 14. Tools evaluated, adopted, rejected
 
@@ -226,11 +226,11 @@ Xero was not migrated. Business idempotency and persistence in Postgres are unch
 |---|---|
 | Airtable | **Cancelled** (read back independently) |
 | Postgres | **CANCELLED**, reason recorded, audit `project.status.changed` COMPLETED → CANCELLED by `reconciliation` |
-| Dashboard | Cancelled, no sync warning ([screenshot](screenshots/phase6/02-project-PRJ-2026-0001-cancelled.png)) |
+| Dashboard | Cancelled, no sync warning ([screenshot](../screenshots/phase6/02-project-PRJ-2026-0001-cancelled.png)) |
 | Ready to invoice | not listed (only PRJ-2026-0002, PRJ-2026-0005) |
 | `prepare_invoice` | refused ("CANCELLED; only a COMPLETED project can be final-invoiced"); Copilot refuses too |
 | History | both earlier invoices (INV-2026-0001, INV-2026-0031) untouched. It never had a Drive folder (imported job), so there was nothing to lose. |
-| Copilot, "What's the status of PRJ-2026-0001 currently?" | "PRJ-2026-0001 for Oliver Grant is **Cancelled** (RoofOps and Airtable agree)" ([screenshot](screenshots/phase6/03-copilot-PRJ-2026-0001.png)) |
+| Copilot, "What's the status of PRJ-2026-0001 currently?" | "PRJ-2026-0001 for Oliver Grant is **Cancelled** (RoofOps and Airtable agree)" ([screenshot](../screenshots/phase6/03-copilot-PRJ-2026-0001.png)) |
 | Before the repair (observe run) | project page and Copilot said: "RoofOps status: Completed. Airtable currently shows: Cancelled. They are out of sync; last full check: 2026-09-29 12:01." |
 
 ## 18. Commands

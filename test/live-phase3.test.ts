@@ -4,7 +4,7 @@
  *
  * These assertions are the Postgres side of the evidence. Xero was read back independently with the read-only
  * [RoofOps] 96 Xero Read-Only Check (inventory of every RoofOps invoice/contact in the Demo org) and Airtable with an
- * independent Airtable connection (see docs/phase3-status.md); the external IDs asserted here are the ones those returned.
+ * independent Airtable connection (see docs/archive/phase3-status.md); the external IDs asserted here are the ones those returned.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Db } from '../src/db/db.js';

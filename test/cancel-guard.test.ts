@@ -3,7 +3,7 @@
  * FINAL, and every imported invoice is untyped. So a completed job billed to (or past) its value, such as PRJ-2026-0008
  * ($49,739.70 still owed), could be cancelled from Airtable, leaving its receivable on a Cancelled job.
  *
- * Owner rule (docs/phase6-status.md §4): Completed → Cancelled is allowed until a non-void final invoice exists; earlier
+ * Owner rule (docs/archive/phase6-status.md §4): Completed → Cancelled is allowed until a non-void final invoice exists; earlier
  * invoices are kept. Invariant: a job whose valid bills reach what it is entitled to (AC-09 project_billing) has been
  * finally billed in substance, whatever its invoices' type, so it is not cancelled; void the bill first. A partly billed
  * job may still be cancelled (PRJ-2026-0001 was, in Phase 6). The same reading as AC-13A: fully billed is billed,

@@ -279,19 +279,19 @@ with recorded evidence. **Local** = proven by the test suite, not yet deployed.
 | Dashboard and Copilot | ✅ Live on a protected Vercel preview |
 | Enquiry → quote → Airtable hand-off | 🟡 Live once (one synthetic quote, 2026-10-20) |
 | Site visits, crew and tasks | 🟡 Deployed, not yet used on the hosted system |
-| Pre-start gate, cancellation and purchase-order guards, Copilot read tools ([release runbook](ops/advanced-release-runbook-20261023.md)) | 🟡 Local; backup and read-only preflight passed 2026-10-23, deployment awaits approval |
+| Pre-start gate, cancellation and purchase-order guards, Copilot read tools, Airtable ping signatures, alerting ([release checklist](ops/release-phase1.md)) | 🟡 On `main`; rehearsed on a restored backup, every check held; the release awaits approval |
 | Per-line GST on multi-line invoices | 🟡 Local; needs one supervised Xero Demo check |
 
 **Not built yet, and needed before a real business could rely on it** (the order and the completion criteria are in [docs/master-plan.md](docs/master-plan.md)):
-- continuous integration (written, `.github/workflows/ci.yml`; not yet run on GitHub);
-- a staging environment separate from the hosted demo;
-- alerts that notify a person (today failures are recorded and shown on `/health`);
+- a staging environment separate from the hosted demo (the commands are ready; the project is not created yet);
+- alerts that reach a person (`/api/healthz` and the n8n failure workflow are built; the uptime monitor is not set up yet);
 - a real Xero organisation, real data and real staff (everything is synthetic; the business date is fixed at 2026-09-29);
 - one editing surface for staff (project status is edited in Airtable, site work in the dashboard);
 - phone-friendly screens for crews.
 
-The phase reports ([2](docs/phase2-status.md), [3](docs/phase3-status.md), [4](docs/phase4-status.md),
-[5](docs/phase5-status.md), [6](docs/phase6-status.md)) record how each part was built and proven.
+Every pull request runs CI: lint, typecheck, the full suite on PGlite and Postgres 17, a rollback round trip, seven
+end-to-end suites, the current-schema check, a secret scan and CodeQL. The earlier phase reports and superseded runbooks
+are kept in [docs/archive/](docs/archive/).
 
 ## 📱 RoofOps Lite
 
@@ -454,12 +454,16 @@ lite/                  RoofOps Lite: a separate Airtable + n8n + Twilio package 
 
 ## 📚 Documentation
 
-| Start here | Deep dives | Quality |
+| Start here | Running it | Quality and evidence |
 |---|---|---|
-| [Architecture](docs/architecture.md) | [Data model](docs/data-model.md) | [Acceptance criteria](docs/acceptance-criteria.md) |
-| [System ownership map](docs/system-ownership-map.md) | [Source-of-truth contract](docs/source-of-truth.md) | [Mutation matrix](docs/mutation-matrix.md) |
-| [Decisions (40 ADRs)](docs/decisions.md) | [State machines](docs/state-machines.md) | [Adversarial test catalogue](docs/adversarial-test-catalogue.md) |
-| [Data import](docs/data-import.md) | [Airtable editability audit](docs/airtable-editability-audit.md) | [Defect ledger](docs/defect-ledger.md) |
+| [Master plan](docs/master-plan.md) | [Release checklist](ops/release-checklist.md) | [Acceptance criteria](docs/acceptance-criteria.md) |
+| [Architecture](docs/architecture.md) | [When the engineer is unavailable](ops/engineer-unavailable.md) | [Defect ledger](docs/defect-ledger.md) |
+| [Decisions (41 ADRs)](docs/decisions.md) | [Xero integration contract](docs/xero-integration-contract.md) | [Evidence index](evidence/README.md) |
+| [Data model](docs/data-model.md) | [Current schema](supabase/schema.sql) | [Current function bodies](supabase/current/functions/) |
+| [Source-of-truth contract](docs/source-of-truth.md) | [State machines](docs/state-machines.md) | |
+
+Older and narrower documents (the ownership map, the mutation matrix, the test catalogue, the import notes) remain in
+`docs/`; superseded ones are in `docs/archive/`.
 
 ---
 

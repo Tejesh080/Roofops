@@ -3,7 +3,7 @@
  * Read-only. Runs only with RUN_HOSTED_TESTS=1.
  *
  * These assertions are the Postgres side of the evidence. Airtable was read back with an independent Airtable
- * connection and Google Drive with the read-only [RoofOps] 98 Drive Read-Back workflow (see docs/phase2-status.md);
+ * connection and Google Drive with the read-only [RoofOps] 98 Drive Read-Back workflow (see docs/archive/phase2-status.md);
  * the external IDs asserted here are the ones those read-backs returned.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

@@ -103,7 +103,7 @@ Dependency direction is strict: `app → application → domain`. `application �
 
 **There are no mock providers** (ADR-018). Every integration talks to the real service, or the capability is reported **BLOCKED**. Nothing is ever simulated as successful.
 
-| Service | Role | Status (see docs/phase2-status.md) |
+| Service | Role | Status (see docs/archive/phase2-status.md) |
 |---|---|---|
 | Postgres 17, Supabase (Sydney) | control layer, live data | LIVE, loaded and verified |
 | Airtable base "RoofOps Demo" | staff-facing operations | LIVE, 228 records loaded and read back |

@@ -5,7 +5,7 @@
  * PRJ-2026-0001 was set to Cancelled in Airtable before any webhook watched Projects.Status. The first reconciliation
  * (observe) reported it out of sync; the repair run replayed the edit through wf_airtable_change, i.e. the same
  * validation a staff edit gets, without any direct UPDATE. Airtable itself was read back independently (see
- * docs/phase6-status.md).
+ * docs/archive/phase6-status.md).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Db } from '../src/db/db.js';

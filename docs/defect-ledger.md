@@ -1006,7 +1006,7 @@ Postgres only; n8n is unchanged.
    `wf_invoice_decide_core`, so it cannot pick another approval. Decided (non-pending) approvals still get the
    handler's own idempotent answers.
 6. **The field contract** for `approval.status` now states the binding, and `docs/source-of-truth.*` is regenerated.
-7. **Copy.** The Copilot's `how_it_gets_approved` text and the demo script (`docs/phase5-status.md`, 5:30) describe
+7. **Copy.** The Copilot's `how_it_gets_approved` text and the demo script (`docs/archive/phase5-status.md`, 5:30) describe
    the two-step Airtable flow: Prepare shows the same preview (no new approval), then Approve.
 
 **Owner decision (2026-10-01).** The fix is Postgres-only, chosen over having n8n 04 pass the displayed approval

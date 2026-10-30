@@ -6,7 +6,7 @@ If anything differs from "Expect", stop that section, note it, and continue with
 
 ## Before the tester starts (owner prepares, not the tester)
 
-- The release steps 0, A–C of `ops/ops-sales-release-plan.md` are done (Airtable options added, migrations applied,
+- The release steps 0, A–C of `docs/archive/ops-sales-release-plan.md` are done (Airtable options added, migrations applied,
   protected Preview deployed with Xero dispatch off, n8n 10 created).
 - **The business date override is cleared** (otherwise every date shows 29 Sep 2026). Write today's date here: ______
 - Tester logins exist, one per role: Estimator, Project Manager, Field Crew, Finance, Admin (synthetic names, e.g.

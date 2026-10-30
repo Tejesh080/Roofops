@@ -1,6 +1,6 @@
 # Release: everything on `main` not yet on hosted (master plan Task 1.1)
 
-One checklist for the whole release. It supersedes `ops/advanced-release-runbook-20261023.md`; that file's §2 notes on
+One checklist for the whole release. It supersedes `docs/archive/advanced-release-runbook-20261023.md`; that file's §2 notes on
 behaviour changes and its §8 owner decisions still apply. Every 🔒 step changes a live system and needs the owner's
 approval in chat, for that step, at that time. Read-only steps need none. Hosted commands take `--confirm <project-ref>`.
 

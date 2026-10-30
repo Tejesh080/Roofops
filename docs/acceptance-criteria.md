@@ -60,7 +60,7 @@ Scope revised by the user: load the **canonical synthetic data bundle** (no rege
 
 ## Phase 2: Real n8n + Airtable + Google Drive, Quote Accepted → Project ✅ (awaiting review)
 
-Real services only (ADR-018). Each side effect: **create, then read back, then verify**. Evidence: docs/phase2-status.md.
+Real services only (ADR-018). Each side effect: **create, then read back, then verify**. Evidence: docs/archive/phase2-status.md.
 
 - [x] Hosted Postgres 17 (Supabase): schema + data; migrations 000–700; hosted verification suite (63 checks) incl. live Phase 2 evidence
 - [x] Supabase Data API surface closed (`anon` / `authenticated`: 0 tables, 0 functions)
@@ -81,7 +81,7 @@ Real services only (ADR-018). Each side effect: **create, then read back, then v
 - [ ] Real rate-limit handling (Airtable 429 → 30 s wait; Xero `Retry-After`), timeouts and ambiguous writes reconciled by read-back
 - [ ] Automation Health metrics from real `workflow_runs` + n8n execution history
 
-## Phase 4: Operations Dashboard + Operations Copilot (see [phase4-status.md](phase4-status.md))
+## Phase 4: Operations Dashboard + Operations Copilot (see [phase4-status.md](archive/phase4-status.md))
 - [x] Next.js dashboard over the hosted DB through a least-privilege role and read-only views (ADR-032); Demo mode banner; no business state in the frontend
 - [x] Headline numbers (active, at risk, awaiting materials, ready to invoice, open issues) that agree with the existing KPIs (tested)
 - [x] Project table (number, customer, stage, scheduled date, materials, invoice, risk + reason) and project detail (customer, quote, status, checklist/material review, Drive link, POs, Xero status + ID, history, issues)
@@ -94,7 +94,7 @@ Real services only (ADR-018). Each side effect: **create, then read back, then v
 - [x] Playwright end-user tests (real login, real data, real DeepSeek)
 - [ ] Integration health panel (LIVE/BLOCKED)
 
-## Phase 5: Real Xero Demo Company (delivered early as "Phase 3": see [phase3-status.md](phase3-status.md))
+## Phase 5: Real Xero Demo Company (delivered early as "Phase 3": see [phase3-status.md](archive/phase3-status.md))
 - [x] Xero OAuth2 credential `RoofOps Xero`, one connection, Demo Company (AU) proven `Class=DEMO` before the tenant was pinned; a real org was detected and refused (ADR-030)
 - [x] Contact find/create, invoice lookup, one DRAFT invoice; after create: GET → exists once, amount/tax/reference/contact match, InvoiceID + ContactID persisted as verified `external_links`
 - [x] Explicit approval of a hashed preview (project, customer, amount, reference, Xero organisation); no approval → nothing in Xero (proven by Xero inventory)

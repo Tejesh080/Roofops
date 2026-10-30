@@ -1,6 +1,6 @@
 # Advanced RoofOps release runbook: the 2026-10-22/23 sprint (8 migrations, n8n 06, 03, 05, dashboard)
 
-> **Superseded on 2026-10-30 by [release-phase1.md](release-phase1.md)**, which releases everything on `main` (nine
+> **Superseded on 2026-10-30 by [release-phase1.md](../../ops/release-phase1.md)**, which releases everything on `main` (nine
 > migrations, n8n 00/01/03/04/06/07/95, the dashboard) in one order. This file's §2 behaviour notes and §8 owner
 > decisions still apply.
 
@@ -8,9 +8,9 @@ Owner-run. Every 🔒 step changes a live system and needs the owner's approval 
 read-only. No secret appears here. Branch `feature/advanced-sprint-lifecycle`, stacked on AC-13B (`3672195`) and AC-15
 (`75b76eb`). Nothing in this release has been deployed.
 
-AC-13B detail (Airtable fill, live acceptance, Note cases): [ac13b-deployment-runbook.md](ac13b-deployment-runbook.md).
+AC-13B detail (Airtable fill, live acceptance, Note cases): [ac13b-deployment-runbook.md](../../ops/ac13b-deployment-runbook.md).
 Per-defect evidence: the `evidence/*-offline-verification.md` file named in each ledger row of
-[docs/defect-ledger.md](../docs/defect-ledger.md).
+[docs/defect-ledger.md](../defect-ledger.md).
 
 ## 1. What is released
 
@@ -51,7 +51,7 @@ two-connection race tests.
 
 ## 3. Backup (before any 🔒 step)
 
-1. The hosted dump, with the command block in [ac13b-deployment-runbook.md](ac13b-deployment-runbook.md) §3 (B1), saved
+1. The hosted dump, with the command block in [ac13b-deployment-runbook.md](../../ops/ac13b-deployment-runbook.md) §3 (B1), saved
    as `pre-advanced-release-<stamp>.dump`. Record its SHA-256, and confirm Supabase's PITR / daily backup.
 2. n8n: download 06, 03, 05 and 07, and record each `versionId` / `activeVersionId`.
 3. Airtable: note the SWMS / Materials / Status values of PRJ-2026-0031..0033.
@@ -85,7 +85,7 @@ two-connection race tests.
 
 ## 6. Live acceptance (each 🔒, synthetic records, net change none)
 
-1. **AC-13B:** the PRJ-2026-0031 sequence in [ac13b-deployment-runbook.md](ac13b-deployment-runbook.md) §5, including the
+1. **AC-13B:** the PRJ-2026-0031 sequence in [ac13b-deployment-runbook.md](../../ops/ac13b-deployment-runbook.md) §5, including the
    Note-only and blank-Note rows.
 2. **AC-15 / AC-15B:** set PRJ-2026-0008 Status = Cancelled in Airtable. Expected: refused, put back, RoofOps Sync explains.
 3. **AC-21:** set PO-2026-0001 Status = Delivered. Expected: refused, put back.

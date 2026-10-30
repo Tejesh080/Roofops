@@ -69,7 +69,7 @@ their record ids, in the deployment evidence. Nothing else in Airtable changes.
 | 10 | Evidence | `evidence/ac13b-hosted-verification.md`: backups (path, SHA-256), version ids before/after, outputs of steps 3-9 | the ledger row moves from "Fixed offline" to **FIXED** only after step 9 passes |
 
 Whether 03 is exercised live in this window is the owner's choice: it runs only when a quote is accepted. The supervised
-Sales step "set synthetic Q-2026-0066 to Accepted" (separate approval, `ops/ops-sales-release-plan.md`) would prove it: the
+Sales step "set synthetic Q-2026-0066 to Accepted" (separate approval, `docs/archive/ops-sales-release-plan.md`) would prove it: the
 new project's Airtable record gets the four checklist fields "To do", read back by 03.
 
 ## 5. Live acceptance on PRJ-2026-0031 (🔒, Airtable UI, mapped user)

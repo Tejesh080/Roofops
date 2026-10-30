@@ -36,14 +36,14 @@ A small roofing contractor runs on spreadsheets, a shared Airtable base, email a
 | 1 | `/health`: every service from recorded checks, integrity counts, last reconciliation | dashboard | LIVE |
 | 2 | The quote hand-off: synthetic Q-2026-0066 sent from the dashboard, n8n 10 execution 3080, one Airtable record each for quote, customer and site, read back | `evidence/quote-integration-test-20261020.md` | LIVE |
 | 3 | A staff edit refused and put back: an illegal status change in Airtable, RoofOps Sync explains | Airtable + dashboard timeline | LIVE |
-| 4 | Missed webhook, then recovery: the PRJ-2026-0001 story (observe run found the drift; the repair run applied it through the handler) | `docs/phase6-status.md` §8, §17 | LIVE |
+| 4 | Missed webhook, then recovery: the PRJ-2026-0001 story (observe run found the drift; the repair run applied it through the handler) | `docs/archive/phase6-status.md` §8, §17 | LIVE |
 | 5 | Xero safety: pinned Demo tenant, a draft deleted in Xero reconciled to VOIDED, one supervised reissue | `evidence/ac14c-stage3*` | LIVE |
 | 6 | The pre-start gate: a job cannot start until SWMS is Done and materials are reviewed; a Note-only edit; two connections racing | `npx vitest run test/pre-start-gate.test.ts` (with `TEST_DATABASE_URL`) | LOCAL |
 | 7 | Quote acceptance is deterministic: a duplicated Airtable row is refused; a bad date no longer stalls the queue | `npx vitest run test/workflow.test.ts` | LOCAL |
 | 8 | Financial guards: a fully billed job cannot be cancelled; a multi-line reissue waits for per-line GST | `npx vitest run test/cancel-guard.test.ts test/reissue-gst-gate.test.ts` | LOCAL |
 | 9 | Copilot: "which jobs are blocked by safety checks?", "which quotes are pending?", then "approve and send the invoice" (refused) and a prompt-injection attempt (refused) | Preview dashboard, or `test/copilot-guards.test.ts` | LOCAL (read tools), LIVE (refusals, Promptfoo 13/13 in Phase 6) |
 | 10 | The end-to-end lifecycle at the database boundary: lead → quote → acceptance → project → pre-start → visit → completion → invoice → Xero draft (simulated proof), with failure injections | `npx vitest run test/business-lifecycle.test.ts` | LOCAL |
-| 11 | Release discipline: the full-chain rehearsal on a restored hosted backup (31 / 6 / 0, rollback identical) and the approval-gated runbook | `ops/advanced-release-runbook-20261023.md` | LOCAL rehearsal, PLANNED deploy |
+| 11 | Release discipline: the full-chain rehearsal on a restored hosted backup (31 / 6 / 0, rollback identical) and the approval-gated runbook | `docs/archive/advanced-release-runbook-20261023.md` | LOCAL rehearsal, PLANNED deploy |
 
 ## 4. Failure-and-recovery demonstrations (safe, local)
 

@@ -3,7 +3,7 @@ import pg from 'pg';
 
 /**
  * Phase 6 browser E2E: after real edits made in Airtable (applied, refused or recovered by RoofOps; see
- * docs/phase6-status.md), the dashboard and the Copilot show exactly the canonical Postgres state.
+ * docs/archive/phase6-status.md), the dashboard and the Copilot show exactly the canonical Postgres state.
  * The expected values are read from the database in the test, with the dashboard's own read-only role.
  */
 const OUT = '../docs/screenshots/phase6';

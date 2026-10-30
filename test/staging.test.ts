@@ -160,6 +160,20 @@ describe.each(TARGETS)('a fresh staging database [%s]', (target) => {
   });
 });
 
+describe('the staging guard finds the production project where Task 0.1 keeps it', () => {
+  it('refuses the project hosted.env names (outside the repository), before connecting', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'staging-root-'));
+    const envDir = mkdtempSync(join(tmpdir(), 'staging-envdir-'));
+    try {
+      writeFileSync(join(envDir, 'hosted.env'), 'SUPABASE_DB_URL=postgresql://postgres.prodprojectref03:x@aws-0-ap-southeast-2.pooler.supabase.com:5432/postgres\n');
+      await expect(guard('postgresql://postgres.prodprojectref03:y@127.0.0.1:1/postgres', { localTest: true, envDir }, root)).rejects.toThrow(/PRODUCTION/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(envDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe.skipIf(!process.env.TEST_DATABASE_URL)('the staging guard (local Postgres)', () => {
   it('refuses a connection that points at the production project, before connecting', async () => {
     const root = mkdtempSync(join(tmpdir(), 'staging-root-'));

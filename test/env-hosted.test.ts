@@ -12,7 +12,7 @@ import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { HOSTED_ONLY_KEYS, confirmHostedWrite, hostedDbConfig, hostedEnvDir, loadLocalEnv, supabaseProjectRef } from '../src/config/env.ts';
+import { HOSTED_ONLY_KEYS, confirmHostedWrite, credentialFile, hostedDbConfig, hostedEnvDir, hostedTarget, loadLocalEnv, supabaseProjectRef } from '../src/config/env.ts';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const TSX = fileURLToPath(new URL('../node_modules/tsx/dist/cli.mjs', import.meta.url));
@@ -20,6 +20,8 @@ const REF = 'abcdefghijklmnopqrst';
 const POOLER = `postgresql://postgres.${REF}:pw@aws-0-ap-southeast-2.pooler.supabase.com:5432/postgres`;
 /** A hosted env file for the script tests: a pooler-style user (the provision scripts need it) on a closed local port. */
 const CLOSED = 'postgresql://postgres.zzzzzzzzzzzzzzzzzzzz:not-a-password@127.0.0.1:9/postgres';
+/** The staging env file for the script tests: another project (its ref is the host, localhost), also on a closed port. */
+const STAGING_CLOSED = 'postgresql://postgres.yyyyyyyyyyyyyyyyyyyy:not-a-password@localhost:9/postgres';
 
 const message = (f: () => unknown): string => {
   try { f(); } catch (e) { return (e as Error).message; }
@@ -114,6 +116,41 @@ describe('hostedDbConfig reads only the hosted env file', () => {
   });
 });
 
+describe('staging is a target of its own, never the production project (Task 1.4)', () => {
+  it('a command line names at most one target: --staging, else the hosted project', () => {
+    expect(hostedTarget([])).toBe('hosted');
+    expect(hostedTarget(['--hosted', '--confirm', 'x'])).toBe('hosted');
+    expect(hostedTarget(['--staging', '--confirm', 'x'])).toBe('staging');
+    expect(message(() => hostedTarget(['--hosted', '--staging']))).toMatch(/^HOSTED_TARGET_AMBIGUOUS/);
+  });
+  it('a staging.env that names the hosted project is refused, in either connection form, without printing it', () => {
+    process.env.ROOFOPS_ENV_DIR = outside;
+    writeFileSync(join(outside, 'hosted.env'), `SUPABASE_DB_URL=${POOLER}\n`);
+    for (const same of [POOLER.replace(':pw@', ':Stg5ecret@'), `postgresql://postgres:Stg5ecret@db.${REF}.supabase.co:5432/postgres`]) {
+      writeFileSync(join(outside, 'staging.env'), `SUPABASE_DB_URL=${same}\n`);
+      const m = message(() => hostedDbConfig('staging', repo));
+      expect(m).toMatch(/^STAGING_IS_PRODUCTION: /);
+      expect(m).not.toContain(REF);
+      expect(m).not.toContain('Stg5ecret');
+    }
+  });
+  it('another project is accepted, with or without a hosted.env beside it', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'roofops-staging-'));
+    process.env.ROOFOPS_ENV_DIR = dir;
+    writeFileSync(join(dir, 'staging.env'), `SUPABASE_DB_URL=${STAGING_CLOSED}\n`);
+    expect(hostedDbConfig('staging', repo).url).toBe(STAGING_CLOSED);
+    writeFileSync(join(dir, 'hosted.env'), `SUPABASE_DB_URL=${POOLER}\n`);
+    expect(hostedDbConfig('staging', repo).url).toBe(STAGING_CLOSED);
+    expect(hostedDbConfig('hosted', repo).url).toBe(POOLER);
+    rmSync(dir, { recursive: true, force: true });
+  });
+  it('a credential a provisioning script creates for staging goes beside staging.env, never over the hosted one', () => {
+    process.env.ROOFOPS_ENV_DIR = outside;
+    expect(credentialFile('hosted', 'web/.env.local', 'staging-dashboard.env', repo)).toBe('web/.env.local');
+    expect(credentialFile('staging', 'web/.env.local', 'staging-dashboard.env', repo)).toBe(join(resolve(outside), 'staging-dashboard.env'));
+  });
+});
+
 describe('supabaseProjectRef', () => {
   it('reads the pooler user postgres.<ref> (and any role.<ref>)', () => {
     expect(supabaseProjectRef(POOLER)).toBe(REF);
@@ -153,15 +190,16 @@ describe.concurrent('the CLIs: every hosted write needs --confirm, no read does'
     envDir = mkdtempSync(join(tmpdir(), 'roofops-cli-env-'));
     mkdirSync(envDir, { recursive: true });
     writeFileSync(join(envDir, 'hosted.env'), `SUPABASE_DB_URL=${CLOSED}\n`);
+    writeFileSync(join(envDir, 'staging.env'), `SUPABASE_DB_URL=${STAGING_CLOSED}\n`);
   });
   afterAll(() => {
     rmSync(cwd, { recursive: true, force: true });
     rmSync(envDir, { recursive: true, force: true });
   });
 
-  const run = (script: string, args: string[]) => new Promise<{ status: number | null; stderr: string }>((done) => {
+  const run = (script: string, args: string[], dir?: string) => new Promise<{ status: number | null; stderr: string }>((done) => {
     const drop: string[] = [...HOSTED_ONLY_KEYS, 'DATABASE_URL', 'SUPABASE_CA_CERT', 'TEST_DATABASE_URL'];
-    const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !drop.includes(k))), ROOFOPS_ENV_DIR: envDir };
+    const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !drop.includes(k))), ROOFOPS_ENV_DIR: dir ?? envDir };
     const p = spawn(process.execPath, [TSX, join(ROOT, 'scripts', script), ...args], { cwd, env, windowsHide: true });
     let stderr = '';
     p.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
@@ -181,6 +219,9 @@ describe.concurrent('the CLIs: every hosted write needs --confirm, no read does'
     ['reissue.ts', ['request', '--invoice', 'INV-2026-0004', '--by', 'EMP-900', '--reason', 'a reason long enough', '--hosted']],
     ['provision-dashboard-role.ts', []],
     ['provision-n8n-role.ts', []],
+    ['db-load.ts', ['--staging']],
+    ['provision-dashboard-role.ts', ['--staging']],
+    ['provision-n8n-role.ts', ['--staging']],
     ['verify-airtable-load.ts', ['no-such-dir']],
   ];
   it.each(WRITES)('%s %j refuses without --confirm', async (script, args) => {
@@ -197,9 +238,43 @@ describe.concurrent('the CLIs: every hosted write needs --confirm, no read does'
     expect(right.stderr).not.toContain('HOSTED_CONFIRM');
   }, 120_000);
 
+  it('db-load.ts --staging confirms against the staging project, not the hosted one', async () => {
+    const hostedRef = await run('db-load.ts', ['--staging', '--confirm', '127.0.0.1']);
+    expect(hostedRef.stderr).toContain('HOSTED_CONFIRM_MISMATCH');
+    const right = await run('db-load.ts', ['--staging', '--confirm', 'localhost']);
+    expect(right.status).not.toBe(0);                     // the closed port, after the gate
+    expect(right.stderr).not.toContain('HOSTED_CONFIRM');
+  }, 120_000);
+
+  it('naming both targets is refused', async () => {
+    const r = await run('db-load.ts', ['--hosted', '--staging', '--confirm', '127.0.0.1']);
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain('HOSTED_TARGET_AMBIGUOUS');
+  }, 120_000);
+
+  it('a staging.env that names the hosted project stops every staging command before it connects', async () => {
+    const same = mkdtempSync(join(tmpdir(), 'roofops-cli-same-'));
+    writeFileSync(join(same, 'hosted.env'), `SUPABASE_DB_URL=${CLOSED}\n`);
+    writeFileSync(join(same, 'staging.env'), `SUPABASE_DB_URL=${CLOSED}\n`);
+    try {
+      const runs: [string, string[]][] = [
+        ['db-load.ts', ['--staging', '--confirm', '127.0.0.1']],
+        ['integrity-check.ts', ['--staging']],
+        ['provision-dashboard-role.ts', ['--staging', '--confirm', '127.0.0.1']],
+        ['provision-n8n-role.ts', ['--staging', '--confirm', '127.0.0.1']],
+      ];
+      for (const [script, args] of runs) {
+        const r = await run(script, args, same);
+        expect(r.status, script).not.toBe(0);
+        expect(r.stderr, script).toContain('STAGING_IS_PRODUCTION');
+      }
+    } finally { rmSync(same, { recursive: true, force: true }); }
+  }, 240_000);
+
   const READS: [string, string[]][] = [
     ['sql.ts', ['--read-only', 'select 1']],
     ['integrity-check.ts', []],
+    ['integrity-check.ts', ['--staging']],
     ['security-check.ts', []],
     ['reissue.ts', ['status', '--invoice', 'INV-2026-0004', '--hosted']],
     ['demo.ts', ['status']],

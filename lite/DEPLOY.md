@@ -22,6 +22,7 @@ What gets installed:
 | Approved message wording and consent wording | Templates, the form, the consent record |
 | Whether review requests need a separate tick (Australia: yes by default) | `consent.reviewRequests` |
 | Who gets alert texts (operator mobile) | `monitoring.operatorPhone` |
+| An uptime check that alerts when Monitor stops running, such as a free healthchecks.io check (its ping address, https) | `monitoring.heartbeatUrl` |
 | A Twilio account in the business's name, with an Australian mobile number that can send and receive SMS | Real messaging |
 
 ## 1. Accounts (cloud)

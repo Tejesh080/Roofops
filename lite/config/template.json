@@ -106,7 +106,8 @@
     "everyHours": 2,
     "stuckSendingMinutes": 15,
     "staleLeadHours": 24,
-    "operatorPhone": null
+    "operatorPhone": null,
+    "heartbeatUrl": null
   },
   "webhookAuth": null
 }
